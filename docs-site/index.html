@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pulse Pager - open source, developer-first uptime monitoring</title>
+  <meta name="description" content="Pulse Pager is open source, multi-tenant uptime monitoring with an API-first design. Self-host it for free or use our managed cloud. Monitor endpoints, run status pages, and manage everything as code.">
+  <link rel="stylesheet" href="./assets/styles.css">
+  <link rel="icon" type="image/svg+xml" href="./assets/logo.svg" media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/svg+xml" href="./assets/logo-dark.svg" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+  <div class="prelaunch">
+    <strong>Pre-launch.</strong> Pulse Pager is still in early development, so the hosted cloud is
+    not live yet and these docs describe the planned product. You can already
+    <a href="https://github.com/mert574/pulse">run it yourself from source</a>.
+  </div>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="./index.html"><img class="logo" src="./assets/logo.svg" alt="" width="22" height="22">Pulse Pager</a>
+      <input type="checkbox" id="nav-toggle" class="nav-toggle" hidden>
+      <label for="nav-toggle" class="nav-burger" aria-label="Toggle menu"><span></span><span></span><span></span></label>
+      <div class="nav-links">
+        <a class="active" href="./index.html">Overview</a>
+        <a href="./api.html">API reference</a>
+        <a href="./guides/authentication.html">Authentication</a>
+        <a href="./pricing.html">Pricing</a>
+        <a href="https://github.com/mert574/pulse">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container">
+    <section class="hero">
+      <h1>Know before your customers do.</h1>
+      <p class="lead">
+        Pulse Pager is open source uptime monitoring with an API-first design. It watches your
+        endpoints, opens incidents when they break, notifies your team, and publishes status pages.
+      </p>
+      <p>
+        Everything the app does you can also script through a documented REST API, so you can manage
+        hundreds of monitors as code. Run it yourself, or use our cloud.
+      </p>
+      <a class="btn" href="https://github.com/mert574/pulse">Get the source</a>
+      <a class="btn secondary" href="./api.html">Explore the API</a>
+    </section>
+
+    <h2>Self-host or use the cloud</h2>
+    <p>It's the same Pulse Pager either way. The difference is who runs it.</p>
+    <div class="cards">
+      <div class="card">
+        <h3>Self-host</h3>
+        <p>
+          Pulse Pager is open source. Clone the repo and run it yourself with Docker. Your data
+          stays on your own servers. There is no license fee and no plan caps.
+        </p>
+        <p class="card-link"><a href="https://github.com/mert574/pulse">Get the source &rarr;</a></p>
+      </div>
+      <div class="card">
+        <h3>Pulse Pager Cloud</h3>
+        <p>
+          If you'd rather not run Postgres, Redis, and Kafka yourself, we host Pulse Pager for you.
+          The Free plan needs no card.
+        </p>
+        <p class="card-link"><a href="./pricing.html">See cloud pricing &rarr;</a></p>
+      </div>
+    </div>
+
+    <h2>What Pulse Pager does</h2>
+    <div class="cards">
+      <div class="card">
+        <h3>Monitors</h3>
+        <p>HTTP checks with method, headers, body, expected status, latency and body assertions, failure thresholds, and multi-region dispatch.</p>
+      </div>
+      <div class="card">
+        <h3>Incidents</h3>
+        <p>Failures open incidents automatically and close on recovery. Annotate the timeline or close manually as an operator override.</p>
+      </div>
+      <div class="card">
+        <h3>Notifications</h3>
+        <p>Slack, Discord, email, generic webhook, and more. Test a channel before you rely on it.</p>
+      </div>
+      <div class="card">
+        <h3>Status pages</h3>
+        <p>Publish a branded public status page with uptime history and recent incidents, served from a public-safe projection.</p>
+      </div>
+      <div class="card">
+        <h3>Teams and roles</h3>
+        <p>Per-org membership with owner, admin, member, and viewer roles. Invite by email; roles map straight to API permissions.</p>
+      </div>
+      <div class="card">
+        <h3>API keys</h3>
+        <p>Per-org, role-scoped keys (<code>pulse_sk_...</code>). Create one, copy a curl, and run it against your own org in minutes.</p>
+      </div>
+    </div>
+
+    <h2>Getting started</h2>
+    <p>The fastest way to your first check:</p>
+    <ol>
+      <li>Sign in with Google or GitHub. There is no password and no signup form.</li>
+      <li>Your org is created for you on the Free plan, no card needed, with you as the owner.</li>
+      <li>Create your first monitor in the app: give it a URL, pick how often to check, and save. The first result shows up in under two minutes.</li>
+    </ol>
+
+    <p>
+      Prefer to work headless? Everything the app does is also available over the REST API, so you
+      can run Pulse Pager entirely from scripts or CI, no UI needed.
+    </p>
+    <p>
+      See <a href="./guides/authentication.html">Authentication</a> for keys and roles, and the
+      <a href="./api.html">API reference</a> for every operation.
+    </p>
+
+    <div class="note">
+      <strong>One source of truth.</strong> The API reference on this site is built from
+      <code>api/openapi/v1.yaml</code>, the same spec that generates the Go server types and the
+      TypeScript client. The docs cannot drift from the live API.
+    </div>
+  </div>
+
+  <footer>
+    Pulse Pager docs &middot; built from <code>api/openapi/v1.yaml</code> &middot;
+    <a href="https://github.com/mert574/pulse">GitHub</a> &middot;
+    <a href="./api.html">API reference</a> &middot;
+    <a href="./pricing.html">Pricing</a> &middot;
+    <a href="mailto:hi@pulsepager.com">Contact</a>
+  </footer>
+</body>
+</html>

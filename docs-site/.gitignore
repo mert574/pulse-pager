@@ -1,0 +1,3 @@
+# Build artifact: copied from api/openapi/v1.yaml by `make docs`.
+# Regenerated on every build and in CI, so it is not committed.
+openapi.yaml

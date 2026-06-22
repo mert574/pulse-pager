@@ -1,0 +1,49 @@
+name: docs
+
+# Build the static docs site and deploy it to GitHub Pages. The API reference is
+# rebuilt from api/openapi/v1.yaml on every run (make docs re-copies the spec),
+# so the published reference cannot drift from the live contract.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish; queue the newest, do not cancel in-flight.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build docs (re-copy spec from api/openapi/v1.yaml)
+        run: make docs
+
+      - name: Verify the reference matches the spec
+        run: diff -q api/openapi/v1.yaml docs-site/openapi.yaml
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

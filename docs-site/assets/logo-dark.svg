@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Pulse Pager">
+  <!-- Dark-mode variant: cream badge, dark coffee pulse waveform, caramel ping dot. -->
+  <rect x="2" y="2" width="28" height="28" rx="7" fill="#e7dac2"/>
+  <path d="M6 18 H10.5 L12.5 18 L15 9 L18.5 24 L20.5 18 H26"
+        fill="none" stroke="#3a2a1d" stroke-width="2.4"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="23.5" cy="9" r="2.4" fill="#d98a4f"/>
+</svg>

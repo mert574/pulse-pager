@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>API reference - Pulse Pager</title>
+  <meta name="description" content="The Pulse Pager REST API reference, generated from the OpenAPI 3 spec.">
+  <link rel="stylesheet" href="./assets/styles.css">
+  <link rel="icon" type="image/svg+xml" href="./assets/logo.svg" media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/svg+xml" href="./assets/logo-dark.svg" media="(prefers-color-scheme: dark)">
+  <style>
+    body { display: flex; flex-direction: column; min-height: 100vh; margin: 0; }
+    #redoc-host { flex: 1 1 auto; }
+  </style>
+</head>
+<body>
+  <div class="prelaunch">
+    <strong>Pre-launch.</strong> Pulse Pager is still in early development, so the hosted cloud is
+    not live yet and these docs describe the planned product. You can already
+    <a href="https://github.com/mert574/pulse">run it yourself from source</a>.
+  </div>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="./index.html"><img class="logo" src="./assets/logo.svg" alt="" width="22" height="22">Pulse Pager</a>
+      <input type="checkbox" id="nav-toggle" class="nav-toggle" hidden>
+      <label for="nav-toggle" class="nav-burger" aria-label="Toggle menu"><span></span><span></span><span></span></label>
+      <div class="nav-links">
+        <a href="./index.html">Overview</a>
+        <a class="active" href="./api.html">API reference</a>
+        <a href="./guides/authentication.html">Authentication</a>
+        <a href="./pricing.html">Pricing</a>
+        <a href="https://github.com/mert574/pulse">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <!--
+    Redoc renders the reference in the browser from the local spec copy.
+    docs-site/openapi.yaml is copied from api/openapi/v1.yaml by `make docs`,
+    so this reference always matches the contract. The CDN script is the only
+    external dependency and is used at view time only.
+  -->
+  <div id="redoc-host"></div>
+  <footer>
+    Pulse Pager docs &middot; <a href="https://github.com/mert574/pulse">GitHub</a> &middot;
+    <a href="./index.html">Overview</a> &middot;
+    <a href="./pricing.html">Pricing</a> &middot;
+    <a href="mailto:hi@pulsepager.com">Contact</a>
+  </footer>
+  <script src="https://cdn.redocly.com/redoc/latest/bundles/redoc.standalone.js"></script>
+  <script>
+    // Theme Redoc to match the site's caramellatte palette so the menu and badges
+    // are warm instead of Redoc's default blue.
+    Redoc.init('./openapi.yaml', {
+      theme: {
+        colors: {
+          primary: { main: '#8c4e2a' },
+          http: {
+            get: '#2f7d32',
+            post: '#0e7490',
+            put: '#b45309',
+            patch: '#8c4e2a',
+            delete: '#b3261e'
+          }
+        },
+        sidebar: {
+          backgroundColor: '#f7efe0',
+          textColor: '#6b3d1c',
+          activeTextColor: '#8c4e2a'
+        },
+        rightPanel: {
+          backgroundColor: '#2a2018'
+        },
+        typography: {
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+          headings: { fontFamily: 'inherit' }
+        }
+      }
+    }, document.getElementById('redoc-host'));
+  </script>
+</body>
+</html>

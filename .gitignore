@@ -1,0 +1,10 @@
+/bin/
+/.env
+*.db
+web/node_modules/
+web/dist/
+jwt-private.pem
+docs
+
+# local agent config
+.claude/

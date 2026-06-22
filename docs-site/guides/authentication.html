@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Authentication - Pulse Pager</title>
+  <meta name="description" content="How to authenticate to the Pulse Pager API with a role-scoped API key.">
+  <link rel="stylesheet" href="../assets/styles.css">
+  <link rel="icon" type="image/svg+xml" href="../assets/logo.svg" media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/svg+xml" href="../assets/logo-dark.svg" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+  <div class="prelaunch">
+    <strong>Pre-launch.</strong> Pulse Pager is still in early development, so the hosted cloud is
+    not live yet and these docs describe the planned product. You can already
+    <a href="https://github.com/mert574/pulse">run it yourself from source</a>.
+  </div>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="../index.html"><img class="logo" src="../assets/logo.svg" alt="" width="22" height="22">Pulse Pager</a>
+      <input type="checkbox" id="nav-toggle" class="nav-toggle" hidden>
+      <label for="nav-toggle" class="nav-burger" aria-label="Toggle menu"><span></span><span></span><span></span></label>
+      <div class="nav-links">
+        <a href="../index.html">Overview</a>
+        <a href="../api.html">API reference</a>
+        <a class="active" href="./authentication.html">Authentication</a>
+        <a href="../pricing.html">Pricing</a>
+        <a href="https://github.com/mert574/pulse">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container">
+    <h1>Authentication</h1>
+    <p class="lead">
+      The Pulse Pager REST API authenticates with per-org, role-scoped API keys. A key belongs to one
+      org and can do exactly what its role can do, never more.
+    </p>
+
+    <h2>Creating a key</h2>
+    <p>
+      In the app, open your org settings and create an API key. You give it a name and a role.
+      A key's role is <code>member</code> or <code>admin</code> only; keys are never owner-equivalent,
+      so a leaked key cannot change billing, transfer ownership, or delete the org.
+    </p>
+    <div class="note">
+      <strong>The secret is shown once.</strong> The full secret (<code>pulse_sk_...</code>) is
+      returned exactly once, at creation, and never again. Pulse Pager stores only a hash and a
+      short non-secret prefix. Copy the secret straight into your secret manager or CI secret store.
+    </div>
+    <p>You can also create a key through the API itself (admin role required):</p>
+<pre><code>curl -X POST https://api.pulsepager.com/api/v1/orgs/&lt;orgId&gt;/api-keys \
+  -H "Authorization: Bearer pulse_sk_an_existing_admin_key" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"ci-deploy","role":"member"}'</code></pre>
+    <p>
+      The response carries the key metadata plus the one-time <code>secret</code>. A later
+      <code>GET .../api-keys</code> returns metadata only (name, role, prefix, created-by,
+      created, last-used), never the secret.
+    </p>
+
+    <h2>Using a key</h2>
+    <p>
+      Send the full secret as a bearer token in the <code>Authorization</code> header on every
+      request:
+    </p>
+<pre><code>Authorization: Bearer pulse_sk_&lt;secret&gt;</code></pre>
+    <p>The server hashes the presented value and compares it against stored hashes. For example:</p>
+<pre><code>curl https://api.pulsepager.com/api/v1/orgs/&lt;orgId&gt;/monitors \
+  -H "Authorization: Bearer pulse_sk_your_secret_here"</code></pre>
+
+    <h2>What the responses mean</h2>
+    <table>
+      <thead>
+        <tr><th>Status</th><th>Meaning</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>200</code> / <code>201</code> / <code>204</code></td><td class="feat">The call succeeded.</td></tr>
+        <tr><td><code>401</code></td><td class="feat">Missing, malformed, unknown, or revoked credential. The server does not know who you are.</td></tr>
+        <tr><td><code>403</code></td><td class="feat">Known key, but its role is too low for this operation, or the org's plan does not allow it (for example, writes on a read-only Free plan).</td></tr>
+        <tr><td><code>422</code></td><td class="feat">Validation failed. The error body carries a <code>fields</code> map naming each bad field.</td></tr>
+      </tbody>
+    </table>
+    <p>
+      The distinction between 401 (who are you) and 403 (you are known but not allowed) is kept
+      strict. Every error uses the standard envelope:
+    </p>
+<pre><code>{ "error": { "code": "forbidden", "message": "Human-readable summary." } }</code></pre>
+
+    <h2>Roles and what a key can do</h2>
+    <p>
+      A key inherits a role and is checked against the same permission matrix a human of that role
+      would be, restricted to the API surface.
+    </p>
+    <ul>
+      <li><strong>member</strong>: view and manage monitors, channels, and status pages; run check-now; view and annotate incidents.</li>
+      <li><strong>admin</strong>: everything a member can do, plus manual incident close, managing people and keys, and viewing billing.</li>
+    </ul>
+    <p>
+      Owner-only actions (managing billing, transferring ownership, deleting the org) have no API
+      and stay in the UI by design.
+    </p>
+
+    <h2>Revoking a key</h2>
+    <p>
+      Any key can be revoked immediately. A revoked key fails the very next request with
+      <code>401</code>. The key list shows a last-used timestamp so stale keys are easy to spot
+      and rotate.
+    </p>
+<pre><code>curl -X DELETE https://api.pulsepager.com/api/v1/orgs/&lt;orgId&gt;/api-keys/&lt;id&gt; \
+  -H "Authorization: Bearer pulse_sk_an_admin_key"</code></pre>
+
+    <h2>Webhooks (coming soon)</h2>
+    <div class="note">
+      <strong>Not available yet.</strong> Org-level outbound webhooks are planned: a programmatic
+      event feed (<code>monitor.down</code>, <code>monitor.recovery</code>,
+      <code>incident.opened</code>, <code>incident.closed</code>) so you can ingest Pulse Pager
+      events into your own pipeline without polling. Each delivery will be signed with a per-webhook secret
+      (an <code>X-Pulse-Signature</code> header over the timestamp and raw body) and carry a stable
+      <code>event_id</code> so retries dedup safely. This page will document the payload shapes and
+      signature verification once the surface ships.
+    </div>
+
+    <p class="muted">
+      Read the full set of operations and schemas in the
+      <a href="../api.html">API reference</a>.
+    </p>
+  </div>
+
+  <footer>
+    Pulse Pager docs &middot; <a href="../api.html">API reference</a> &middot;
+    <a href="../pricing.html">Pricing</a> &middot;
+    <a href="mailto:hi@pulsepager.com">Contact</a>
+  </footer>
+</body>
+</html>

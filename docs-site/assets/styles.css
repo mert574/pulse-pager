@@ -1,0 +1,333 @@
+/* Light theme matching the app's daisyUI "caramellatte" palette (web/src/styles/app.css):
+   warm cream surfaces, warm-brown text, black primary, caramel accent. Values are the
+   theme's own tokens (daisyui/theme/caramellatte.css). */
+:root {
+  --bg: oklch(98% 0.016 73.684);          /* base-100 */
+  --bg-soft: oklch(95% 0.038 75.164);     /* base-200 */
+  --border: oklch(90% 0.076 70.697);      /* base-300 */
+  --text: oklch(40% 0.123 38.172);        /* base-content */
+  --text-dim: oklch(52% 0.07 48);         /* dimmed base-content */
+  --primary: oklch(0% 0 0);               /* primary (black) */
+  --primary-content: oklch(100% 0 0);     /* primary-content (white) */
+  --accent: oklch(46.44% 0.111 37.85);    /* accent (caramel) */
+  --code-bg: oklch(95% 0.038 75.164);     /* base-200 */
+  --max-width: 980px;
+}
+
+* { box-sizing: border-box; }
+
+/* Pre-launch strip: the product is foundation-stage and the cloud is not live
+   yet, so every page says so up front. Sits above the sticky nav and scrolls
+   away with the page. */
+.prelaunch {
+  background: oklch(93% 0.08 85);
+  border-bottom: 1px solid oklch(80% 0.16 85);
+  color: oklch(41% 0.112 45.904); /* warning-content */
+  font-size: 0.85rem;
+  line-height: 1.5;
+  text-align: center;
+  padding: 0.55rem 1.2rem;
+}
+.prelaunch strong { color: oklch(35% 0.1 46); }
+.prelaunch a { color: oklch(35% 0.1 46); text-decoration: underline; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+}
+
+a { color: var(--accent); text-decoration: underline; }
+a:hover { opacity: 0.8; }
+
+code, pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+code {
+  background: var(--code-bg);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.2rem;
+  overflow-x: auto;
+  font-size: 0.88rem;
+}
+
+pre code { background: none; padding: 0; }
+
+/* Top nav */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: oklch(98% 0.016 73.684 / 0.85);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.85rem 1.2rem;
+}
+.nav-brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: #5b4231; /* matches the dark coffee logo badge */
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.nav-brand .logo {
+  width: 22px; height: 22px; display: block; flex: none;
+}
+.nav-links { display: flex; gap: 1.2rem; margin-left: auto; flex-wrap: wrap; }
+.nav-links a { color: var(--text-dim); font-size: 0.95rem; text-decoration: none; }
+.nav-links a:hover { opacity: 1; }
+.nav-links a:hover, .nav-links a.active { color: var(--text); text-decoration: none; }
+
+/* Layout */
+.container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 2.5rem 1.2rem 4rem;
+}
+
+h1 { font-size: 2.1rem; line-height: 1.2; margin: 0 0 0.6rem; }
+h2 { font-size: 1.45rem; margin: 2.4rem 0 0.8rem; border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
+h3 { font-size: 1.1rem; margin: 1.6rem 0 0.5rem; }
+
+.lead { font-size: 1.15rem; color: var(--text-dim); margin: 0 0 1.6rem; }
+
+.hero {
+  padding: 1rem 0 2rem;
+}
+.btn {
+  display: inline-block;
+  background: var(--primary);
+  color: var(--primary-content);
+  text-decoration: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  font-weight: 600;
+  margin: 0.4rem 0.6rem 0.4rem 0;
+}
+.btn:hover { text-decoration: none; opacity: 0.85; }
+.btn.secondary { background: var(--bg-soft); color: var(--text); border: 1px solid var(--border); }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+.card {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.2rem;
+  display: flex;
+  flex-direction: column;
+}
+.card h3 { margin-top: 0; }
+.card p { color: var(--text-dim); margin: 0.4rem 0 0; font-size: 0.95rem; }
+/* Pin a card's link to the bottom so links line up across cards of unequal text length. */
+.card .card-link { margin-top: auto; padding-top: 0.8rem; }
+
+/* Pricing table */
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.92rem; }
+th, td { border: 1px solid var(--border); padding: 0.6rem 0.8rem; text-align: left; }
+th { background: var(--bg-soft); font-weight: 600; }
+td.feat { color: var(--text-dim); }
+tr:hover td { background: rgba(0,0,0,0.03); }
+.plan-free { color: #8c7350; }
+.plan-starter { color: #0e7490; }
+.plan-team { color: #7e22ce; }
+.plan-business { color: #b45309; }
+.plan-custom { color: #475569; }
+
+td.yes { color: #2e7d32; font-weight: 600; }
+td.no { color: var(--text-dim); }
+tbody tr:nth-child(even) td { background: rgba(0,0,0,0.018); }
+
+/* Plan summary cards (the at-a-glance row above the comparison table) */
+.plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0 2.5rem;
+}
+.plan {
+  position: relative;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.3rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+}
+.plan.featured {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+/* Badge floats on the top border so it never shifts card content out of line. */
+.plan .badge {
+  position: absolute;
+  top: -0.65rem;
+  left: 1.2rem;
+  background: var(--accent);
+  color: var(--primary-content);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+}
+.plan .plan-tier { font-size: 1.2rem; font-weight: 700; margin: 0; }
+.plan .plan-for { color: var(--text-dim); font-size: 0.88rem; margin: 0.3rem 0 1rem; min-height: 2.6em; }
+.plan .plan-price {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0 0 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.plan .plan-price small { display: block; font-weight: 400; font-size: 0.78rem; color: var(--text-dim); }
+.plan ul { list-style: none; padding: 0; margin: 0; font-size: 0.9rem; }
+.plan li { padding: 0.28rem 0; }
+.plan .contact-link { margin-top: auto; padding-top: 1rem; font-weight: 600; }
+
+.note {
+  background: oklch(94% 0.06 80);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.9rem 1.1rem;
+  margin: 1.2rem 0;
+  color: var(--text);
+}
+.note strong { color: var(--text); }
+
+.muted { color: var(--text-dim); font-size: 0.9rem; }
+
+footer {
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 0.88rem;
+  text-align: center;
+  padding: 2rem 1.2rem;
+}
+
+/* Redoc host fills the viewport below the nav */
+#redoc-host { background: var(--bg); }
+
+/* Mobile is the main audience, so the small-screen layout is designed, not
+   bolted on. The nav collapses into a hamburger, type and spacing scale down,
+   and the hero buttons go full width so they are easy to tap. */
+
+/* Hamburger toggle: hidden on desktop, shown under the breakpoint below. The
+   toggle is a real checkbox so the menu opens with no JS. It resets to closed
+   on every page load, which is what we want since the nav links navigate away. */
+.nav-burger { display: none; }
+
+@media (max-width: 720px) {
+  .nav-inner { gap: 0.75rem; padding: 0.7rem 1rem; }
+
+  .nav-burger {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    margin-left: auto;
+    width: 42px;
+    height: 42px;
+    padding: 9px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .nav-burger:hover { background: var(--bg-soft); }
+  .nav-burger span {
+    display: block;
+    height: 2px;
+    width: 100%;
+    background: var(--text);
+    border-radius: 2px;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+
+  /* The open menu drops below the bar as a full-width panel. .nav is sticky
+     (so it is a positioned ancestor); top:100% lands it just under the bar. */
+  .nav-links {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    gap: 0;
+    margin-left: 0;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.07);
+  }
+  .nav-toggle:checked ~ .nav-links { display: flex; }
+  .nav-links a {
+    padding: 0.85rem 1rem;
+    font-size: 1rem;
+    border-top: 1px solid var(--border);
+  }
+  .nav-links a.active { font-weight: 600; }
+
+  /* Burger turns into an X while the menu is open. */
+  .nav-toggle:checked ~ .nav-burger span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+  .nav-toggle:checked ~ .nav-burger span:nth-child(2) { opacity: 0; }
+  .nav-toggle:checked ~ .nav-burger span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+  .container { padding: 1.8rem 1rem 3rem; }
+  .hero { padding: 0.5rem 0 1.5rem; }
+
+  h1 { font-size: 1.7rem; }
+  h2 { font-size: 1.25rem; margin-top: 2rem; }
+  h3 { font-size: 1.05rem; }
+  .lead { font-size: 1.05rem; }
+
+  /* Plans become a horizontal carousel: one card plus a peek of the next, with
+     snap so each card settles into place. The grid is replaced by a flex row.
+     overflow-x makes overflow-y compute to auto, which would clip the featured
+     card's badge (it sits at top: -0.65rem), so we add top padding for it. */
+  .plans {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    gap: 0.9rem;
+    margin: 1.5rem 0 2rem;
+    padding: 0.85rem 0 0.6rem;
+  }
+  .plan {
+    flex: 0 0 78vw;
+    max-width: 300px;
+    scroll-snap-align: start;
+  }
+
+  /* Keep table cells compact, but hold a min width so the comparison table
+     scrolls sideways instead of squashing its columns to nothing. */
+  th, td { padding: 0.5rem 0.6rem; }
+  .table-wrap table { min-width: 560px; }
+}
+
+@media (max-width: 480px) {
+  /* Stacked, full-width buttons are the easiest one-thumb target. */
+  .hero .btn { display: block; width: 100%; margin: 0.5rem 0; text-align: center; }
+}
