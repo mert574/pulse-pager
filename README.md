@@ -20,26 +20,26 @@ within your plan's limits.
 
 What works:
 
-- **Auth and orgs** (RFC-003): Google/GitHub OAuth, JWT sessions with refresh,
+- **Auth and orgs**: Google/GitHub OAuth, JWT sessions with refresh,
   API keys, multi-tenant orgs with roles (owner/admin/member/viewer) and
   invitations. Postgres row-level security means one org can never read another's
   rows, even if an app-level filter is missed.
-- **Monitors and checks** (PRD-002, RFC-004/005): HTTP/TCP checks with
+- **Monitors and checks**: HTTP/TCP checks with
   interval, timeout, expected status codes, latency and body assertions;
   per-region scheduling; manual check-now with a rate limit; live per-region
   state; and recent-check history grouped one row per run.
-- **Pipeline** (RFC-005/006/007): scheduler then worker then alerting then
+- **Pipeline**: scheduler then worker then alerting then
   notifier, over Kafka. Workers run per region, alerting opens and closes
   incidents, the notifier delivers.
-- **Channels** (PRD-003, RFC-007a): nine integrations (Slack, Discord, webhook,
+- **Channels**: nine integrations (Slack, Discord, webhook,
   email/SMTP, Telegram, PagerDuty, Opsgenie, Microsoft Teams, Twilio), each with
   a config schema and a test-send. Secret config is encrypted at rest.
-- **Plans and entitlements** (PRD-006): free/starter/team/business with monitor
+- **Plans and entitlements**: free/starter/team/business with monitor
   caps, interval floors, region sets, seat caps, status-page caps, and per-plan
   channel access, all enforced server-side, plus a usage-vs-caps screen.
-- **Status pages** (PRD-004): public per-org status pages with monitors,
+- **Status pages**: public per-org status pages with monitors,
   incidents, and a quiet "Powered by Pulse Pager" credit.
-- **Multi-region** (RFC-013): a monitor can run from several regions; the UI
+- **Multi-region**: a monitor can run from several regions; the UI
   groups a run's regions into one row and shows a live chip per region.
 
 Still early or not built yet:
@@ -166,7 +166,7 @@ npm run typecheck           # tsc --noEmit
 ## Layout
 
 ```
-api/openapi/    v1.yaml: the API contract, single source of truth (RFC-012)
+api/openapi/    v1.yaml: the API contract, single source of truth
 cmd/            the five services (api, scheduler, worker, alerting, notifier) + schema
 internal/
   api/          control-plane HTTP server implementing the generated contract
@@ -174,7 +174,7 @@ internal/
   devapi/       dev stub implementing the same contract with sample data
   authn/        oauth login, jwt issue + jwks, refresh rotation, api keys, middleware
   authz/        role model and Can checks
-  entitlements/ per-plan caps, floors, and feature access (PRD-006)
+  entitlements/ per-plan caps, floors, and feature access
   store/        pgxpool, schema.sql + ApplySchema, the WithOrg org-scoping helper (RLS)
   scheduler/    dispatches per-(monitor, region) check jobs
   worker/       runs checks for its region and emits results
@@ -193,7 +193,7 @@ docs-site/      static, source-available docs site (GitHub Pages)
 
 ## API contract (generated)
 
-The REST API is contract-first (RFC-012): `api/openapi/v1.yaml` is the single
+The REST API is contract-first: `api/openapi/v1.yaml` is the single
 source of truth. Both the Go server types/stubs (`internal/apigen`) and the
 TypeScript client types (`web/src/api/schema.d.ts`) are generated from it, so the
 backend and frontend cannot drift. The dev stub implements the same generated
