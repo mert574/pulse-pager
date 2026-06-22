@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Pulse is multi-tenant SaaS uptime monitoring, built as five distributed Go services on Postgres + Redis + Kafka (Redpanda locally). The repo is at the foundation stage: the services boot, connect, and report healthy; much business logic is still skeletons marked `TODO(RFC-xxx)`. The web app is a Lit SPA in `web/`.
+Pulse is multi-tenant SaaS uptime monitoring, built as five distributed Go services on Postgres + Redis + a pluggable event bus (Kafka/Redpanda by default, or Redis Streams via `PULSE_BUS`). The repo is at the foundation stage: the services boot, connect, and report healthy; much business logic is still skeletons marked `TODO(RFC-xxx)`. The web app is a Lit SPA in `web/`.
 
 Authoritative design lives in `docs/` (PRDs and RFCs). `docs/CODE-VS-RFC-GAP.md` tracks what is built vs. planned. Code comments reference these by id (e.g. `RFC-003`, `PRD-006`); follow the cited doc when changing that area.
 
@@ -62,16 +62,18 @@ Tenant isolation is app-level org scoping **plus** Postgres row-level security (
 
 `internal/store` owns the pgxpool, `schema.sql` + `ApplySchema`, and one file per entity. Secret columns (e.g. secret monitor headers) are encrypted at rest via a `secretCipher` wired with `SetCipher` (`internal/crypto`); nil cipher = stored as-is (dev/test).
 
-### Event pipeline (Kafka via franz-go)
+### Event pipeline (pluggable bus: Kafka or Redis Streams)
 
 `internal/bus` wraps the producer/consumer and defines the canonical topics (`bus.go`): `monitor.changed`, `check.jobs.<region>` (per-region, via `CheckJobsTopic`), `check.results`, `notify.events`, `audit.events`, `billing.events`, `region.health`. Payloads are JSON structs in `internal/events` (kept dependency-light). Data flow: scheduler emits `CheckJob` (carries full monitor config so workers never hit Postgres on the hot path) → worker runs the check, emits `CheckResultEvent` → alerting opens/closes incidents, emits `NotifyEvent` → notifier delivers. `internal/kv` is the Redis layer (locks/cache).
 
+The transport is pluggable behind a backend interface, selected by `PULSE_BUS`: `kafka` (default, `kafka.go`, franz-go against any Kafka-compatible broker) or `redis` (`redis.go`, Redis Streams, a single-node mode that reuses Redis instead of a separate broker). Both keep the same at-least-once contract (a handler that returns an error leaves the message unacked for redelivery). The runtime picks the backend in `ConnectBus{Producer,Consumer}`; services are unaffected since they depend on their own small `Producer`/`Consumer` interfaces.
+
 ### Identity / auth / authz (api service only)
 
-- `internal/authn` — the auth machinery: OAuth login (Google/GitHub via go-oidc), JWT issue + JWKS, refresh-token rotation, cookies, API-key verification, and the `Authenticator` middleware (`Identify` for authenticated routes, `RequireOrg` for `/orgs/{orgId}` routes). The principal is read with `authn.FromContext(ctx)`.
-- `internal/authz` — role model and `Can` checks; actor kinds (`ActorHuman`, etc.).
-- `internal/api` — the real control-plane HTTP server implementing the generated contract. `api.Build`/`New` wire it; `router.go` mounts hand-wired auth-plane routes (`/auth/*`, `/.well-known/jwks.json` — redirects/non-JSON, kept out of the spec) and the generated JSON resource routes behind the right middleware. Errors go out as the localizable `{code, message}` envelope (helpers at the bottom of `api.go`).
-- `internal/entitlements` — per-plan limits (seats, monitor caps, interval floor, feature flags). Handlers take resolver interfaces that default to sane per-plan resolvers when nil.
+- `internal/authn` is the auth machinery: OAuth login (Google/GitHub via go-oidc), JWT issue + JWKS, refresh-token rotation, cookies, API-key verification, and the `Authenticator` middleware (`Identify` for authenticated routes, `RequireOrg` for `/orgs/{orgId}` routes). The principal is read with `authn.FromContext(ctx)`.
+- `internal/authz` is the role model and `Can` checks; actor kinds (`ActorHuman`, etc.).
+- `internal/api` is the real control-plane HTTP server implementing the generated contract. `api.Build`/`New` wire it; `router.go` mounts hand-wired auth-plane routes (`/auth/*` and `/.well-known/jwks.json`, which are redirects/non-JSON, kept out of the spec) and the generated JSON resource routes behind the right middleware. Errors go out as the localizable `{code, message}` envelope (helpers at the bottom of `api.go`).
+- `internal/entitlements` covers per-plan limits (seats, monitor caps, interval floor, feature flags). Handlers take resolver interfaces that default to sane per-plan resolvers when nil.
 
 ### Dev-auth mode (browse the SPA without infra)
 

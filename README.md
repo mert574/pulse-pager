@@ -3,8 +3,8 @@
 Developer-first uptime monitoring that pages you the moment something breaks.
 Know before your customers do.
 
-Multi-tenant SaaS, built as five distributed Go services on Postgres, Redis, and
-Kafka (Redpanda locally), with a Lit single-page app in `web/`. The REST API is
+Multi-tenant SaaS, built as five distributed Go services on Postgres, Redis, and a
+Kafka-compatible event bus (Redpanda locally), with a Lit single-page app in `web/`. The REST API is
 contract-first: `api/openapi/v1.yaml` is the single source of truth and both the
 Go and TypeScript types are generated from it.
 
@@ -29,8 +29,9 @@ What works:
   per-region scheduling; manual check-now with a rate limit; live per-region
   state; and recent-check history grouped one row per run.
 - **Pipeline**: scheduler then worker then alerting then
-  notifier, over Kafka. Workers run per region, alerting opens and closes
-  incidents, the notifier delivers.
+  notifier, over the event bus. Workers run per region, alerting opens and closes
+  incidents, the notifier delivers. The bus is pluggable (`PULSE_BUS`): Kafka by
+  default, or Redis Streams for a single-node setup with no separate broker.
 - **Channels**: nine integrations (Slack, Discord, webhook,
   email/SMTP, Telegram, PagerDuty, Opsgenie, Microsoft Teams, Twilio), each with
   a config schema and a test-send. Secret config is encrypted at rest.
@@ -99,6 +100,9 @@ For multi-region, run another worker with a different `PULSE_REGION` (for exampl
 `eu-west`) on its own port. It consumes that region's jobs from
 `check.jobs.<region>`, so adding a region to a monitor starts checking from it
 with no redeploy.
+
+The services talk over Kafka by default. For a single node with no broker, set
+`PULSE_BUS=redis` and they use Redis Streams instead (see `.env.example`).
 
 Check a service is up:
 
@@ -181,7 +185,7 @@ internal/
   alerting/     opens/closes incidents from results, emits notify events
   notify/       channel providers (slack, discord, smtp, pagerduty, opsgenie, ...)
   checkstate/   live per-(monitor, region) state in Redis
-  bus/          Kafka (franz-go) producer/consumer + topic/key helpers
+  bus/          event bus: Kafka (franz-go) or Redis Streams, selected by PULSE_BUS
   kv/           Redis: lock/cache helpers
   config/       per-service env config       runtime/  shared service bootstrap
   obs/          logger, Prometheus registry, tracing, health server
