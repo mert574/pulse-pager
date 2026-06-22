@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="Pulse Pager">
+  <rect width="1200" height="630" fill="#3a2a20"/>
+  <!-- logo badge, scaled up from the 32x32 mark -->
+  <g transform="translate(110,181) scale(8.4)">
+    <rect x="2" y="2" width="28" height="28" rx="7" fill="#5b4231"/>
+    <path d="M6 18 H10.5 L12.5 18 L15 9 L18.5 24 L20.5 18 H26"
+          fill="none" stroke="#f7efe0" stroke-width="2.4"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="23.5" cy="9" r="2.4" fill="#d98a4f"/>
+  </g>
+  <text x="430" y="300" font-family="Helvetica, Arial, sans-serif" font-size="86" font-weight="700" fill="#f7efe0">Pulse Pager</text>
+  <text x="433" y="368" font-family="Helvetica, Arial, sans-serif" font-size="38" fill="#d9c9b6">Know before your customers do.</text>
+  <text x="433" y="430" font-family="Helvetica, Arial, sans-serif" font-size="30" font-weight="700" fill="#d98a4f">pulsepager.com</text>
+</svg>
