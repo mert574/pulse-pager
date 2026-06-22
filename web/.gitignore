@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+
+# src is TypeScript-only. Any .js/.js.map under src is a stray compiled artifact:
+# vite resolves a "./x.js" import to such a file over x.ts, silently shadowing the
+# real source (this masked an i18n bug once). Keep them out.
+src/**/*.js
+src/**/*.js.map

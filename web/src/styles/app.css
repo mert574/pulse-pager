@@ -1,0 +1,85 @@
+/* The single app stylesheet (RFC-013 section 2.5). Tailwind utilities plus the
+   daisyUI plugin. Two built-in themes: "caramellatte" (light, the default) and
+   "coffee" (warm dark, auto under prefers-color-scheme). coffee is the warm dark
+   counterpart to caramellatte so the toggle stays in the same palette family. The
+   active theme is the data-theme attribute on <html>, set early by an inline
+   script (index.html) and switched by the sidebar theme toggle. */
+
+@import "tailwindcss";
+
+@plugin "daisyui" {
+  themes: caramellatte --default, coffee --prefersdark;
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    font-family:
+      "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      Helvetica, Arial, sans-serif;
+    font-feature-settings: "cv11", "ss01"; /* Inter: simpler glyphs, tabular-friendly */
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* tighten large headings, the Inter look */
+  h1,
+  h2 {
+    letter-spacing: -0.01em;
+  }
+}
+
+/* Skeleton loaders (the aria-busy="true" containers in each view and the router
+   placeholder) hold at opacity 0 for a short delay, then fade in quick. On a fast
+   network the data lands inside the delay and the skeleton never shows, so there
+   is no flash; on a slow load it eases in instead of popping. backwards fill keeps
+   it hidden during the delay. */
+@keyframes skeleton-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+[aria-busy="true"] {
+  animation: skeleton-fade-in 150ms ease-out 240ms backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  [aria-busy="true"] {
+    animation: none;
+  }
+}
+
+/* Public status-page branding hook (RFC-013 section 9.3): the status build may
+   override the accent from the published branding; the app uses the theme primary. */
+:root {
+  --brand-accent: var(--color-primary);
+}
+
+/* Logo swaps with the theme: the dark-coffee badge (logo.svg) reads on the light
+   caramellatte theme, the cream badge (logo-dark.svg) reads on the dark coffee
+   theme. Show one per theme. */
+.logo-on-dark {
+  display: none;
+}
+[data-theme="coffee"] .logo-on-light {
+  display: none;
+}
+[data-theme="coffee"] .logo-on-dark {
+  display: inline-block;
+}
+
+/* The "Pulse Pager" wordmark matches the logo badge per theme: dark coffee on
+   caramellatte, cream on coffee. */
+.brand-name {
+  color: #5b4231;
+}
+[data-theme="coffee"] .brand-name {
+  color: #e7dac2;
+}

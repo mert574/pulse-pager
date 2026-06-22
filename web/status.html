@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Public status page entry (RFC-013 section 8). This is a separate, lightweight
+      build that never imports the authed app: no login, no org switcher, no api
+      client, no /me, no CSRF. It is served unauthenticated and cache-first at
+      {org-slug}.pulse.app, so a degraded write path never blanks it.
+    -->
+    <title>Status</title>
+    <meta name="description" content="Service status" />
+    <!-- Favicon follows the browser/OS theme so the badge stays visible on a
+         dark or light tab bar: dark coffee badge on light, cream badge on dark. -->
+    <link rel="icon" type="image/svg+xml" href="logo.svg" media="(prefers-color-scheme: light)" />
+    <link rel="icon" type="image/svg+xml" href="logo-dark.svg" media="(prefers-color-scheme: dark)" />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("pulse.theme");
+          if (t !== "caramellatte" && t !== "coffee") {
+            t = window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "coffee"
+              : "caramellatte";
+          }
+          document.documentElement.dataset.theme = t;
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <status-page></status-page>
+    <script type="module" src="/src/status/status-main.ts"></script>
+  </body>
+</html>

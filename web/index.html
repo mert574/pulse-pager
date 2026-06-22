@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      base href is the SPA root. Default "/" for a plain build. When Pulse runs
+      behind a sub-path proxy, the Go server rewrites this href to the configured
+      PULSE_BASE_PATH (for example "/pulse/") before sending index.html. The
+      router reads this value at runtime to build and match URLs.
+    -->
+    <base href="/" />
+    <title>Pulse Pager</title>
+    <!-- Favicon follows the browser/OS theme so the badge stays visible on a
+         dark or light tab bar: dark coffee badge on light, cream badge on dark. -->
+    <link rel="icon" type="image/svg+xml" href="logo.svg" media="(prefers-color-scheme: light)" />
+    <link rel="icon" type="image/svg+xml" href="logo-dark.svg" media="(prefers-color-scheme: dark)" />
+    <!-- Set the theme before first paint so there is no flash. Reads the same
+         localStorage key the sidebar toggle writes; defaults to the OS preference. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("pulse.theme");
+          if (t !== "caramellatte" && t !== "coffee") {
+            t = window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "coffee"
+              : "caramellatte";
+          }
+          document.documentElement.dataset.theme = t;
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <app-root></app-root>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

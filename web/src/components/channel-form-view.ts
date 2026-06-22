@@ -1,0 +1,573 @@
+import { html, type TemplateResult } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
+import { consume } from "@lit/context";
+import { AppElement } from "./base.js";
+import { appContext, type AppContext } from "../state/context.js";
+import { client, ApiError } from "../api/client.js";
+import { navigate } from "../router.js";
+import { toast } from "../toast.js";
+import { t, tDynamic } from "../i18n.js";
+import { icon } from "../icons.js";
+import type {
+  CatalogField,
+  Channel,
+  ChannelInput,
+  ChannelType,
+  ChannelTypeCatalogEntry,
+} from "../api/types.js";
+
+import "./form-field.js";
+import "./upsell-banner.js";
+
+// A secret field that is already stored comes back redacted from the API. We do
+// not get the value; we get a marker. The form shows "configured" for these and
+// leaves the input blank: typing a value replaces the secret, leaving it blank
+// keeps the stored one unchanged (the key is omitted from the submitted config).
+//
+// formValues holds the editable state for every config field as a string (the
+// raw input text); stringlist fields hold a string[]. secretCleared records a
+// secret the user explicitly emptied so we can send "" to clear it rather than
+// silently keeping the old one.
+
+type FieldValue = string | string[];
+
+// True when an edit-mode channel already has this secret stored. We accept either
+// a "<key>_set" boolean marker or a present non-empty value at the key, mirroring
+// however the API chose to redact it.
+function secretIsConfigured(config: Record<string, unknown>, key: string): boolean {
+  const marker = config[`${key}_set`];
+  if (typeof marker === "boolean") return marker;
+  const v = config[key];
+  return v !== undefined && v !== null && v !== "";
+}
+
+// Channel create/edit form (PRD-006). One component for both modes: no channelId
+// = create, channelId set (from /channels/:id/edit) = edit (loads the channel).
+// The channel-type catalog (getChannelTypes) drives everything: the type picker
+// (available types selectable, plan-gated ones disabled with an upsell), and the
+// config form, which is rendered field-by-field from the selected type's
+// config_fields with no hardcoding. Field labels and help are localized through
+// the platform LocalizedString shape (tDynamic), and server field errors render
+// under the matching field (RFC-013 section 10.1).
+@customElement("channel-form-view")
+export class ChannelFormView extends AppElement {
+  // set from the route :id param in edit mode
+  @property({ type: String }) channelId = "";
+
+  @consume({ context: appContext, subscribe: true })
+  private ctx!: AppContext;
+
+  @state() private catalog: ChannelTypeCatalogEntry[] = [];
+  @state() private selectedType: ChannelType | null = null;
+  @state() private name = "";
+  @state() private enabled = true;
+  // editable config values keyed by field key
+  @state() private values: Record<string, FieldValue> = {};
+  // secret fields the edit-mode user explicitly emptied (send "" to clear)
+  @state() private secretCleared: Record<string, boolean> = {};
+  // which secrets were configured when the channel loaded (drives the hint)
+  @state() private configuredSecrets: Record<string, boolean> = {};
+  @state() private errors: Record<string, string> = {};
+  @state() private submitting = false;
+  @state() private loading = false;
+  @state() private loadError: string | null = null;
+
+  private loadedKey: string | null = null;
+
+  private get orgId(): string | null {
+    return this.ctx?.activeOrg?.org_id ?? null;
+  }
+  private get base(): string {
+    return `/orgs/${this.orgId ?? ""}`;
+  }
+  private get isEdit(): boolean {
+    return this.channelId !== "";
+  }
+  private get entry(): ChannelTypeCatalogEntry | null {
+    return this.catalog.find((e) => e.type === this.selectedType) ?? null;
+  }
+
+  override updated(): void {
+    const orgId = this.orgId;
+    const key = orgId ? `${orgId}:${this.channelId}` : null;
+    if (key && key !== this.loadedKey) void this.load();
+  }
+
+  private async load(): Promise<void> {
+    const orgId = this.orgId;
+    if (!orgId) return;
+    this.loadedKey = `${orgId}:${this.channelId}`;
+    this.loading = true;
+    this.loadError = null;
+    try {
+      // There is no GET /channels/{id} in the spec, so edit mode loads the org's
+      // channels and finds this one by id (the catalog is needed regardless).
+      const [catalog, channels] = await Promise.all([
+        client.getChannelTypes(orgId),
+        this.isEdit ? client.listChannels(orgId) : Promise.resolve(null),
+      ]);
+      this.catalog = catalog.channel_types;
+      if (channels) {
+        const channel = channels.find((c) => c.id === this.channelId);
+        if (!channel) throw new ApiError(404, { code: "not_found", message: t("state.notFound") });
+        this.applyChannel(channel);
+      }
+    } catch (err) {
+      this.loadError = err instanceof ApiError ? err.message : t("state.error");
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  // Seed the form from a loaded channel: non-secret values fill their inputs,
+  // secret values stay blank and are flagged configured so the UI shows the
+  // "configured / replace" hint.
+  private applyChannel(channel: Channel): void {
+    this.name = channel.name;
+    this.enabled = channel.enabled;
+    this.selectedType = channel.type;
+    const entry = this.catalog.find((e) => e.type === channel.type);
+    const config = channel.config ?? {};
+    const values: Record<string, FieldValue> = {};
+    const configured: Record<string, boolean> = {};
+    for (const field of entry?.config_fields ?? []) {
+      if (field.secret) {
+        configured[field.key] = secretIsConfigured(config, field.key);
+        values[field.key] = field.type === "stringlist" ? [] : "";
+        continue;
+      }
+      values[field.key] = this.coerceLoaded(field, config[field.key]);
+    }
+    this.values = values;
+    this.configuredSecrets = configured;
+  }
+
+  // Turn a loaded config value into the field's editable form value.
+  private coerceLoaded(field: CatalogField, raw: unknown): FieldValue {
+    if (field.type === "stringlist") {
+      return Array.isArray(raw) ? raw.map((v) => String(v)) : [];
+    }
+    if (field.type === "bool") return raw === true ? "true" : "false";
+    if (raw === undefined || raw === null) return field.default ?? "";
+    return String(raw);
+  }
+
+  // Initial editable value for a field in create mode (or when a type is picked).
+  private initialValue(field: CatalogField): FieldValue {
+    if (field.type === "stringlist") return [];
+    if (field.type === "bool") return field.default ?? "false";
+    return field.default ?? "";
+  }
+
+  private selectType(type: ChannelType): void {
+    const entry = this.catalog.find((e) => e.type === type);
+    if (!entry || !entry.available) return;
+    this.selectedType = type;
+    this.errors = {};
+    this.secretCleared = {};
+    this.configuredSecrets = {};
+    const values: Record<string, FieldValue> = {};
+    for (const field of entry.config_fields) values[field.key] = this.initialValue(field);
+    this.values = values;
+  }
+
+  private setValue(key: string, value: FieldValue): void {
+    this.values = { ...this.values, [key]: value };
+  }
+
+  // Build the config payload from the editable values. Secret fields the user
+  // left blank are omitted so the stored value is kept; a secret explicitly
+  // cleared sends "" to clear it. bool fields go out as real booleans; ints as
+  // numbers; everything else as its string.
+  private buildConfig(fields: CatalogField[]): Record<string, unknown> {
+    const config: Record<string, unknown> = {};
+    for (const field of fields) {
+      const value = this.values[field.key];
+      if (field.secret) {
+        const typed = typeof value === "string" ? value : "";
+        if (typed !== "") {
+          config[field.key] = typed;
+        } else if (this.secretCleared[field.key]) {
+          config[field.key] = "";
+        }
+        // blank and not cleared: omit, so the API keeps the stored secret
+        continue;
+      }
+      if (field.type === "stringlist") {
+        config[field.key] = Array.isArray(value) ? value.filter((v) => v !== "") : [];
+      } else if (field.type === "bool") {
+        config[field.key] = value === "true";
+      } else if (field.type === "int") {
+        config[field.key] = value === "" ? null : Number(value);
+      } else {
+        config[field.key] = value;
+      }
+    }
+    return config;
+  }
+
+  private validate(fields: CatalogField[]): Record<string, string> {
+    const errs: Record<string, string> = {};
+    if (!this.name.trim()) errs.name = t("channelForm.errName");
+    if (!this.selectedType) errs.type = t("channelForm.errType");
+    for (const field of fields) {
+      if (!field.required) continue;
+      // a configured secret left blank is fine: the stored value satisfies required
+      if (field.secret && this.configuredSecrets[field.key] && !this.secretCleared[field.key])
+        continue;
+      const value = this.values[field.key];
+      const empty =
+        field.type === "stringlist"
+          ? !Array.isArray(value) || value.filter((v) => v !== "").length === 0
+          : (typeof value === "string" ? value.trim() : "") === "";
+      if (empty) errs[field.key] = t("channelForm.errRequired");
+    }
+    return errs;
+  }
+
+  private async onSubmit(e: Event): Promise<void> {
+    e.preventDefault();
+    const orgId = this.orgId;
+    const entry = this.entry;
+    if (!orgId || !this.selectedType || !entry) {
+      this.errors = { type: t("channelForm.errType") };
+      return;
+    }
+    const errs = this.validate(entry.config_fields);
+    if (Object.keys(errs).length) {
+      this.errors = errs;
+      return;
+    }
+    this.errors = {};
+    this.submitting = true;
+    const input: ChannelInput = {
+      name: this.name.trim(),
+      type: this.selectedType,
+      enabled: this.enabled,
+      config: this.buildConfig(entry.config_fields),
+    };
+    try {
+      this.isEdit
+        ? await client.updateChannel(orgId, this.channelId, input)
+        : await client.createChannel(orgId, input);
+      toast(t(this.isEdit ? "channelForm.saved" : "channelForm.created"), "success");
+      navigate(`${this.base}/channels`);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "validation_failed" && err.fields) {
+        this.errors = err.fields;
+      } else if (err instanceof ApiError) {
+        toast(err.message, "error");
+      } else {
+        toast(t("state.error"), "error");
+      }
+    } finally {
+      this.submitting = false;
+    }
+  }
+
+  override render() {
+    if (this.loading && this.isEdit && !this.loadError) {
+      return html`<div class="flex flex-col gap-4" aria-busy="true">
+        <div class="skeleton h-9 w-64"></div>
+        <div class="skeleton h-96 w-full"></div>
+      </div>`;
+    }
+    if (this.loadError) {
+      return html`<div role="alert" class="alert alert-error">
+        <span>${this.loadError}</span>
+        <button class="btn btn-sm" @click=${() => this.load()}>
+          ${t("state.retry")}
+        </button>
+      </div>`;
+    }
+
+    return html`
+      <form class="flex flex-col gap-6 max-w-3xl" @submit=${this.onSubmit} novalidate>
+        <h1 class="text-2xl font-bold">
+          ${t(this.isEdit ? "channelForm.editHeading" : "channelForm.createHeading")}
+        </h1>
+
+        ${this.basicsCard()} ${this.typeCard()} ${this.configCard()}
+
+        <div class="flex items-center gap-2">
+          <button class="btn btn-primary" type="submit" ?disabled=${this.submitting}>
+            ${this.submitting
+              ? html`<span class="loading loading-spinner loading-sm"></span>`
+              : ""}
+            ${t(this.isEdit ? "channelForm.saveChanges" : "channelForm.create")}
+          </button>
+          <a class="btn btn-ghost" href=${`${this.base}/channels`}
+            >${t("dialog.cancel")}</a
+          >
+        </div>
+      </form>
+    `;
+  }
+
+  private card(titleKey: TemplateResult | string, body: TemplateResult) {
+    return html`<div class="card bg-base-100 border border-base-300 shadow-sm">
+      <div class="card-body gap-4 p-5">
+        ${typeof titleKey === "string"
+          ? html`<h2 class="font-semibold">${titleKey}</h2>`
+          : titleKey}
+        ${body}
+      </div>
+    </div>`;
+  }
+
+  private basicsCard() {
+    return this.card(
+      t("channelForm.name"),
+      html`
+        <form-field
+          label=${t("channelForm.name")}
+          fieldName="name"
+          .error=${this.errors.name ?? null}
+          .help=${t("channelForm.helpName")}
+          .control=${html`<input
+            id="name"
+            class="input w-full"
+            maxlength="200"
+            .value=${this.name}
+            @input=${(e: Event) => (this.name = (e.target as HTMLInputElement).value)}
+          />`}
+        ></form-field>
+        <label class="label cursor-pointer justify-start gap-3">
+          <input
+            type="checkbox"
+            class="toggle toggle-sm"
+            .checked=${this.enabled}
+            @change=${(e: Event) =>
+              (this.enabled = (e.target as HTMLInputElement).checked)}
+          />
+          <span>${t("channelForm.enabled")}</span>
+        </label>
+      `,
+    );
+  }
+
+  // The channel-type picker. Available types render as selectable cards; a
+  // plan-gated (unavailable) type is dimmed and not selectable, with its
+  // localized unavailable_reason shown via an upsell banner.
+  private typeCard() {
+    // In edit mode the type is fixed; show it as a read-only label.
+    if (this.isEdit) {
+      return this.card(
+        t("channelForm.type"),
+        html`<p class="text-base-content/70">
+          ${this.entry?.display_name ?? this.selectedType}
+        </p>`,
+      );
+    }
+    return this.card(
+      t("channelForm.type"),
+      html`
+        ${this.errors.type
+          ? html`<p class="text-error text-sm" role="alert">${this.errors.type}</p>`
+          : ""}
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          ${this.catalog.map((e) => this.typeOption(e))}
+        </div>
+        ${this.unavailableNotice()}
+      `,
+    );
+  }
+
+  private typeOption(e: ChannelTypeCatalogEntry) {
+    const selected = e.type === this.selectedType;
+    if (!e.available) {
+      return html`<div
+        class="rounded-box border border-base-300 p-3 flex items-center justify-between gap-2 opacity-50 cursor-not-allowed"
+        aria-disabled="true"
+      >
+        <span>${e.display_name}</span>
+        ${icon("lock", "size-4")}
+      </div>`;
+    }
+    return html`<button
+      type="button"
+      class="rounded-box border p-3 flex items-center justify-between gap-2 text-left ${selected
+        ? "border-primary bg-primary/10"
+        : "border-base-300 hover:border-base-content/30"}"
+      @click=${() => this.selectType(e.type)}
+    >
+      <span>${e.display_name}</span>
+      ${selected ? icon("check", "size-4 text-primary") : ""}
+    </button>`;
+  }
+
+  // Show the upsell for any unavailable type that carries a reason. The reason is
+  // localized through tDynamic with the API message as the fallback.
+  private unavailableNotice() {
+    const blocked = this.catalog.filter((e) => !e.available && e.unavailable_reason);
+    if (blocked.length === 0) return "";
+    return html`<div class="flex flex-col gap-2">
+      ${blocked.map((e) => {
+        const reason = e.unavailable_reason!;
+        return html`<upsell-banner
+          .message=${`${e.display_name}: ${tDynamic(reason.code, reason.message, reason.params)}`}
+          .upgradeHref=${`${this.base}/billing`}
+        ></upsell-banner>`;
+      })}
+    </div>`;
+  }
+
+  private configCard() {
+    const entry = this.entry;
+    if (!entry) return "";
+    if (entry.config_fields.length === 0) return "";
+    return this.card(
+      t("channelForm.sectionConfig"),
+      html`${entry.config_fields.map((f) => this.configField(f))}`,
+    );
+  }
+
+  // Render one catalog field with form-field, mapping its type to a control.
+  private configField(field: CatalogField) {
+    const label = tDynamic(field.label.code, field.label.message, field.label.params)
+      + (field.required ? " *" : "");
+    const help = field.help
+      ? tDynamic(field.help.code, field.help.message, field.help.params)
+      : "";
+    return html`<form-field
+      label=${label}
+      fieldName=${field.key}
+      .error=${this.errors[field.key] ?? null}
+      .help=${help}
+      .hint=${this.fieldHint(field)}
+      .control=${this.control(field)}
+    ></form-field>`;
+  }
+
+  // The "configured / leave blank to keep" hint for a stored secret.
+  private fieldHint(field: CatalogField): string {
+    if (field.secret && this.configuredSecrets[field.key]) {
+      return `${t("channelForm.secretConfigured")}. ${t("channelForm.secretReplaceHint")}`;
+    }
+    if (field.secret) return t("channelForm.secretHint");
+    return "";
+  }
+
+  private control(field: CatalogField): TemplateResult {
+    switch (field.type) {
+      case "bool":
+        return this.boolControl(field);
+      case "enum":
+        return this.enumControl(field);
+      case "int":
+        return this.intControl(field);
+      case "stringlist":
+        return this.stringListControl(field);
+      default:
+        return this.stringControl(field);
+    }
+  }
+
+  private stringControl(field: CatalogField): TemplateResult {
+    const value = typeof this.values[field.key] === "string" ? (this.values[field.key] as string) : "";
+    return html`<input
+      id=${field.key}
+      class="input w-full"
+      type=${field.secret ? "password" : "text"}
+      autocomplete=${field.secret ? "new-password" : "off"}
+      placeholder=${field.secret && this.configuredSecrets[field.key]
+        ? "••••••••"
+        : ""}
+      .value=${value}
+      @input=${(e: Event) => this.onSecretAwareInput(field, (e.target as HTMLInputElement).value)}
+    />`;
+  }
+
+  private intControl(field: CatalogField): TemplateResult {
+    const value = typeof this.values[field.key] === "string" ? (this.values[field.key] as string) : "";
+    return html`<input
+      id=${field.key}
+      class="input w-full"
+      type="number"
+      .value=${value}
+      @input=${(e: Event) => this.setValue(field.key, (e.target as HTMLInputElement).value)}
+    />`;
+  }
+
+  private boolControl(field: CatalogField): TemplateResult {
+    const on = this.values[field.key] === "true";
+    return html`<input
+      id=${field.key}
+      type="checkbox"
+      class="toggle"
+      .checked=${on}
+      @change=${(e: Event) =>
+        this.setValue(field.key, (e.target as HTMLInputElement).checked ? "true" : "false")}
+    />`;
+  }
+
+  private enumControl(field: CatalogField): TemplateResult {
+    const value = typeof this.values[field.key] === "string" ? (this.values[field.key] as string) : "";
+    const options = field.enum ?? [];
+    return html`<select
+      id=${field.key}
+      class="select w-full"
+      .value=${value}
+      @change=${(e: Event) => this.setValue(field.key, (e.target as HTMLSelectElement).value)}
+    >
+      ${field.required ? "" : html`<option value=""></option>`}
+      ${options.map((o) => html`<option value=${o} ?selected=${o === value}>${o}</option>`)}
+    </select>`;
+  }
+
+  private stringListControl(field: CatalogField): TemplateResult {
+    const list = Array.isArray(this.values[field.key])
+      ? (this.values[field.key] as string[])
+      : [];
+    return html`<div class="flex flex-col gap-2" id=${field.key}>
+      ${list.map(
+        (item, i) => html`<div class="flex items-center gap-2">
+          <input
+            class="input input-sm flex-1"
+            .value=${item}
+            @input=${(e: Event) =>
+              this.setValue(
+                field.key,
+                list.map((v, idx) => (idx === i ? (e.target as HTMLInputElement).value : v)),
+              )}
+          />
+          <button
+            type="button"
+            class="btn btn-sm btn-ghost btn-square"
+            aria-label=${t("channelForm.removeItem")}
+            @click=${() => this.setValue(field.key, list.filter((_, idx) => idx !== i))}
+          >
+            ${icon("trash", "size-4")}
+          </button>
+        </div>`,
+      )}
+      <button
+        type="button"
+        class="btn btn-sm btn-ghost self-start gap-1.5"
+        @click=${() => this.setValue(field.key, [...list, ""])}
+      >
+        ${icon("plus", "size-4")}${t("channelForm.addItem")}
+      </button>
+    </div>`;
+  }
+
+  // A secret input: typing flags the secret as replaced; clearing it (back to
+  // blank) when it was configured flags it as explicitly cleared.
+  private onSecretAwareInput(field: CatalogField, value: string): void {
+    this.setValue(field.key, value);
+    if (!field.secret) return;
+    if (value === "" && this.configuredSecrets[field.key]) {
+      this.secretCleared = { ...this.secretCleared, [field.key]: true };
+    } else if (this.secretCleared[field.key]) {
+      const next = { ...this.secretCleared };
+      delete next[field.key];
+      this.secretCleared = next;
+    }
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "channel-form-view": ChannelFormView;
+  }
+}
