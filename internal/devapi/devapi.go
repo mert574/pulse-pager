@@ -174,7 +174,7 @@ func (s *server) GetEntitlements(_ context.Context, _ apigen.GetEntitlementsRequ
 		StatusPagesCap:       3,
 		MinIntervalSeconds:   60,
 		RetentionDays:        90,
-		RegionsAllowed:       []string{"home", "eu-west", "us-east"},
+		RegionsAllowed:       []string{"eu-central", "us-west", "us-east"},
 		RegionsPerMonitorCap: 4,
 		CustomDomainAllowed:  true,
 		ApiWriteAllowed:      true,
@@ -457,7 +457,7 @@ func (s *server) CheckNow(_ context.Context, req apigen.CheckNowRequestObject) (
 	// async contract. The dev region-states endpoint then reports them complete.
 	regions := m.m.Regions
 	if len(regions) == 0 {
-		regions = []string{"home"}
+		regions = []string{"eu-central"}
 	}
 	now := time.Now().UTC()
 	out := make([]apigen.RegionState, 0, len(regions))
@@ -482,7 +482,7 @@ func (s *server) GetMonitorRegionStates(_ context.Context, req apigen.GetMonitor
 		}
 		regions := m.m.Regions
 		if len(regions) == 0 {
-			regions = []string{"home"}
+			regions = []string{"eu-central"}
 		}
 		states := make([]apigen.RegionState, 0, len(regions))
 		for _, r := range regions {
@@ -500,7 +500,7 @@ func (s *server) ListResults(_ context.Context, req apigen.ListResultsRequestObj
 	// Sample several regions per tick so dev-auth shows the grouped run row (one row
 	// per scheduled_at) with its expandable per-region detail. Each region of a tick
 	// shares scheduled_at but runs a moment apart with its own latency.
-	regions := []string{"home", "eu-west", "us-east"}
+	regions := []string{"eu-central", "us-west", "us-east"}
 	items := make([]apigen.CheckResult, 0, 20*len(regions))
 	base := time.Now().UTC()
 	for i := 0; i < 20; i++ {
@@ -831,14 +831,14 @@ func (s *server) seed() {
 	now := time.Now().UTC()
 	lat1, check1 := 95, now.Add(-2*time.Minute)
 	s.monitors["mon_1"] = &monRow{
-		m:           baseMonitor("mon_1", "Marketing site", "https://example.com", 60, true, []string{"home"}),
+		m:           baseMonitor("mon_1", "Marketing site", "https://example.com", 60, true, []string{"eu-central"}),
 		status:      "up",
 		lastCheckAt: &check1,
 		lastLatency: &lat1,
 	}
 	lat2, check2 := 540, now.Add(-1*time.Minute)
 	s.monitors["mon_2"] = &monRow{
-		m:            baseMonitor("mon_2", "Prod API health", "https://api.example.com/health", 60, true, []string{"home", "eu-west"}),
+		m:            baseMonitor("mon_2", "Prod API health", "https://api.example.com/health", 60, true, []string{"eu-central", "us-west"}),
 		status:       "down",
 		lastCheckAt:  &check2,
 		lastLatency:  &lat2,
@@ -846,7 +846,7 @@ func (s *server) seed() {
 		downReason:   "status_mismatch",
 	}
 	s.monitors["mon_3"] = &monRow{
-		m:      baseMonitor("mon_3", "Staging", "https://staging.example.com", 300, false, []string{"home"}),
+		m:      baseMonitor("mon_3", "Staging", "https://staging.example.com", 300, false, []string{"eu-central"}),
 		status: "disabled",
 	}
 	s.channels["chan_1"] = &apigen.Channel{
@@ -875,7 +875,7 @@ func monitorFromInput(id string, in apigen.MonitorInput) apigen.Monitor {
 		in.NotificationChannelIds = []string{}
 	}
 	if len(in.Regions) == 0 {
-		in.Regions = []string{"home"}
+		in.Regions = []string{"eu-central"}
 	}
 	if in.DownPolicy == "" {
 		in.DownPolicy = "quorum"

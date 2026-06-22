@@ -128,7 +128,7 @@ func TestAPIEntitlements(t *testing.T) {
 	// caps back, so the test asserts against them.
 	monLimits := entitlements.MonitorLimits{
 		MonitorsCap: 50, MinIntervalSeconds: 60,
-		RegionsAllowed: []string{"home", "eu-west"}, RegionsPerMonitorCap: 2,
+		RegionsAllowed: []string{"eu-central", "us-west"}, RegionsPerMonitorCap: 2,
 	}
 	srv := api.New(api.Config{
 		Store:       app,
@@ -193,7 +193,7 @@ func TestAPIEntitlements(t *testing.T) {
 			"name":%q,"url":%q,"method":"GET","headers":[],"body":"",
 			"expected_status_codes":"200","timeout_seconds":5,"interval_seconds":60,
 			"enabled":true,"failure_threshold":1,"notification_channel_ids":[],
-			"regions":["home"],"down_policy":"quorum"
+			"regions":["eu-central"],"down_policy":"quorum"
 		}`, name, target.URL)
 	}
 

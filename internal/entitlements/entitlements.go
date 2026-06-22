@@ -5,6 +5,8 @@
 // gate on entitlements today and the real resolver drops in without changing them.
 package entitlements
 
+import "pulse/internal/region"
+
 // Set is the resolved feature access for one org. It grows as more of the plan
 // model becomes enforced (RFC-009 2.2: monitor cap, interval floor, regions, ...).
 type Set struct {
@@ -122,13 +124,15 @@ type MonitorLimits struct {
 }
 
 // monitorLimits is the per-plan monitor matrix (PRD-006 appendix A). Free and
-// Business are the locked anchors; Starter and Team scale between them. The home
-// region is the only region on Free; higher tiers add eu-west/us-east/etc.
+// Business are the locked anchors; Starter and Team scale between them. The
+// default region is the only one on Free; higher tiers add us-west/us-east/etc.
+// Region codes come from internal/region so this catalog can't drift from the
+// worker region or the dispatch default.
 var monitorLimits = map[Plan]MonitorLimits{
-	PlanFree:     {MonitorsCap: 2, MinIntervalSeconds: 7200, RegionsAllowed: []string{"home"}, RegionsPerMonitorCap: 1},
-	PlanStarter:  {MonitorsCap: 25, MinIntervalSeconds: 300, RegionsAllowed: []string{"home", "eu-west"}, RegionsPerMonitorCap: 2},
-	PlanTeam:     {MonitorsCap: 100, MinIntervalSeconds: 60, RegionsAllowed: []string{"home", "eu-west", "us-east", "ap-south"}, RegionsPerMonitorCap: 4},
-	PlanBusiness: {MonitorsCap: 500, MinIntervalSeconds: 60, RegionsAllowed: []string{"home", "eu-west", "us-east", "ap-south", "sa-east", "premium-eu"}, RegionsPerMonitorCap: 6},
+	PlanFree:     {MonitorsCap: 2, MinIntervalSeconds: 7200, RegionsAllowed: []string{region.EUCentral}, RegionsPerMonitorCap: 1},
+	PlanStarter:  {MonitorsCap: 25, MinIntervalSeconds: 300, RegionsAllowed: []string{region.EUCentral, region.USEast}, RegionsPerMonitorCap: 2},
+	PlanTeam:     {MonitorsCap: 100, MinIntervalSeconds: 60, RegionsAllowed: []string{region.EUCentral, region.USEast, region.USWest}, RegionsPerMonitorCap: 3},
+	PlanBusiness: {MonitorsCap: 500, MinIntervalSeconds: 60, RegionsAllowed: []string{region.EUCentral, region.USEast, region.USWest, region.SAEast}, RegionsPerMonitorCap: 4},
 }
 
 // MonitorResolver returns the monitor limits for an org. PRD-006 will back this with

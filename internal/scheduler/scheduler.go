@@ -18,6 +18,7 @@ import (
 	"pulse/internal/checkstate"
 	"pulse/internal/domain"
 	"pulse/internal/events"
+	"pulse/internal/region"
 	"pulse/internal/store"
 )
 
@@ -117,7 +118,7 @@ func (d *Dispatcher) dispatchDue(ctx context.Context, now time.Time) {
 func (d *Dispatcher) dispatch(ctx context.Context, m *domain.Monitor, scheduledAt time.Time) {
 	regions := m.Regions
 	if len(regions) == 0 {
-		regions = []string{"home"}
+		regions = []string{region.Default}
 	}
 	key := strconv.FormatInt(m.ID, 10)
 	for _, region := range regions {

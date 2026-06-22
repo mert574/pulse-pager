@@ -150,7 +150,7 @@ func TestOutboundWebhookDelivery(t *testing.T) {
 	mon := &domain.Monitor{
 		OrgID: orgID, Name: "site", URL: "https://example.test", Method: "GET",
 		ExpectedStatusCodes: "200", TimeoutSeconds: 5, IntervalSeconds: 60, Enabled: true,
-		FailureThreshold: 1, Regions: []string{"home"}, DownPolicy: domain.DownPolicyQuorum,
+		FailureThreshold: 1, Regions: []string{"eu-central"}, DownPolicy: domain.DownPolicyQuorum,
 		ChannelIDs: []int64{channelID},
 	}
 	if _, err := pool.CreateMonitor(ctx, mon); err != nil {

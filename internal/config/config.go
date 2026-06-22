@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"pulse/internal/crypto"
+	"pulse/internal/region"
 )
 
 // Service names the binary asking for config. It decides which deps are required.
@@ -130,7 +131,14 @@ func Load(service Service) (*Config, error) {
 		Service:    service,
 		LogLevel:   withDefault("PULSE_LOG_LEVEL", "info"),
 		HealthAddr: withDefault("PULSE_HEALTH_ADDR", ":8080"),
-		Region:     withDefault("PULSE_REGION", "home"),
+		Region:     withDefault("PULSE_REGION", region.Default),
+	}
+	// Fail closed on an unknown region: a worker set to a region no plan or topic
+	// knows would consume check.jobs.<that> and silently process nothing, while
+	// monitors pile up on the real region's topic. This is the "home vs eu-central"
+	// trap, caught at boot instead of as stuck-pending monitors later.
+	if !region.Known(cfg.Region) {
+		return nil, fmt.Errorf("PULSE_REGION %q is not a known region %v", cfg.Region, region.All)
 	}
 
 	var err error

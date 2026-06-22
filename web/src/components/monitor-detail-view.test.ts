@@ -29,7 +29,7 @@ const MONITOR: Monitor = {
   body_contains: null,
   failure_threshold: 1,
   notification_channel_ids: [],
-  regions: ["home"],
+  regions: ["eu-central"],
   down_policy: "quorum",
   created_at: "2026-06-21T10:00:00Z",
   updated_at: "2026-06-21T10:00:00Z",
@@ -37,19 +37,19 @@ const MONITOR: Monitor = {
 
 // 4 results, 1 failed -> uptime 75%. Single region, so each is its own run.
 const RESULTS: CheckResult[] = [
-  { id: "r0", monitor_id: "mon_1", region: "home", scheduled_at: "2026-06-21T10:15:00Z", checked_at: "2026-06-21T10:15:00Z", healthy: true, failure_reason: null, status_code: 200, latency_ms: 100, error: null },
-  { id: "r1", monitor_id: "mon_1", region: "home", scheduled_at: "2026-06-21T10:10:00Z", checked_at: "2026-06-21T10:10:00Z", healthy: false, failure_reason: "status_mismatch", status_code: 503, latency_ms: 120, error: null },
-  { id: "r2", monitor_id: "mon_1", region: "home", scheduled_at: "2026-06-21T10:05:00Z", checked_at: "2026-06-21T10:05:00Z", healthy: true, failure_reason: null, status_code: 200, latency_ms: 90, error: null },
-  { id: "r3", monitor_id: "mon_1", region: "home", scheduled_at: "2026-06-21T10:00:00Z", checked_at: "2026-06-21T10:00:00Z", healthy: true, failure_reason: null, status_code: 200, latency_ms: 110, error: null },
+  { id: "r0", monitor_id: "mon_1", region: "eu-central", scheduled_at: "2026-06-21T10:15:00Z", checked_at: "2026-06-21T10:15:00Z", healthy: true, failure_reason: null, status_code: 200, latency_ms: 100, error: null },
+  { id: "r1", monitor_id: "mon_1", region: "eu-central", scheduled_at: "2026-06-21T10:10:00Z", checked_at: "2026-06-21T10:10:00Z", healthy: false, failure_reason: "status_mismatch", status_code: 503, latency_ms: 120, error: null },
+  { id: "r2", monitor_id: "mon_1", region: "eu-central", scheduled_at: "2026-06-21T10:05:00Z", checked_at: "2026-06-21T10:05:00Z", healthy: true, failure_reason: null, status_code: 200, latency_ms: 90, error: null },
+  { id: "r3", monitor_id: "mon_1", region: "eu-central", scheduled_at: "2026-06-21T10:00:00Z", checked_at: "2026-06-21T10:00:00Z", healthy: true, failure_reason: null, status_code: 200, latency_ms: 110, error: null },
 ];
 
 // A two-region monitor with two runs: the second run has one region down. Used to
 // check the per-region grouping (one row per run, expandable to the region detail).
-const MONITOR_MR: Monitor = { ...MONITOR, regions: ["home", "eu"] };
+const MONITOR_MR: Monitor = { ...MONITOR, regions: ["eu-central", "eu"] };
 const RESULTS_MR: CheckResult[] = [
-  { id: "a-home", monitor_id: "mon_1", region: "home", scheduled_at: "2026-06-21T10:15:00Z", checked_at: "2026-06-21T10:15:00Z", healthy: true, failure_reason: null, status_code: 200, latency_ms: 100, error: null },
+  { id: "a-home", monitor_id: "mon_1", region: "eu-central", scheduled_at: "2026-06-21T10:15:00Z", checked_at: "2026-06-21T10:15:00Z", healthy: true, failure_reason: null, status_code: 200, latency_ms: 100, error: null },
   { id: "a-eu", monitor_id: "mon_1", region: "eu", scheduled_at: "2026-06-21T10:15:00Z", checked_at: "2026-06-21T10:15:00Z", healthy: true, failure_reason: null, status_code: 200, latency_ms: 140, error: null },
-  { id: "b-home", monitor_id: "mon_1", region: "home", scheduled_at: "2026-06-21T10:10:00Z", checked_at: "2026-06-21T10:10:00Z", healthy: true, failure_reason: null, status_code: 200, latency_ms: 90, error: null },
+  { id: "b-home", monitor_id: "mon_1", region: "eu-central", scheduled_at: "2026-06-21T10:10:00Z", checked_at: "2026-06-21T10:10:00Z", healthy: true, failure_reason: null, status_code: 200, latency_ms: 90, error: null },
   { id: "b-eu", monitor_id: "mon_1", region: "eu", scheduled_at: "2026-06-21T10:10:00Z", checked_at: "2026-06-21T10:10:00Z", healthy: false, failure_reason: "status_mismatch", status_code: 503, latency_ms: 200, error: null },
 ];
 
@@ -186,7 +186,7 @@ describe("monitor-detail-view", () => {
 
   it("puts the failure response above the history when the monitor is down", async () => {
     const downFirst = [
-      { id: "r0", monitor_id: "mon_1", region: "home", checked_at: "2026-06-21T10:15:00Z", healthy: false, failure_reason: "status_mismatch", status_code: 503, latency_ms: 120, error: null },
+      { id: "r0", monitor_id: "mon_1", region: "eu-central", checked_at: "2026-06-21T10:15:00Z", healthy: false, failure_reason: "status_mismatch", status_code: 503, latency_ms: 120, error: null },
       ...RESULTS.slice(1),
     ];
     const restore = installFetch((url) => {
@@ -228,8 +228,8 @@ describe("monitor-detail-view", () => {
         return json(200, {
           monitors: {
             mon_1: [
-              { region: "home", state: "done", healthy: true, latency_ms: 100, status_code: 200, updated_at: "2026-06-21T10:15:00Z" },
-              { region: "eu-west", state: "failed", healthy: false, failure_reason: "timeout", updated_at: "2026-06-21T10:14:00Z" },
+              { region: "eu-central", state: "done", healthy: true, latency_ms: 100, status_code: 200, updated_at: "2026-06-21T10:15:00Z" },
+              { region: "us-west", state: "failed", healthy: false, failure_reason: "timeout", updated_at: "2026-06-21T10:14:00Z" },
             ],
           },
         });
@@ -243,8 +243,8 @@ describe("monitor-detail-view", () => {
       );
       const chips = el.querySelector("region-chips")!;
       // both regions the poll reported are shown
-      expect(chips.textContent).to.contain("home");
-      expect(chips.textContent).to.contain("eu-west");
+      expect(chips.textContent).to.contain("eu-central");
+      expect(chips.textContent).to.contain("us-west");
       // the healthy region reads ok, the failed one reads down
       expect(chips.textContent).to.contain("ok");
       expect(chips.textContent).to.contain("down");

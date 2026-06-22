@@ -19,6 +19,7 @@ import (
 	"pulse/internal/domain"
 	"pulse/internal/entitlements"
 	"pulse/internal/events"
+	"pulse/internal/region"
 	"pulse/internal/store"
 )
 
@@ -279,7 +280,7 @@ func (s *Server) CheckNow(ctx context.Context, req apigen.CheckNowRequestObject)
 	// first so the live element shows it queued immediately.
 	regions := m.Regions
 	if len(regions) == 0 {
-		regions = []string{"home"}
+		regions = []string{region.Default}
 	}
 	now := time.Now().UTC()
 	out := make([]apigen.RegionState, 0, len(regions))

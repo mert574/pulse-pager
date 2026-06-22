@@ -55,7 +55,7 @@ func (f *fakeStateStore) Expire(context.Context, string, time.Duration) error { 
 func discardLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
 func mon(id int64, intervalSeconds int) *domain.Monitor {
-	return &domain.Monitor{ID: id, OrgID: 1, IntervalSeconds: intervalSeconds, Regions: []string{"home"}}
+	return &domain.Monitor{ID: id, OrgID: 1, IntervalSeconds: intervalSeconds, Regions: []string{"eu-central"}}
 }
 
 // A fresh Dispatcher models a process that was just (re)started: its in-memory
@@ -124,7 +124,7 @@ func TestDispatcherHoldsIntervalAfterDispatch(t *testing.T) {
 // picks them up. A nil state store is a no-op.
 func TestDispatcherMarksRegionsScheduled(t *testing.T) {
 	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	m := &domain.Monitor{ID: 9, OrgID: 1, IntervalSeconds: 60, Regions: []string{"eu-west", "us-east"}}
+	m := &domain.Monitor{ID: 9, OrgID: 1, IntervalSeconds: 60, Regions: []string{"us-west", "us-east"}}
 	state := &fakeStateStore{}
 	d := New(&fakeLister{items: []store.EnabledMonitor{{Monitor: m, LastCheckedAt: nil}}},
 		&fakeProducer{}, state, discardLog(), time.Second)
@@ -137,7 +137,7 @@ func TestDispatcherMarksRegionsScheduled(t *testing.T) {
 			got[w.field] = true
 		}
 	}
-	if !got["eu-west"] || !got["us-east"] {
+	if !got["us-west"] || !got["us-east"] {
 		t.Fatalf("want both regions marked scheduled, got %v", got)
 	}
 }

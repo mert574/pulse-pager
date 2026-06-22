@@ -124,8 +124,9 @@ describe("monitor-form-view (create)", () => {
       const sent = JSON.parse(post.body ?? "{}");
       expect(sent.name).to.equal("Marketing site");
       expect(sent.url).to.equal("https://example.com");
-      // the v2 fields ride along
-      expect(sent.regions).to.deep.equal(["home"]);
+      // the v2 fields ride along. regions starts empty (no FE-guessed default);
+      // the backend fills its default region when none is picked.
+      expect(sent.regions).to.deep.equal([]);
       expect(sent.down_policy).to.equal("quorum");
       await waitUntil(
         () => location.pathname === "/orgs/o1/monitors/mon_new",

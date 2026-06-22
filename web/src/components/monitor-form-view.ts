@@ -79,7 +79,7 @@ function defaultForm(): MonitorInput {
     body_contains: null,
     failure_threshold: 1,
     notification_channel_ids: [],
-    regions: ["home"],
+    regions: [],
     down_policy: "quorum",
   };
 }
@@ -125,7 +125,9 @@ export class MonitorFormView extends AppElement {
     );
   }
   private get allowedRegions(): string[] {
-    return this.ctx?.entitlements?.regions_allowed ?? ["home"];
+    // Comes from the plan entitlements. Empty until those load, never a guessed
+    // region: the FE renders whatever the backend allows and nothing more.
+    return this.ctx?.entitlements?.regions_allowed ?? [];
   }
   private get regionCap(): number {
     return this.ctx?.entitlements?.regions_per_monitor_cap ?? this.allowedRegions.length;

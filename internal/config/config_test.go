@@ -22,7 +22,7 @@ func TestLoad_WorkerNeedsInfraNotSecret(t *testing.T) {
 	if cfg.SecretKey != "" {
 		t.Errorf("worker should not require a secret key, got %q", cfg.SecretKey)
 	}
-	if cfg.Region != "home" {
+	if cfg.Region != "eu-central" {
 		t.Errorf("default region = %q, want home", cfg.Region)
 	}
 	if cfg.LogLevel != "info" {

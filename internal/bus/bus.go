@@ -24,7 +24,7 @@ const (
 	TopicRegionHealth   = "region.health"   // key: region
 )
 
-// CheckJobsTopic is the per-region job topic, e.g. check.jobs.eu-west (key: monitor_id).
+// CheckJobsTopic is the per-region job topic, e.g. check.jobs.us-west (key: monitor_id).
 func CheckJobsTopic(region string) string { return "check.jobs." + region }
 
 const correlationHeader = "pulse-correlation-id"

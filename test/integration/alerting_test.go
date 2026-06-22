@@ -118,7 +118,7 @@ func seedMonitor(t *testing.T, pool *store.Pool, threshold int) *domain.Monitor 
 		IntervalSeconds:     60,
 		Enabled:             true,
 		FailureThreshold:    threshold,
-		Regions:             []string{"home"},
+		Regions:             []string{"eu-central"},
 		DownPolicy:          domain.DownPolicyQuorum,
 	}
 	if _, err := pool.CreateMonitor(ctx, m); err != nil {
@@ -133,7 +133,7 @@ func resultRecord(t *testing.T, m *domain.Monitor, healthy bool, checkedAt time.
 	res := domain.CheckResult{
 		OrgID:     m.OrgID,
 		MonitorID: m.ID,
-		Region:    "home",
+		Region:    "eu-central",
 		CheckedAt: checkedAt,
 		Healthy:   healthy,
 	}

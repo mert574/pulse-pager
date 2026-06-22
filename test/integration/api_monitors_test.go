@@ -224,7 +224,7 @@ func TestAPIMonitors(t *testing.T) {
 	// 2; the cap test below uses its own tight resolver.
 	bigLimits := entitlements.MonitorLimits{
 		MonitorsCap: 50, MinIntervalSeconds: 30,
-		RegionsAllowed: []string{"home", "eu-west", "us-east"}, RegionsPerMonitorCap: 4,
+		RegionsAllowed: []string{"eu-central", "us-west", "us-east"}, RegionsPerMonitorCap: 4,
 	}
 
 	mkServer := func(limits entitlements.MonitorLimits) *httptest.Server {
@@ -278,7 +278,7 @@ func TestAPIMonitors(t *testing.T) {
 			"name":%q,"url":%q,"method":"GET","headers":[],"body":"",
 			"expected_status_codes":"200","timeout_seconds":5,"interval_seconds":60,
 			"enabled":true,"failure_threshold":1,"notification_channel_ids":[],
-			"regions":["home"],"down_policy":"quorum"
+			"regions":["eu-central"],"down_policy":"quorum"
 		}`, name, url)
 	}
 
@@ -378,7 +378,7 @@ func TestAPIMonitors(t *testing.T) {
 			"name":"Marketing v2","url":%q,"method":"GET","headers":[],"body":"",
 			"expected_status_codes":"200,204","timeout_seconds":5,"interval_seconds":120,
 			"enabled":true,"failure_threshold":2,"notification_channel_ids":[],
-			"regions":["home"],"down_policy":"any"
+			"regions":["eu-central"],"down_policy":"any"
 		}`, target.URL)
 		req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/v1/orgs/"+orgID+"/monitors/"+createdID, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
@@ -463,7 +463,7 @@ func TestAPIMonitors(t *testing.T) {
 		lat := 50
 		scheduled := time.Now().UTC().Truncate(time.Second)
 		if err := app.InsertCheckResult(ctx, &domain.CheckResult{
-			OrgID: orgIDInt, MonitorID: monIDInt, Region: "home",
+			OrgID: orgIDInt, MonitorID: monIDInt, Region: "eu-central",
 			ScheduledAt: scheduled, CheckedAt: scheduled.Add(120 * time.Millisecond),
 			Healthy: true, StatusCode: &code, LatencyMs: &lat,
 		}); err != nil {
@@ -542,10 +542,10 @@ func TestAPIMonitors(t *testing.T) {
 			body  string
 			field string
 		}{
-			{"bad_url", `{"name":"x","url":"ftp://nope","method":"GET","expected_status_codes":"200","timeout_seconds":5,"interval_seconds":60,"enabled":true,"failure_threshold":1,"regions":["home"],"down_policy":"quorum"}`, "url"},
-			{"interval_below_hard_floor", `{"name":"x","url":"https://a.test","method":"GET","expected_status_codes":"200","timeout_seconds":5,"interval_seconds":10,"enabled":true,"failure_threshold":1,"regions":["home"],"down_policy":"quorum"}`, "interval_seconds"},
-			{"interval_below_timeout", `{"name":"x","url":"https://a.test","method":"GET","expected_status_codes":"200","timeout_seconds":40,"interval_seconds":35,"enabled":true,"failure_threshold":1,"regions":["home"],"down_policy":"quorum"}`, "interval_seconds"},
-			{"body_on_get", `{"name":"x","url":"https://a.test","method":"GET","body":"hello","expected_status_codes":"200","timeout_seconds":5,"interval_seconds":60,"enabled":true,"failure_threshold":1,"regions":["home"],"down_policy":"quorum"}`, "body"},
+			{"bad_url", `{"name":"x","url":"ftp://nope","method":"GET","expected_status_codes":"200","timeout_seconds":5,"interval_seconds":60,"enabled":true,"failure_threshold":1,"regions":["eu-central"],"down_policy":"quorum"}`, "url"},
+			{"interval_below_hard_floor", `{"name":"x","url":"https://a.test","method":"GET","expected_status_codes":"200","timeout_seconds":5,"interval_seconds":10,"enabled":true,"failure_threshold":1,"regions":["eu-central"],"down_policy":"quorum"}`, "interval_seconds"},
+			{"interval_below_timeout", `{"name":"x","url":"https://a.test","method":"GET","expected_status_codes":"200","timeout_seconds":40,"interval_seconds":35,"enabled":true,"failure_threshold":1,"regions":["eu-central"],"down_policy":"quorum"}`, "interval_seconds"},
+			{"body_on_get", `{"name":"x","url":"https://a.test","method":"GET","body":"hello","expected_status_codes":"200","timeout_seconds":5,"interval_seconds":60,"enabled":true,"failure_threshold":1,"regions":["eu-central"],"down_policy":"quorum"}`, "body"},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -607,10 +607,10 @@ func TestAPIMonitors(t *testing.T) {
 		// a tight resolver: Free-like floor of 7200s.
 		tightTS := mkServer(entitlements.MonitorLimits{
 			MonitorsCap: 50, MinIntervalSeconds: 7200,
-			RegionsAllowed: []string{"home"}, RegionsPerMonitorCap: 1,
+			RegionsAllowed: []string{"eu-central"}, RegionsPerMonitorCap: 1,
 		})
 		defer tightTS.Close()
-		body := fmt.Sprintf(`{"name":"x","url":%q,"method":"GET","expected_status_codes":"200","timeout_seconds":5,"interval_seconds":60,"enabled":true,"failure_threshold":1,"regions":["home"],"down_policy":"quorum"}`, target.URL)
+		body := fmt.Sprintf(`{"name":"x","url":%q,"method":"GET","expected_status_codes":"200","timeout_seconds":5,"interval_seconds":60,"enabled":true,"failure_threshold":1,"regions":["eu-central"],"down_policy":"quorum"}`, target.URL)
 		req, _ := http.NewRequest(http.MethodPost, tightTS.URL+"/api/v1/orgs/"+orgID+"/monitors", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := ownerClient.Do(req)
@@ -635,7 +635,7 @@ func TestAPIMonitors(t *testing.T) {
 		capOrg := capMe.Orgs[0].OrgID
 		capTS := mkServer(entitlements.MonitorLimits{
 			MonitorsCap: 1, MinIntervalSeconds: 30,
-			RegionsAllowed: []string{"home"}, RegionsPerMonitorCap: 1,
+			RegionsAllowed: []string{"eu-central"}, RegionsPerMonitorCap: 1,
 		})
 		defer capTS.Close()
 		postCap := func(name string) *http.Response {

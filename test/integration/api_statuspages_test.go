@@ -142,7 +142,7 @@ func TestAPIStatusPages(t *testing.T) {
 			Auth:        auth,
 			AppBaseURL:  "http://app.test",
 			Seats:       entitlements.FixedSeats{Cap: 5},
-			Monitors:    entitlements.FixedMonitors{Limits: entitlements.MonitorLimits{MonitorsCap: 50, MinIntervalSeconds: 30, RegionsAllowed: []string{"home"}, RegionsPerMonitorCap: 1}},
+			Monitors:    entitlements.FixedMonitors{Limits: entitlements.MonitorLimits{MonitorsCap: 50, MinIntervalSeconds: 30, RegionsAllowed: []string{"eu-central"}, RegionsPerMonitorCap: 1}},
 			StatusPages: entitlements.FixedStatusPages{Cap: cap},
 		})
 		return httptest.NewServer(srv.Router())
@@ -199,14 +199,14 @@ func TestAPIStatusPages(t *testing.T) {
 	mon1 := &domain.Monitor{
 		OrgID: orgIDInt, Type: domain.MonitorHTTP, Name: "internal-1", URL: secretURL,
 		Method: "GET", ExpectedStatusCodes: "200", TimeoutSeconds: 5, IntervalSeconds: 60,
-		Enabled: true, FailureThreshold: 1, Regions: []string{"home"}, DownPolicy: domain.DownPolicyQuorum,
+		Enabled: true, FailureThreshold: 1, Regions: []string{"eu-central"}, DownPolicy: domain.DownPolicyQuorum,
 		Headers:      []domain.Header{{Key: "Authorization", Value: "Bearer leak-me", Secret: true}},
 		MaxLatencyMs: &maxLat, BodyContains: &bodyContains,
 	}
 	mon2 := &domain.Monitor{
 		OrgID: orgIDInt, Type: domain.MonitorHTTP, Name: "internal-2", URL: "https://internal-2.example.com/x",
 		Method: "GET", ExpectedStatusCodes: "200", TimeoutSeconds: 5, IntervalSeconds: 60,
-		Enabled: true, FailureThreshold: 1, Regions: []string{"home"}, DownPolicy: domain.DownPolicyQuorum,
+		Enabled: true, FailureThreshold: 1, Regions: []string{"eu-central"}, DownPolicy: domain.DownPolicyQuorum,
 	}
 	if _, err := app.CreateMonitor(ctx, mon1); err != nil {
 		t.Fatalf("seed mon1: %v", err)
@@ -221,7 +221,7 @@ func TestAPIStatusPages(t *testing.T) {
 	seedResults := func(monID int64, healthy bool, n int) {
 		base := time.Now().UTC()
 		for i := 0; i < n; i++ {
-			r := &domain.CheckResult{OrgID: orgIDInt, MonitorID: monID, Region: "home",
+			r := &domain.CheckResult{OrgID: orgIDInt, MonitorID: monID, Region: "eu-central",
 				CheckedAt: base.Add(-time.Duration(i) * time.Minute), Healthy: healthy}
 			if err := app.InsertCheckResult(ctx, r); err != nil {
 				t.Fatalf("seed result: %v", err)

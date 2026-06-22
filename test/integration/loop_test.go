@@ -63,10 +63,10 @@ func runWorkerOnce(t *testing.T, pool *store.Pool, prod worker.Producer, chk wor
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cons := &feedConsumer{
-		recs: []bus.Record{{Topic: bus.CheckJobsTopic("home"), Key: "1", Value: payload}},
+		recs: []bus.Record{{Topic: bus.CheckJobsTopic("eu-central"), Key: "1", Value: payload}},
 		done: make(chan struct{}),
 	}
-	runner := worker.New(pool, cons, prod, chk, entitlements.AllOn{}, nil, "home", log)
+	runner := worker.New(pool, cons, prod, chk, entitlements.AllOn{}, nil, "eu-central", log)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	stopped := make(chan struct{})
@@ -170,7 +170,7 @@ func TestAlertingLoop_EndToEnd(t *testing.T) {
 		IntervalSeconds:     60,
 		Enabled:             true,
 		FailureThreshold:    1,
-		Regions:             []string{"home"},
+		Regions:             []string{"eu-central"},
 		DownPolicy:          domain.DownPolicyQuorum,
 		ChannelIDs:          []int64{channelID},
 	}
@@ -185,7 +185,7 @@ func TestAlertingLoop_EndToEnd(t *testing.T) {
 		jm := *m
 		jm.URL = url
 		return events.CheckJob{
-			JobID: "loop-job", OrgID: orgID, Region: "home", ScheduledAt: scheduledAt, Monitor: jm,
+			JobID: "loop-job", OrgID: orgID, Region: "eu-central", ScheduledAt: scheduledAt, Monitor: jm,
 		}
 	}
 

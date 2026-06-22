@@ -29,7 +29,7 @@ const ENT: Entitlements = {
   status_pages_cap: 5,
   min_interval_seconds: 60,
   retention_days: 90,
-  regions_allowed: ["us-east", "eu-west"],
+  regions_allowed: ["us-east", "us-west"],
   regions_per_monitor_cap: 2,
   custom_domain_allowed: true,
   api_write_allowed: true,

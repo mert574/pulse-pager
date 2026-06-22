@@ -65,15 +65,15 @@ func failingResult() *domain.CheckResult {
 
 func jobRecord(t *testing.T) bus.Record {
 	t.Helper()
-	payload, err := json.Marshal(events.CheckJob{OrgID: 1, Region: "home", Monitor: domain.Monitor{ID: 7}})
+	payload, err := json.Marshal(events.CheckJob{OrgID: 1, Region: "eu-central", Monitor: domain.Monitor{ID: 7}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return bus.Record{Topic: bus.CheckJobsTopic("home"), Key: "7", Value: payload}
+	return bus.Record{Topic: bus.CheckJobsTopic("eu-central"), Key: "7", Value: payload}
 }
 
 func newRunner(st ResultWriter, prod Producer, on bool) *Runner {
-	return New(st, nil, prod, fakeChecker{result: failingResult()}, gate{on: on}, nil, "home",
+	return New(st, nil, prod, fakeChecker{result: failingResult()}, gate{on: on}, nil, "eu-central",
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
@@ -126,17 +126,17 @@ func TestHandle_SkipsSnapshotWhenNotEntitled(t *testing.T) {
 func TestHandle_UpdatesLiveStateForEveryCheck(t *testing.T) {
 	state := &fakeStateStore{}
 	r := New(&countingStore{}, nil, &fakeProducer{}, fakeChecker{result: failingResult()},
-		gate{on: false}, state, "home", slog.New(slog.NewTextHandler(io.Discard, nil)))
+		gate{on: false}, state, "eu-central", slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	// jobRecord builds a plain (scheduled) job for monitor 7, region home.
 	if err := r.handle(context.Background(), jobRecord(t)); err != nil {
 		t.Fatalf("handle: %v", err)
 	}
 
-	// Expect two writes to the monitor's hash for region "home": running then terminal.
+	// Expect two writes to the monitor's hash for region "eu-central": running then terminal.
 	var states []string
 	for _, w := range state.writes {
-		if w.key == checkstate.Key(7) && w.field == "home" {
+		if w.key == checkstate.Key(7) && w.field == "eu-central" {
 			states = append(states, w.value)
 		}
 	}
@@ -152,7 +152,7 @@ func TestHandle_UpdatesLiveStateForEveryCheck(t *testing.T) {
 
 	// A nil store is a no-op (no panic, nothing written).
 	r2 := New(&countingStore{}, nil, &fakeProducer{}, fakeChecker{result: failingResult()},
-		gate{on: false}, nil, "home", slog.New(slog.NewTextHandler(io.Discard, nil)))
+		gate{on: false}, nil, "eu-central", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err := r2.handle(context.Background(), jobRecord(t)); err != nil {
 		t.Fatalf("handle nil-store: %v", err)
 	}

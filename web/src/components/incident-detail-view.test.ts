@@ -36,7 +36,7 @@ const MONITOR: Monitor = {
   body_contains: null,
   failure_threshold: 1,
   notification_channel_ids: [],
-  regions: ["home"],
+  regions: ["eu-central"],
   down_policy: "quorum",
   created_at: "2026-06-21T10:00:00Z",
   updated_at: "2026-06-21T10:00:00Z",

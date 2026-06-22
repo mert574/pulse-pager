@@ -121,7 +121,7 @@ func TestAPIIncidents(t *testing.T) {
 
 	limits := entitlements.MonitorLimits{
 		MonitorsCap: 50, MinIntervalSeconds: 30,
-		RegionsAllowed: []string{"home"}, RegionsPerMonitorCap: 4,
+		RegionsAllowed: []string{"eu-central"}, RegionsPerMonitorCap: 4,
 	}
 	srv := api.New(api.Config{
 		Store:      app,
@@ -169,7 +169,7 @@ func TestAPIIncidents(t *testing.T) {
 		IntervalSeconds:     60,
 		Enabled:             true,
 		FailureThreshold:    1,
-		Regions:             []string{"home"},
+		Regions:             []string{"eu-central"},
 		DownPolicy:          domain.DownPolicyQuorum,
 	}
 	if _, err := app.CreateMonitor(ctx, m); err != nil {

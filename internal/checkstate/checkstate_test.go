@@ -36,7 +36,7 @@ func TestSetAndGetRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	const mon = int64(7)
 
-	if err := SetScheduled(ctx, s, mon, "eu-west", 60); err != nil {
+	if err := SetScheduled(ctx, s, mon, "us-west", 60); err != nil {
 		t.Fatal(err)
 	}
 	if err := SetRunning(ctx, s, mon, "us-east", 60); err != nil {
@@ -44,7 +44,7 @@ func TestSetAndGetRoundTrip(t *testing.T) {
 	}
 	code := 200
 	lat := 42
-	if err := SetResult(ctx, s, mon, "ap-south", 60, Outcome{Healthy: true, StatusCode: &code, LatencyMs: &lat}); err != nil {
+	if err := SetResult(ctx, s, mon, "sa-east", 60, Outcome{Healthy: true, StatusCode: &code, LatencyMs: &lat}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -52,14 +52,14 @@ func TestSetAndGetRoundTrip(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("Get: found=%v err=%v", found, err)
 	}
-	if got["eu-west"].State != StateScheduled {
-		t.Errorf("eu-west = %q, want scheduled", got["eu-west"].State)
+	if got["us-west"].State != StateScheduled {
+		t.Errorf("us-west = %q, want scheduled", got["us-west"].State)
 	}
 	if got["us-east"].State != StateRunning {
 		t.Errorf("us-east = %q, want running", got["us-east"].State)
 	}
-	if got["ap-south"].State != StateDone || got["ap-south"].LatencyMs == nil || *got["ap-south"].LatencyMs != 42 {
-		t.Errorf("ap-south = %+v, want done with latency 42", got["ap-south"])
+	if got["sa-east"].State != StateDone || got["sa-east"].LatencyMs == nil || *got["sa-east"].LatencyMs != 42 {
+		t.Errorf("sa-east = %+v, want done with latency 42", got["sa-east"])
 	}
 
 	// An unknown monitor has no state.
@@ -71,12 +71,12 @@ func TestSetAndGetRoundTrip(t *testing.T) {
 func TestSetResultFailedWhenUnhealthy(t *testing.T) {
 	s := newMemStore()
 	reason := domain.ReasonStatusMismatch
-	if err := SetResult(context.Background(), s, 1, "home", 60, Outcome{Healthy: false, FailureReason: &reason}); err != nil {
+	if err := SetResult(context.Background(), s, 1, "eu-central", 60, Outcome{Healthy: false, FailureReason: &reason}); err != nil {
 		t.Fatal(err)
 	}
 	got, _, _ := Get(context.Background(), s, 1)
-	if got["home"].State != StateFailed {
-		t.Errorf("unhealthy result state = %q, want failed", got["home"].State)
+	if got["eu-central"].State != StateFailed {
+		t.Errorf("unhealthy result state = %q, want failed", got["eu-central"].State)
 	}
 }
 

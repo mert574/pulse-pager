@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"pulse/internal/domain"
+	"pulse/internal/region"
 )
 
 // monitorColumns is the full column list every monitor read scans, in one place so
@@ -104,7 +105,7 @@ func (p *Pool) CreateMonitor(ctx context.Context, m *domain.Monitor) (int64, err
 		m.DownPolicy = domain.DownPolicyQuorum
 	}
 	if len(m.Regions) == 0 {
-		m.Regions = []string{"home"}
+		m.Regions = []string{region.Default}
 	}
 	headers, err := p.encodeHeaders(m.Headers)
 	if err != nil {
@@ -307,7 +308,7 @@ func (p *Pool) UpdateMonitor(ctx context.Context, m *domain.Monitor) (*domain.Mo
 		m.DownPolicy = domain.DownPolicyQuorum
 	}
 	if len(m.Regions) == 0 {
-		m.Regions = []string{"home"}
+		m.Regions = []string{region.Default}
 	}
 	headers, err := p.encodeHeaders(m.Headers)
 	if err != nil {

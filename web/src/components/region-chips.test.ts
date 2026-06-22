@@ -17,21 +17,21 @@ describe("region-chips", () => {
 
   it("renders one chip per region with the region name and a label", async () => {
     const el = await mount([
-      { region: "home", state: "scheduled", updated_at: "2026-06-21T10:00:00Z" },
-      { region: "eu-west", state: "running", updated_at: "2026-06-21T10:00:00Z" },
+      { region: "eu-central", state: "scheduled", updated_at: "2026-06-21T10:00:00Z" },
+      { region: "us-west", state: "running", updated_at: "2026-06-21T10:00:00Z" },
     ]);
     const chips = el.querySelectorAll(".badge");
     expect(chips.length).to.equal(2);
-    expect(el.textContent).to.contain("home");
+    expect(el.textContent).to.contain("eu-central");
     expect(el.textContent).to.contain("scheduled");
-    expect(el.textContent).to.contain("eu-west");
+    expect(el.textContent).to.contain("us-west");
     expect(el.textContent).to.contain("pinging");
   });
 
   it("reads done + healthy as ok and gives it the success color", async () => {
     const el = await mount([
       {
-        region: "home",
+        region: "eu-central",
         state: "done",
         healthy: true,
         latency_ms: 42,
@@ -47,7 +47,7 @@ describe("region-chips", () => {
   it("reads done + unhealthy as down with the error color", async () => {
     const el = await mount([
       {
-        region: "home",
+        region: "eu-central",
         state: "done",
         healthy: false,
         status_code: 503,
@@ -62,7 +62,7 @@ describe("region-chips", () => {
   it("reads failed as down with the error color", async () => {
     const el = await mount([
       {
-        region: "home",
+        region: "eu-central",
         state: "failed",
         failure_reason: "timeout",
         updated_at: "2026-06-21T10:00:00Z",
@@ -76,7 +76,7 @@ describe("region-chips", () => {
   it("puts latency and status code in the chip tooltip when present", async () => {
     const el = await mount([
       {
-        region: "home",
+        region: "eu-central",
         state: "done",
         healthy: true,
         latency_ms: 88,
@@ -85,18 +85,18 @@ describe("region-chips", () => {
       },
     ]);
     const title = el.querySelector(".badge")?.getAttribute("title") ?? "";
-    expect(title).to.contain("home");
+    expect(title).to.contain("eu-central");
     expect(title).to.contain("88 ms");
     expect(title).to.contain("200");
   });
 
   it("pulses the dot only while running", async () => {
     const el = await mount([
-      { region: "home", state: "running", updated_at: "2026-06-21T10:00:00Z" },
+      { region: "eu-central", state: "running", updated_at: "2026-06-21T10:00:00Z" },
     ]);
     expect(el.querySelector(".animate-pulse")).to.not.be.null;
     const done = await mount([
-      { region: "home", state: "done", healthy: true, updated_at: "2026-06-21T10:00:00Z" },
+      { region: "eu-central", state: "done", healthy: true, updated_at: "2026-06-21T10:00:00Z" },
     ]);
     expect(done.querySelector(".animate-pulse")).to.be.null;
   });

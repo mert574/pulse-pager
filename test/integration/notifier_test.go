@@ -28,8 +28,8 @@ import (
 // then blocks, so the test drives delivery without a Kafka container. It mirrors
 // the bus.Record shape the real consumer produces.
 type directConsumer struct {
-	recs    [][]byte
-	once    sync.Once
+	recs      [][]byte
+	once      sync.Once
 	delivered chan struct{}
 }
 
@@ -141,7 +141,7 @@ func TestNotifierDelivery(t *testing.T) {
 			IntervalSeconds:     60,
 			Enabled:             true,
 			FailureThreshold:    1,
-			Regions:             []string{"home"},
+			Regions:             []string{"eu-central"},
 			DownPolicy:          domain.DownPolicyQuorum,
 			ChannelIDs:          channelIDs,
 		}

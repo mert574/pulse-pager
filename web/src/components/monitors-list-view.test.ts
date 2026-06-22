@@ -57,7 +57,7 @@ function entitlements(used: number, cap: number): Entitlements {
     status_pages_cap: 3,
     min_interval_seconds: 60,
     retention_days: 90,
-    regions_allowed: ["home"],
+    regions_allowed: ["eu-central"],
     regions_per_monitor_cap: 4,
     custom_domain_allowed: true,
     api_write_allowed: true,
@@ -217,7 +217,7 @@ describe("monitors-list-view", () => {
         return jsonResponse(202, {
           monitor_id: "mon_1",
           regions: [
-            { region: "home", state: "scheduled", updated_at: "2026-06-21T11:00:00Z" },
+            { region: "eu-central", state: "scheduled", updated_at: "2026-06-21T11:00:00Z" },
           ],
         });
       // the live-state poll: empty until the check is queued
@@ -236,7 +236,7 @@ describe("monitors-list-view", () => {
         () => el.querySelector("region-chips") !== null,
         "scheduled chips render after the check is queued",
       );
-      expect(el.querySelector("region-chips")?.textContent).to.contain("home");
+      expect(el.querySelector("region-chips")?.textContent).to.contain("eu-central");
       expect(el.querySelector("region-chips")?.textContent).to.contain("scheduled");
     } finally {
       restore();
@@ -288,7 +288,7 @@ describe("monitors-list-view", () => {
           monitors: {
             mon_1: [
               {
-                region: "home",
+                region: "eu-central",
                 state: "done",
                 healthy: true,
                 latency_ms: 88,
@@ -306,7 +306,7 @@ describe("monitors-list-view", () => {
         () => el.querySelector("region-chips") !== null,
         "chips render from the poll",
       );
-      expect(el.querySelector("region-chips")?.textContent).to.contain("home");
+      expect(el.querySelector("region-chips")?.textContent).to.contain("eu-central");
       expect(el.querySelector("region-chips")?.textContent).to.contain("ok");
     } finally {
       restore();

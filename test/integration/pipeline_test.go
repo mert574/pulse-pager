@@ -96,7 +96,7 @@ func TestPipelineSchedulerToWorker(t *testing.T) {
 			IntervalSeconds:     1,
 			Enabled:             true,
 			FailureThreshold:    1,
-			Regions:             []string{"home"},
+			Regions:             []string{"eu-central"},
 			DownPolicy:          domain.DownPolicyQuorum,
 		}
 	}
@@ -114,7 +114,7 @@ func TestPipelineSchedulerToWorker(t *testing.T) {
 		t.Fatalf("producer: %v", err)
 	}
 	defer prod.Close()
-	cons, err := bus.NewKafkaConsumer([]string{broker}, "worker-home", bus.CheckJobsTopic("home"))
+	cons, err := bus.NewKafkaConsumer([]string{broker}, "worker-home", bus.CheckJobsTopic("eu-central"))
 	if err != nil {
 		t.Fatalf("consumer: %v", err)
 	}
@@ -133,7 +133,9 @@ func TestPipelineSchedulerToWorker(t *testing.T) {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func() { _ = scheduler.New(pool, prod, nil, log, 500*time.Millisecond).Run(runCtx) }()
-	go func() { _ = worker.New(pool, cons, prod, chk, entitlements.AllOn{}, nil, "home", log).Run(runCtx) }()
+	go func() {
+		_ = worker.New(pool, cons, prod, chk, entitlements.AllOn{}, nil, "eu-central", log).Run(runCtx)
+	}()
 	go func() { _ = alerting.NewRunner(pool, alertCons, prod, log).Run(runCtx) }()
 
 	// Wait for the healthy result row and the failure snapshot to both land.
@@ -180,7 +182,7 @@ func TestPipelineSchedulerToWorker(t *testing.T) {
 	if status == nil || *status != 200 {
 		t.Errorf("status_code = %v, want 200", status)
 	}
-	if region != "home" {
+	if region != "eu-central" {
 		t.Errorf("region = %q, want home", region)
 	}
 
