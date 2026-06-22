@@ -24,7 +24,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build docs (re-copy spec from api/openapi/v1.yaml)
         run: make docs
@@ -32,9 +32,13 @@ jobs:
       - name: Verify the reference matches the spec
         run: diff -q api/openapi/v1.yaml docs-site/openapi.yaml
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
+        with:
+          # enable Pages (build via Actions) if it is not already, so a fresh
+          # clone of the repo does not fail this step before Pages is turned on.
+          enablement: true
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs-site
 
@@ -46,4 +50,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
