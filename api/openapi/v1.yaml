@@ -1,0 +1,1832 @@
+openapi: 3.0.3
+info:
+  title: Pulse Pager API
+  version: 1.0.0
+  description: >
+    Pulse Pager public REST API (v1). This spec is the single source of truth (RFC-012):
+    the Go server types/stubs and the TypeScript client types are generated from it.
+    Auth-plane redirects (/auth/{provider}/login, /auth/refresh, /auth/logout) are
+    not modelled here; this is the JSON resource API under /api/v1.
+servers:
+  - url: /api/v1
+tags:
+  - name: account
+  - name: members
+  - name: monitors
+  - name: channels
+  - name: incidents
+  - name: api-keys
+  - name: webhooks
+
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+
+paths:
+  /me:
+    get:
+      operationId: getMe
+      tags: [account]
+      summary: The signed-in user and the orgs they belong to.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      operationId: updateMe
+      tags: [account]
+      summary: Update the signed-in user's profile (name, locale, timezone).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MeUpdate" }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /me/identities:
+    get:
+      operationId: listMyIdentities
+      tags: [account]
+      summary: The social identities linked to the signed-in user.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Identity" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /me/identities/{provider}:
+    parameters:
+      - $ref: "#/components/parameters/Provider"
+    delete:
+      operationId: unlinkMyIdentity
+      tags: [account]
+      summary: Unlink a social identity from the signed-in user.
+      responses:
+        "204": { description: no content }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /orgs:
+    get:
+      operationId: listOrgs
+      tags: [account]
+      summary: The orgs the signed-in user belongs to.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/OrgMembership" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: createOrg
+      tags: [account]
+      summary: Create a new org with the caller as owner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrgInput" }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrgMembership" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /orgs/{orgId}:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      operationId: getOrg
+      tags: [account]
+      summary: One org the caller is a member of.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrgMembership" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /account/logout-all:
+    post:
+      operationId: logoutAll
+      tags: [account]
+      summary: Revoke all of the user's sessions.
+      responses:
+        "204": { description: no content }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /orgs/{orgId}/members:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      operationId: listMembers
+      tags: [members]
+      summary: The members of the org with their role and user info.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Member" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orgs/{orgId}/members/me:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    delete:
+      operationId: leaveOrg
+      tags: [members]
+      summary: Leave the org. The last owner must transfer ownership first.
+      responses:
+        "204": { description: no content }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /orgs/{orgId}/members/{userId}:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/UserId"
+    patch:
+      operationId: changeMemberRole
+      tags: [members]
+      summary: Change a member's role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MemberRoleUpdate" }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Member" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      operationId: removeMember
+      tags: [members]
+      summary: Remove a member from the org.
+      responses:
+        "204": { description: no content }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /orgs/{orgId}/transfer-ownership:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    post:
+      operationId: transferOwnership
+      tags: [members]
+      summary: >
+        Hand ownership to another member (owner only). The new owner must already
+        be a member. The acting owner may step down to admin or stay an owner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransferOwnership" }
+      responses:
+        "204": { description: no content }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /orgs/{orgId}/invitations:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      operationId: listInvitations
+      tags: [members]
+      summary: The pending invitations for the org.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Invitation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createInvitation
+      tags: [members]
+      summary: Invite a teammate by email with a target role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InvitationInput" }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invitation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402":
+          description: no seat available on the plan (upsell)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /orgs/{orgId}/invitations/{id}:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/Id"
+    delete:
+      operationId: revokeInvitation
+      tags: [members]
+      summary: Revoke a pending invitation, freeing its reserved seat.
+      responses:
+        "204": { description: no content }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /orgs/{orgId}/invitations/{id}/resend:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/Id"
+    post:
+      operationId: resendInvitation
+      tags: [members]
+      summary: Resend a pending invitation with a fresh token and 7-day expiry.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invitation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /invitations/{token}:
+    parameters:
+      - $ref: "#/components/parameters/Token"
+    get:
+      operationId: getInvitationPreview
+      tags: [members]
+      summary: >
+        Preview an invitation by its token (org name, role, inviter). Usable
+        pre-login via the token capability, so the accept page can render before
+        sign-in.
+      security: []
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InvitationPreview" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /invitations/{token}/accept:
+    parameters:
+      - $ref: "#/components/parameters/Token"
+    post:
+      operationId: acceptInvitation
+      tags: [members]
+      summary: >
+        Accept an invitation. Requires a signed-in session whose verified email
+        matches the invited email; creates the membership and occupies the seat.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrgMembership" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /orgs/{orgId}/api-keys:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      operationId: listAPIKeys
+      tags: [api-keys]
+      summary: The org's API keys (metadata only; the secret is never returned).
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/APIKey" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createAPIKey
+      tags: [api-keys]
+      summary: >
+        Create an API key. The full secret (pulse_sk_...) is returned exactly once
+        in this response and never again. Role is member or admin only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/APIKeyInput" }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/APIKeyCreated" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /orgs/{orgId}/api-keys/{id}:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/Id"
+    delete:
+      operationId: revokeAPIKey
+      tags: [api-keys]
+      summary: Revoke an API key. The key fails auth immediately after.
+      responses:
+        "204": { description: no content }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /orgs/{orgId}/webhooks:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      operationId: listWebhooks
+      tags: [webhooks]
+      summary: The org's outbound webhooks (the signing secret is never returned).
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/OutboundWebhook" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createWebhook
+      tags: [webhooks]
+      summary: >
+        Register an outbound webhook. The signing secret is returned exactly once in
+        this response and never again. url must be https.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OutboundWebhookInput" }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OutboundWebhookCreated" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /orgs/{orgId}/webhooks/{id}:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getWebhook
+      tags: [webhooks]
+      summary: One outbound webhook (the signing secret is redacted).
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OutboundWebhook" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      operationId: updateWebhook
+      tags: [webhooks]
+      summary: Update an outbound webhook's url, enabled flag, and subscribed events.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OutboundWebhookInput" }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OutboundWebhook" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      operationId: deleteWebhook
+      tags: [webhooks]
+      summary: Delete an outbound webhook. Pulse Pager stops delivering to it immediately.
+      responses:
+        "204": { description: no content }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orgs/{orgId}/webhooks/{id}/rotate-secret:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/Id"
+    post:
+      operationId: rotateWebhookSecret
+      tags: [webhooks]
+      summary: >
+        Rotate the signing secret. The new secret is returned exactly once in this
+        response; the old one stops verifying immediately.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OutboundWebhookCreated" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /orgs/{orgId}/entitlements:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      operationId: getEntitlements
+      tags: [account]
+      summary: The active org's plan, usage, and caps (owner/admin).
+      description: >
+        The org's current plan with usage vs caps (monitors, seats, status pages)
+        and the plan floors/flags. Billing and usage are viewable by owner and
+        admin only (PRD-006 9); member and viewer get a 403 and feel limits through
+        the per-field upsell errors on writes instead.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Entitlements" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /plans:
+    get:
+      operationId: listPlans
+      tags: [account]
+      summary: The public plan catalog (tiers and their limits).
+      description: >
+        The plan tiers and their limits (PRD-006 3) so the FE can render a plan
+        comparison / upgrade table without hardcoding. Reference config, not
+        per-org data; usage vs caps for the active org is GET /orgs/{orgId}/entitlements.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PlanCatalogEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /orgs/{orgId}/monitors:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      operationId: listMonitors
+      tags: [monitors]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MonitorListItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createMonitor
+      tags: [monitors]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MonitorInput" }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Monitor" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402":
+          description: monitor cap reached on the plan (upsell)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /orgs/{orgId}/monitors/{id}:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getMonitor
+      tags: [monitors]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Monitor" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      operationId: updateMonitor
+      tags: [monitors]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MonitorInput" }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Monitor" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402":
+          description: the update would exceed a plan limit (upsell)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      operationId: deleteMonitor
+      tags: [monitors]
+      responses:
+        "204": { description: no content }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orgs/{orgId}/monitors/{id}/check:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/Id"
+    post:
+      operationId: checkNow
+      tags: [monitors]
+      summary: >
+        Trigger a check now. It enqueues one probe per region (like a scheduled
+        check) and returns 202 immediately; the per-region progress shows up in the
+        monitor's live region states (poll getMonitorRegionStates). 409 if a check is
+        already running, the monitor is disabled, or you are within the per-monitor
+        cooldown; 429 if you are over the sustained manual-check budget.
+      responses:
+        "202":
+          description: accepted; the check was enqueued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CheckNowAccepted" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orgs/{orgId}/monitor-region-states:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      operationId: getMonitorRegionStates
+      tags: [monitors]
+      summary: >
+        The live per-region check state for the org's monitors (RFC-004 §9): each
+        monitor maps to its regions' current state (scheduled/running/done/failed)
+        with the last outcome. The frontend polls this to render a chip per region.
+        Pass monitor_id to fetch one monitor. Monitors with no live state are omitted.
+      parameters:
+        - name: monitor_id
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MonitorRegionStates" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orgs/{orgId}/monitors/{id}/results:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: listResults
+      tags: [monitors]
+      parameters:
+        - name: range
+          in: query
+          schema: { $ref: "#/components/schemas/ResultsRange" }
+        # Optional region filter: restrict the history to one region's checks so a
+        # multi-region monitor's results can be viewed per region (RFC-013 multi-region).
+        # Omitted = all regions interleaved.
+        - name: region
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PageCheckResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orgs/{orgId}/monitors/{id}/incidents:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: listMonitorIncidents
+      tags: [monitors, incidents]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PageIncident" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orgs/{orgId}/monitors/{id}/last-failure:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getLastFailure
+      tags: [monitors]
+      summary: The captured response from the monitor's most recent failed check (PRD-002 3.8).
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FailureSnapshot" }
+        "404":
+          description: no failure has been captured for this monitor
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /orgs/{orgId}/channel-types:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      operationId: getChannelTypes
+      tags: [channels]
+      summary: >
+        The channel-type catalog: every notification channel type, its config-field
+        schema, and whether the org's plan includes it. Drives the channel picker
+        and config forms with no hardcoding (RFC-007a, PRD-006 section 3).
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChannelTypeCatalog" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orgs/{orgId}/channels:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      operationId: listChannels
+      tags: [channels]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Channel" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createChannel
+      tags: [channels]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChannelInput" }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Channel" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /orgs/{orgId}/channels/{id}:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/Id"
+    put:
+      operationId: updateChannel
+      tags: [channels]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChannelInput" }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Channel" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      operationId: deleteChannel
+      tags: [channels]
+      responses:
+        "204": { description: no content }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orgs/{orgId}/channels/{id}/test:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/Id"
+    post:
+      operationId: testChannel
+      tags: [channels]
+      responses:
+        "204": { description: no content }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /orgs/{orgId}/incidents:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      operationId: listIncidents
+      tags: [incidents]
+      summary: >
+        The org's incidents across all monitors, newest first (PRD-002 4). status
+        filters to currently open incidents; the default returns all.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, all]
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PageIncident" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orgs/{orgId}/incidents/{id}:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getIncident
+      tags: [incidents]
+      summary: One incident with its annotation timeline (PRD-002 4). Any member may view.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IncidentDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /orgs/{orgId}/incidents/{id}/annotations:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/Id"
+    post:
+      operationId: addIncidentAnnotation
+      tags: [incidents]
+      summary: Add a note to the incident timeline (PRD-002 4). Member+ may annotate.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IncidentAnnotationInput" }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IncidentAnnotation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /orgs/{orgId}/incidents/{id}/close:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/Id"
+    post:
+      operationId: closeIncident
+      tags: [incidents]
+      summary: >
+        Manually close an open incident as an operator override (PRD-002 4). Owner
+        or admin only. Sets a distinct manual close_reason and emits no recovery
+        notification. An already-closed incident is a 409.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IncidentDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /orgs/{orgId}/status-pages:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      operationId: listStatusPages
+      tags: [status-pages]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/StatusPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      operationId: createStatusPage
+      tags: [status-pages]
+      summary: Create a status page (member+; PRD-004 10).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StatusPageInput" }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402":
+          description: status-page cap reached on the plan (upsell, PRD-004 2.3)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /orgs/{orgId}/status-pages/{id}:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/Id"
+    get:
+      operationId: getStatusPage
+      tags: [status-pages]
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      operationId: updateStatusPage
+      tags: [status-pages]
+      summary: Update a status page and its displayed monitors (member+).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StatusPageInput" }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    delete:
+      operationId: deleteStatusPage
+      tags: [status-pages]
+      responses:
+        "204": { description: no content }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orgs/{orgId}/status-pages/{id}/publish:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/Id"
+    put:
+      operationId: publishStatusPage
+      tags: [status-pages]
+      summary: >
+        Publish or unpublish a status page (member+; PRD-004 6). Publishing makes the
+        public URL resolve; unpublishing returns it to draft and stops resolving.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StatusPagePublish" }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /public/status-pages/{slug}:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getPublicStatusPage
+      tags: [status-pages, public]
+      security: []
+      summary: >
+        The public, unauthenticated data endpoint a published status page renders from
+        (PRD-004 3.6, 8). No auth, no org context. Returns only the public-safe
+        projection; a draft or unknown slug is a 404 (PRD-004 6). Read-mostly and
+        cacheable so the page stays up during the customer's own incident (PRD-004 8).
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicStatusPage" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: pulse_at
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  parameters:
+    OrgId:
+      name: orgId
+      in: path
+      required: true
+      schema: { type: string }
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string }
+    Token:
+      name: token
+      in: path
+      required: true
+      schema: { type: string }
+    Provider:
+      name: provider
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/IdentityProviderName" }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+
+  responses:
+    Unauthorized:
+      description: not signed in
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    NotFound:
+      description: not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Conflict:
+      description: conflict
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    TooManyRequests:
+      description: rate limited; retry after the indicated delay
+      headers:
+        Retry-After:
+          schema: { type: integer }
+          description: seconds to wait before retrying
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    ValidationFailed:
+      description: validation failed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    Forbidden:
+      description: not allowed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  schemas:
+    Status:
+      type: string
+      enum: [up, down, disabled, pending]
+    CoverageStatus:
+      type: string
+      enum: [up, down, disabled, pending, coverage-degraded]
+    Method:
+      type: string
+      enum: [GET, POST, PUT, PATCH, DELETE, HEAD]
+    ChannelType:
+      type: string
+      enum: [slack, discord, webhook, smtp, pagerduty, opsgenie, telegram, teams, twilio]
+    FailureReason:
+      type: string
+      enum: [connection_error, timeout, status_mismatch, latency_exceeded, body_assertion_failed, blocked_target]
+    CloseReason:
+      type: string
+      enum: [recovered, disabled, manual]
+    Role:
+      type: string
+      enum: [owner, admin, member, viewer]
+    IdentityProviderName:
+      type: string
+      enum: [google, github]
+    Plan:
+      type: string
+      enum: [free, starter, team, business]
+    DownPolicy:
+      type: string
+      enum: [any, quorum, all]
+    ResultsRange:
+      type: string
+      enum: ["24h", "7d", "90d"]
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        fields:
+          type: object
+          additionalProperties: { type: string }
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error: { $ref: "#/components/schemas/Error" }
+
+    OrgMembership:
+      type: object
+      required: [org_id, name, slug, role, plan]
+      properties:
+        org_id: { type: string }
+        name: { type: string }
+        slug: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        plan: { $ref: "#/components/schemas/Plan" }
+    Me:
+      type: object
+      required: [user_id, email, name, avatar_url, locale, timezone, orgs]
+      properties:
+        user_id: { type: string }
+        email: { type: string }
+        name: { type: string }
+        avatar_url: { type: string, nullable: true }
+        locale: { type: string }
+        timezone: { type: string }
+        orgs:
+          type: array
+          items: { $ref: "#/components/schemas/OrgMembership" }
+    MeUpdate:
+      type: object
+      description: >
+        Editable profile fields. All optional; an omitted field is left unchanged.
+      properties:
+        name: { type: string }
+        locale: { type: string }
+        timezone: { type: string }
+    Identity:
+      type: object
+      required: [provider, provider_user_id, created_at]
+      properties:
+        provider: { $ref: "#/components/schemas/IdentityProviderName" }
+        provider_user_id: { type: string }
+        created_at: { type: string, format: date-time }
+    OrgInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+
+    Member:
+      type: object
+      required: [user_id, email, name, avatar_url, role, joined_at]
+      properties:
+        user_id: { type: string }
+        email: { type: string }
+        name: { type: string }
+        avatar_url: { type: string, nullable: true }
+        role: { $ref: "#/components/schemas/Role" }
+        joined_at: { type: string, format: date-time }
+    MemberRoleUpdate:
+      type: object
+      required: [role]
+      properties:
+        role: { $ref: "#/components/schemas/Role" }
+    TransferOwnership:
+      type: object
+      description: >
+        Hand ownership to another member. step_down makes the acting owner an admin;
+        false keeps them a co-owner (PRD-001 4.7).
+      required: [user_id]
+      properties:
+        user_id: { type: string }
+        step_down: { type: boolean }
+    Invitation:
+      type: object
+      required: [id, email, role, state, created_at, expires_at]
+      properties:
+        id: { type: string }
+        email: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        state: { $ref: "#/components/schemas/InvitationState" }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        invited_by: { type: string, nullable: true }
+    InvitationInput:
+      type: object
+      required: [email, role]
+      properties:
+        email: { type: string, format: email }
+        role: { $ref: "#/components/schemas/Role" }
+        locale: { type: string }
+    APIKey:
+      type: object
+      description: >
+        API key metadata. The secret is shown once at creation and never stored in
+        clear, so it is never present here; prefix is the non-secret leading chars.
+      required: [id, name, prefix, role, created_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        prefix: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        created_by: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: string, format: date-time, nullable: true }
+    APIKeyInput:
+      type: object
+      description: >
+        Create-key input. role is member or admin only; an API key is never
+        owner-equivalent (PRD-001 App A).
+      required: [name, role]
+      properties:
+        name: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+    APIKeyCreated:
+      type: object
+      description: >
+        The created key plus its full secret. secret is returned exactly once in this
+        response and never again; store it now.
+      required: [key, secret]
+      properties:
+        key: { $ref: "#/components/schemas/APIKey" }
+        secret: { type: string }
+    OutboundWebhookEvent:
+      type: string
+      description: An org-level event type an outbound webhook can subscribe to (PRD-005 7.1).
+      enum: [monitor.down, monitor.recovery, incident.opened, incident.closed]
+    OutboundWebhook:
+      type: object
+      description: >
+        Outbound webhook metadata. The signing secret is shown once at create/rotate
+        and never stored in clear, so it is never present here. An empty events list
+        means the webhook receives every event type.
+      required: [id, url, enabled, events, created_at, updated_at]
+      properties:
+        id: { type: string }
+        url: { type: string }
+        enabled: { type: boolean }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/OutboundWebhookEvent" }
+        created_by: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        last_delivery_at: { type: string, format: date-time, nullable: true }
+        last_status: { type: string, nullable: true }
+        last_error: { type: string, nullable: true }
+    OutboundWebhookInput:
+      type: object
+      description: >
+        Create/update input for an outbound webhook. url must be an absolute https
+        URL. events may be empty (subscribe to all types). enabled defaults to true.
+      required: [url]
+      properties:
+        url: { type: string }
+        enabled: { type: boolean }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/OutboundWebhookEvent" }
+    OutboundWebhookCreated:
+      type: object
+      description: >
+        The webhook plus its signing secret. secret is returned exactly once in this
+        response (on create and on rotate) and never again; store it now to verify the
+        X-Pulse-Signature header on deliveries.
+      required: [webhook, secret]
+      properties:
+        webhook: { $ref: "#/components/schemas/OutboundWebhook" }
+        secret: { type: string }
+    InvitationState:
+      type: string
+      enum: [pending, accepted, revoked, expired]
+    InvitationPreview:
+      type: object
+      description: >
+        Pre-login preview of an invitation rendered on the accept page. inviter_name
+        and org_name come from the token capability lookup (RFC-003 2.6).
+      required: [org_name, role, state, email]
+      properties:
+        org_name: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        state: { $ref: "#/components/schemas/InvitationState" }
+        email: { type: string }
+        inviter_name: { type: string, nullable: true }
+
+    Entitlements:
+      type: object
+      required:
+        [plan, monitors_used, monitors_cap, seats_used, seats_cap, status_pages_used,
+         status_pages_cap, min_interval_seconds, retention_days, regions_allowed,
+         regions_per_monitor_cap, custom_domain_allowed, api_write_allowed, failure_snapshot]
+      properties:
+        plan: { $ref: "#/components/schemas/Plan" }
+        monitors_used: { type: integer }
+        monitors_cap: { type: integer }
+        seats_used: { type: integer }
+        seats_cap: { type: integer }
+        status_pages_used: { type: integer }
+        status_pages_cap: { type: integer }
+        min_interval_seconds: { type: integer }
+        retention_days: { type: integer }
+        regions_allowed:
+          type: array
+          items: { type: string }
+        regions_per_monitor_cap: { type: integer }
+        custom_domain_allowed: { type: boolean }
+        api_write_allowed: { type: boolean }
+        failure_snapshot: { type: boolean }
+
+    PlanCatalogEntry:
+      type: object
+      description: >
+        One tier in the public plan catalog (PRD-006 3): the plan id plus its limits.
+        Reference config the FE renders as a comparison/upgrade table; carries no
+        per-org usage.
+      required:
+        [plan, monitors_cap, min_interval_seconds, seats_cap, status_pages_cap,
+         retention_days, regions_allowed, regions_per_monitor_cap,
+         custom_domain_allowed, api_write_allowed, api_rate_per_min, channel_types]
+      properties:
+        plan: { $ref: "#/components/schemas/Plan" }
+        monitors_cap: { type: integer }
+        min_interval_seconds: { type: integer }
+        seats_cap: { type: integer }
+        status_pages_cap: { type: integer }
+        retention_days: { type: integer }
+        regions_allowed:
+          type: array
+          items: { type: string }
+        regions_per_monitor_cap: { type: integer }
+        custom_domain_allowed: { type: boolean }
+        api_write_allowed: { type: boolean }
+        api_rate_per_min: { type: integer }
+        channel_types:
+          type: array
+          items: { type: string }
+
+    MonitorHeader:
+      type: object
+      required: [key, secret]
+      properties:
+        key: { type: string }
+        value: { type: string }
+        secret: { type: boolean }
+    Monitor:
+      type: object
+      required:
+        [id, org_id, name, url, method, headers, body, expected_status_codes,
+         timeout_seconds, interval_seconds, enabled, max_latency_ms, body_contains,
+         failure_threshold, notification_channel_ids, regions, down_policy, created_at, updated_at]
+      properties:
+        id: { type: string }
+        org_id: { type: string }
+        name: { type: string }
+        url: { type: string }
+        method: { $ref: "#/components/schemas/Method" }
+        headers:
+          type: array
+          items: { $ref: "#/components/schemas/MonitorHeader" }
+        body: { type: string }
+        expected_status_codes: { type: string }
+        timeout_seconds: { type: integer }
+        interval_seconds: { type: integer }
+        enabled: { type: boolean }
+        max_latency_ms: { type: integer, nullable: true }
+        body_contains: { type: string, nullable: true }
+        failure_threshold: { type: integer }
+        notification_channel_ids:
+          type: array
+          items: { type: string }
+        regions:
+          type: array
+          items: { type: string }
+        down_policy: { $ref: "#/components/schemas/DownPolicy" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    MonitorListItem:
+      type: object
+      required: [id, name, url, enabled, status, last_check_at, next_check_at, interval_seconds, last_latency_ms, incident_open]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        url: { type: string }
+        enabled: { type: boolean }
+        status: { $ref: "#/components/schemas/CoverageStatus" }
+        last_check_at: { type: string, format: date-time, nullable: true }
+        # When the next scheduled check is due, derived as last_check_at + the effective
+        # (plan-floored) interval (PRD-002). Null when the monitor is disabled or has
+        # never been checked (a never-checked enabled monitor is due immediately, so the
+        # UI shows "soon").
+        next_check_at: { type: string, format: date-time, nullable: true }
+        # The effective check cadence in seconds (the plan-floored interval), so the UI
+        # can show "checks every N" honestly even when the stored interval is below the
+        # plan floor.
+        interval_seconds: { type: integer }
+        last_latency_ms: { type: integer, nullable: true }
+        incident_open: { type: boolean }
+    MonitorInput:
+      type: object
+      required:
+        [name, url, method, headers, body, expected_status_codes, timeout_seconds,
+         interval_seconds, enabled, max_latency_ms, body_contains, failure_threshold,
+         notification_channel_ids, regions, down_policy]
+      properties:
+        name: { type: string }
+        url: { type: string }
+        method: { $ref: "#/components/schemas/Method" }
+        headers:
+          type: array
+          items: { $ref: "#/components/schemas/MonitorHeader" }
+        body: { type: string }
+        expected_status_codes: { type: string }
+        timeout_seconds: { type: integer }
+        interval_seconds: { type: integer }
+        enabled: { type: boolean }
+        max_latency_ms: { type: integer, nullable: true }
+        body_contains: { type: string, nullable: true }
+        failure_threshold: { type: integer }
+        notification_channel_ids:
+          type: array
+          items: { type: string }
+        regions:
+          type: array
+          items: { type: string }
+        down_policy: { $ref: "#/components/schemas/DownPolicy" }
+
+    Channel:
+      type: object
+      required: [id, org_id, name, type, enabled, config]
+      properties:
+        id: { type: string }
+        org_id: { type: string }
+        name: { type: string }
+        type: { $ref: "#/components/schemas/ChannelType" }
+        enabled: { type: boolean }
+        config:
+          type: object
+          additionalProperties: true
+    ChannelInput:
+      type: object
+      required: [name, type, enabled, config]
+      properties:
+        name: { type: string }
+        type: { $ref: "#/components/schemas/ChannelType" }
+        enabled: { type: boolean }
+        config:
+          type: object
+          additionalProperties: true
+
+    LocalizedString:
+      type: object
+      description: >
+        Platform i18n shape (RFC-014). code is the stable key the frontend looks
+        up; params are interpolation values; message is the English fallback.
+      required: [code, message]
+      properties:
+        code: { type: string }
+        params:
+          type: object
+          additionalProperties: true
+        message: { type: string }
+    CatalogField:
+      type: object
+      required: [key, type, required, secret, label]
+      properties:
+        key: { type: string }
+        type: { type: string }
+        required: { type: boolean }
+        secret: { type: boolean }
+        enum:
+          type: array
+          items: { type: string }
+        default: { type: string }
+        label: { $ref: "#/components/schemas/LocalizedString" }
+        help: { $ref: "#/components/schemas/LocalizedString" }
+    ChannelTypeCatalogEntry:
+      type: object
+      required: [type, display_name, available, config_fields]
+      properties:
+        type: { $ref: "#/components/schemas/ChannelType" }
+        display_name: { type: string }
+        available: { type: boolean }
+        config_fields:
+          type: array
+          items: { $ref: "#/components/schemas/CatalogField" }
+        required_plan: { $ref: "#/components/schemas/Plan" }
+        unavailable_reason:
+          allOf: [{ $ref: "#/components/schemas/LocalizedString" }]
+          nullable: true
+    ChannelTypeCatalog:
+      type: object
+      required: [channel_types]
+      properties:
+        channel_types:
+          type: array
+          items: { $ref: "#/components/schemas/ChannelTypeCatalogEntry" }
+
+    RegionState:
+      type: object
+      required: [region, state, updated_at]
+      properties:
+        region: { type: string }
+        state: { type: string, enum: [scheduled, running, done, failed] }
+        healthy: { type: boolean, nullable: true }
+        status_code: { type: integer, nullable: true }
+        latency_ms: { type: integer, nullable: true }
+        failure_reason:
+          allOf: [{ $ref: "#/components/schemas/FailureReason" }]
+          nullable: true
+        updated_at: { type: string, format: date-time }
+    MonitorRegionStates:
+      type: object
+      required: [monitors]
+      properties:
+        monitors:
+          type: object
+          description: monitor id -> its current per-region states
+          additionalProperties:
+            type: array
+            items: { $ref: "#/components/schemas/RegionState" }
+    CheckNowAccepted:
+      type: object
+      required: [monitor_id, regions]
+      properties:
+        monitor_id: { type: string }
+        regions:
+          type: array
+          items: { $ref: "#/components/schemas/RegionState" }
+
+    CheckResult:
+      type: object
+      required: [id, monitor_id, region, scheduled_at, checked_at, healthy, failure_reason, status_code, latency_ms, error]
+      properties:
+        id: { type: string }
+        monitor_id: { type: string }
+        region: { type: string }
+        # The scheduler tick this check belongs to. Identical across every region of
+        # one run, so the UI groups a run's per-region rows into a single row.
+        scheduled_at: { type: string, format: date-time }
+        checked_at: { type: string, format: date-time }
+        healthy: { type: boolean }
+        failure_reason:
+          allOf: [{ $ref: "#/components/schemas/FailureReason" }]
+          nullable: true
+        status_code: { type: integer, nullable: true }
+        latency_ms: { type: integer, nullable: true }
+        error: { type: string, nullable: true }
+
+    Incident:
+      type: object
+      required: [id, monitor_id, started_at, ended_at, cause_reason, close_reason, duration_seconds]
+      properties:
+        id: { type: string }
+        monitor_id: { type: string }
+        started_at: { type: string, format: date-time }
+        ended_at: { type: string, format: date-time, nullable: true }
+        cause_reason: { $ref: "#/components/schemas/FailureReason" }
+        close_reason:
+          allOf: [{ $ref: "#/components/schemas/CloseReason" }]
+          nullable: true
+        duration_seconds: { type: integer, nullable: true }
+
+    FailureSnapshot:
+      type: object
+      required: [monitor_id, checked_at, status_code, headers, body, truncated]
+      properties:
+        monitor_id: { type: string }
+        checked_at: { type: string, format: date-time }
+        status_code: { type: integer, nullable: true }
+        headers:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+        body: { type: string }
+        truncated: { type: boolean }
+
+    PageCheckResult:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CheckResult" }
+        next_cursor: { type: string, nullable: true }
+    PageIncident:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Incident" }
+        next_cursor: { type: string, nullable: true }
+
+    IncidentAnnotation:
+      type: object
+      required: [id, incident_id, author_user_id, note, created_at]
+      properties:
+        id: { type: string }
+        incident_id: { type: string }
+        author_user_id: { type: string }
+        note: { type: string }
+        created_at: { type: string, format: date-time }
+
+    IncidentAnnotationInput:
+      type: object
+      required: [note]
+      properties:
+        note: { type: string }
+
+    IncidentDetail:
+      type: object
+      required: [id, monitor_id, started_at, ended_at, cause_reason, close_reason, duration_seconds, annotations]
+      properties:
+        id: { type: string }
+        monitor_id: { type: string }
+        started_at: { type: string, format: date-time }
+        ended_at: { type: string, format: date-time, nullable: true }
+        cause_reason: { $ref: "#/components/schemas/FailureReason" }
+        close_reason:
+          allOf: [{ $ref: "#/components/schemas/CloseReason" }]
+          nullable: true
+        duration_seconds: { type: integer, nullable: true }
+        annotations:
+          type: array
+          items: { $ref: "#/components/schemas/IncidentAnnotation" }
+
+    StatusPageState:
+      type: string
+      enum: [draft, published]
+    StatusPageTheme:
+      type: string
+      enum: [light, dark]
+    PublicMonitorStatus:
+      type: string
+      description: Reduced public status of a displayed monitor (PRD-004 3.2).
+      enum: [operational, down]
+    PublicBanner:
+      type: string
+      description: Overall page banner derived from visible monitor statuses (PRD-004 4).
+      enum: [operational, partial_outage, major_outage]
+
+    StatusPageMonitorEntry:
+      type: object
+      description: A displayed-monitor entry in the editor (PRD-004 3.1).
+      required: [monitor_id, display_name, order]
+      properties:
+        monitor_id: { type: string }
+        display_name: { type: string }
+        order: { type: integer }
+    StatusPage:
+      type: object
+      description: A status page as the authenticated editor sees it (PRD-004 2).
+      required:
+        [id, org_id, name, slug, logo_url, accent_color, theme, state, custom_domain,
+         display_monitors, created_at, updated_at]
+      properties:
+        id: { type: string }
+        org_id: { type: string }
+        name: { type: string }
+        slug: { type: string }
+        logo_url: { type: string }
+        accent_color: { type: string }
+        theme: { $ref: "#/components/schemas/StatusPageTheme" }
+        state: { $ref: "#/components/schemas/StatusPageState" }
+        custom_domain: { type: string, nullable: true }
+        display_monitors:
+          type: array
+          items: { $ref: "#/components/schemas/StatusPageMonitorEntry" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    StatusPageInput:
+      type: object
+      description: >
+        Create/update a status page. display_monitors replaces the displayed-monitor
+        list. custom_domain is owner/admin only and unused in v1 (PRD-004 9.1).
+      required: [name, slug, logo_url, accent_color, theme, display_monitors]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+        logo_url: { type: string }
+        accent_color: { type: string }
+        theme: { $ref: "#/components/schemas/StatusPageTheme" }
+        custom_domain: { type: string, nullable: true }
+        display_monitors:
+          type: array
+          items: { $ref: "#/components/schemas/StatusPageMonitorEntry" }
+    StatusPagePublish:
+      type: object
+      required: [published]
+      properties:
+        published: { type: boolean }
+
+    PublicUptime:
+      type: object
+      description: Uptime over the public windows (PRD-004 3.3); has_* false = no data.
+      required: [uptime_24h, uptime_7d, uptime_90d, has_24h, has_7d, has_90d]
+      properties:
+        uptime_24h: { type: number }
+        uptime_7d: { type: number }
+        uptime_90d: { type: number }
+        has_24h: { type: boolean }
+        has_7d: { type: boolean }
+        has_90d: { type: boolean }
+    PublicHistoryPoint:
+      type: object
+      description: One cell of the recent history bar (up/down per period, PRD-004 3.4).
+      required: [at, up]
+      properties:
+        at: { type: string, format: date-time }
+        up: { type: boolean }
+    PublicDisplayedMonitor:
+      type: object
+      description: >
+        Public-safe projection of one displayed monitor (PRD-004 3.6 left column).
+        Carries ONLY the friendly name, public status, uptime, and history; it never
+        carries the raw url, method, headers, body, assertions, or failure detail.
+      required: [display_name, status, uptime, history]
+      properties:
+        display_name: { type: string }
+        status: { $ref: "#/components/schemas/PublicMonitorStatus" }
+        uptime: { $ref: "#/components/schemas/PublicUptime" }
+        history:
+          type: array
+          items: { $ref: "#/components/schemas/PublicHistoryPoint" }
+    PublicIncident:
+      type: object
+      description: A public incident entry by friendly name only (PRD-004 5.1).
+      required: [display_name, started_at, ended_at, duration_seconds, resolved]
+      properties:
+        display_name: { type: string }
+        started_at: { type: string, format: date-time }
+        ended_at: { type: string, format: date-time, nullable: true }
+        duration_seconds: { type: integer, nullable: true }
+        resolved: { type: boolean }
+    PublicStatusPage:
+      type: object
+      description: >
+        The public-safe page projection served unauthenticated (PRD-004 3.6). Only
+        branding, the banner, the visible displayed monitors, and recent public
+        incidents. No internal monitor detail is present.
+      required: [name, slug, logo_url, accent_color, theme, banner, monitors, incidents, uptime_max_window]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+        logo_url: { type: string }
+        accent_color: { type: string }
+        theme: { $ref: "#/components/schemas/StatusPageTheme" }
+        banner: { $ref: "#/components/schemas/PublicBanner" }
+        monitors:
+          type: array
+          items: { $ref: "#/components/schemas/PublicDisplayedMonitor" }
+        incidents:
+          type: array
+          items: { $ref: "#/components/schemas/PublicIncident" }
+        uptime_max_window: { type: string }

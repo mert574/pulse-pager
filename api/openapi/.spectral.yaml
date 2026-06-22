@@ -1,0 +1,10 @@
+# Spectral ruleset for the Pulse API spec. The standard OpenAPI rules catch
+# structural problems and contract inconsistencies (RFC-012 8.3). A few noisy
+# stylistic warnings that do not apply to an internal API are turned off.
+extends: ["spectral:oas"]
+rules:
+  info-contact: off
+  info-license: off
+  oas3-unused-component: off
+  operation-tag-defined: off
+  operation-description: off

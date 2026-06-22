@@ -1,0 +1,397 @@
+// Package entitlements decides what an org's plan allows. It is the seam RFC-009
+// will flesh out: a Redis-cached per-org lookup backed by the plan/subscription
+// tables (PRD-006). Billing is not built yet, so the default resolver (AllOn)
+// turns every feature on for every org. The Resolver interface exists so callers
+// gate on entitlements today and the real resolver drops in without changing them.
+package entitlements
+
+// Set is the resolved feature access for one org. It grows as more of the plan
+// model becomes enforced (RFC-009 2.2: monitor cap, interval floor, regions, ...).
+type Set struct {
+	// FailureSnapshot allows storing the last failed check's response (PRD-002 3.8).
+	FailureSnapshot bool
+}
+
+// Resolver returns the entitlement set for an org.
+type Resolver interface {
+	For(orgID int64) Set
+}
+
+// AllOn grants every feature to every org. This is the current resolver, used
+// until per-plan gating ships (RFC-009). Swapping in the real resolver is a
+// one-line wiring change at each call site.
+type AllOn struct{}
+
+// For returns an all-features-on set.
+func (AllOn) For(int64) Set {
+	return Set{FailureSnapshot: true}
+}
+
+// --- seats (PRD-001 5.2, master 11 seat meter) ---
+
+// Plan is the billing tier a seat cap comes from. The numbers live here, not in a
+// handler, so the api just asks "is a seat free?" (PRD-001 5.2). When PRD-006 lands
+// the real per-org cap drops in behind SeatResolver with no handler change.
+type Plan string
+
+const (
+	PlanFree     Plan = "free"
+	PlanStarter  Plan = "starter"
+	PlanTeam     Plan = "team"
+	PlanBusiness Plan = "business"
+)
+
+// ParsePlan turns a stored plan string into a known Plan, falling back to Free for an
+// empty or unrecognized value so a bad row can never grant more than the free tier.
+func ParsePlan(s string) Plan {
+	switch Plan(s) {
+	case PlanStarter:
+		return PlanStarter
+	case PlanTeam:
+		return PlanTeam
+	case PlanBusiness:
+		return PlanBusiness
+	default:
+		return PlanFree
+	}
+}
+
+// seatCaps is the per-plan seat capacity from PRD-001 5.2 (master 11 table):
+// Free 1, Starter 3, Team 10, Business 25 (per-seat add-on is PRD-006's job).
+var seatCaps = map[Plan]int{
+	PlanFree:     1,
+	PlanStarter:  3,
+	PlanTeam:     10,
+	PlanBusiness: 25,
+}
+
+// SeatResolver returns the seat cap for an org. PRD-006 will back this with the
+// real subscription; until then DefaultSeats reads it off the org's plan. The
+// interface exists so callers gate on seats today and the real one drops in later.
+type SeatResolver interface {
+	SeatCap(orgID int64, plan Plan) int
+}
+
+// DefaultSeats is the current seat resolver: it maps the org's plan to the PRD-001
+// 5.2 cap, ignoring the org id (no per-org overrides until PRD-006). An unknown
+// plan falls back to the Free cap, which fails safe (the tightest limit).
+type DefaultSeats struct{}
+
+// SeatCap returns the plan's seat capacity.
+func (DefaultSeats) SeatCap(_ int64, plan Plan) int {
+	if cap, ok := seatCaps[plan]; ok {
+		return cap
+	}
+	return seatCaps[PlanFree]
+}
+
+// FixedSeats is a seat resolver that returns the same cap for every org and plan.
+// It is the test/dev override so the seat path can be exercised above the Free cap
+// of 1 (where the owner already takes the only seat). Production wires DefaultSeats.
+type FixedSeats struct{ Cap int }
+
+// SeatCap returns the fixed cap.
+func (f FixedSeats) SeatCap(int64, Plan) int { return f.Cap }
+
+// SeatUsage is the seat meter for an org: accepted members plus reserved pending
+// invitations, against the plan cap (PRD-001 5.1). Used is what occupies a seat;
+// Cap is what the plan allows.
+type SeatUsage struct {
+	Used int
+	Cap  int
+}
+
+// HasFreeSeat reports whether one more seat can be taken (an invite can be sent).
+func (u SeatUsage) HasFreeSeat() bool { return u.Used < u.Cap }
+
+// --- monitors (PRD-006 section 3 matrix, master 6.2 hard floor) ---
+
+// HardIntervalFloorSeconds is the absolute minimum interval, never crossed on any
+// plan (master 6.2). The per-tier floor is the max of this and the tier value.
+const HardIntervalFloorSeconds = 30
+
+// MonitorLimits is the per-plan monitor allowance: the enabled-monitor cap, the
+// min check interval floor in seconds, the regions the plan allows, and how many
+// regions one monitor may use (PRD-006 3). Numbers are the locked Free/Business
+// anchors and the GTM-tunable Starter/Team values from PRD-006 appendix A.
+type MonitorLimits struct {
+	MonitorsCap          int      // enabled-monitor cap (0 means unset -> Free)
+	MinIntervalSeconds   int      // tier frequency floor (effective floor = max(hard, this))
+	RegionsAllowed       []string // region codes the plan includes
+	RegionsPerMonitorCap int      // max regions one monitor may run from
+}
+
+// monitorLimits is the per-plan monitor matrix (PRD-006 appendix A). Free and
+// Business are the locked anchors; Starter and Team scale between them. The home
+// region is the only region on Free; higher tiers add eu-west/us-east/etc.
+var monitorLimits = map[Plan]MonitorLimits{
+	PlanFree:     {MonitorsCap: 2, MinIntervalSeconds: 7200, RegionsAllowed: []string{"home"}, RegionsPerMonitorCap: 1},
+	PlanStarter:  {MonitorsCap: 25, MinIntervalSeconds: 300, RegionsAllowed: []string{"home", "eu-west"}, RegionsPerMonitorCap: 2},
+	PlanTeam:     {MonitorsCap: 100, MinIntervalSeconds: 60, RegionsAllowed: []string{"home", "eu-west", "us-east", "ap-south"}, RegionsPerMonitorCap: 4},
+	PlanBusiness: {MonitorsCap: 500, MinIntervalSeconds: 60, RegionsAllowed: []string{"home", "eu-west", "us-east", "ap-south", "sa-east", "premium-eu"}, RegionsPerMonitorCap: 6},
+}
+
+// MonitorResolver returns the monitor limits for an org. PRD-006 will back this with
+// the real per-org entitlement (with support grandfather overrides); until then
+// DefaultMonitors reads it off the org's plan. The interface mirrors SeatResolver so
+// the handler gates on limits today and the real resolver drops in with no change.
+type MonitorResolver interface {
+	MonitorLimits(orgID int64, plan Plan) MonitorLimits
+}
+
+// DefaultMonitors is the current monitor resolver: it maps the org's plan to the
+// PRD-006 matrix, ignoring the org id (no per-org overrides until PRD-006). An
+// unknown plan falls back to Free, which fails safe (the tightest limits).
+type DefaultMonitors struct{}
+
+// MonitorLimits returns the plan's monitor limits.
+func (DefaultMonitors) MonitorLimits(_ int64, plan Plan) MonitorLimits {
+	if l, ok := monitorLimits[plan]; ok {
+		return l
+	}
+	return monitorLimits[PlanFree]
+}
+
+// FixedMonitors is a monitor resolver that returns the same limits for every org and
+// plan. It is the test/dev override so the create path can be exercised above the
+// Free cap of 2 and below custom floors. Production wires DefaultMonitors.
+type FixedMonitors struct{ Limits MonitorLimits }
+
+// MonitorLimits returns the fixed limits.
+func (f FixedMonitors) MonitorLimits(int64, Plan) MonitorLimits { return f.Limits }
+
+// EffectiveIntervalFloor is the floor a monitor's interval may not go below: the
+// max of the absolute hard floor and the plan's tier floor (PRD-002 2.3 note,
+// master 6.2). The scheduler also clamps to this on dispatch (PRD-006 5.2).
+func (l MonitorLimits) EffectiveIntervalFloor() int {
+	if l.MinIntervalSeconds > HardIntervalFloorSeconds {
+		return l.MinIntervalSeconds
+	}
+	return HardIntervalFloorSeconds
+}
+
+// AllowsRegion reports whether region is in the plan's allowed set.
+func (l MonitorLimits) AllowsRegion(region string) bool {
+	for _, r := range l.RegionsAllowed {
+		if r == region {
+			return true
+		}
+	}
+	return false
+}
+
+// --- status pages (PRD-004 2.3, master 11 plan table) ---
+
+// statusPageCaps is the per-plan status-page count cap (PRD-004 2.3, master 11):
+// Free 1, Starter 1, Team 3, Business 10. Creating a page past the cap is rejected
+// on write with the upsell (PRD-004 2.3, PRD-006).
+var statusPageCaps = map[Plan]int{
+	PlanFree:     1,
+	PlanStarter:  1,
+	PlanTeam:     3,
+	PlanBusiness: 10,
+}
+
+// StatusPageResolver returns the status-page count cap for an org. PRD-006 will back
+// this with the real per-org subscription; until then DefaultStatusPages reads it off
+// the org's plan. The interface mirrors SeatResolver / MonitorResolver so the handler
+// gates on the cap today and the real resolver drops in with no change.
+type StatusPageResolver interface {
+	StatusPageCap(orgID int64, plan Plan) int
+}
+
+// DefaultStatusPages is the current status-page resolver: it maps the org's plan to
+// the PRD-004 cap, ignoring the org id (no per-org overrides until PRD-006). An
+// unknown plan falls back to Free, which fails safe (the tightest cap).
+type DefaultStatusPages struct{}
+
+// StatusPageCap returns the plan's status-page count cap.
+func (DefaultStatusPages) StatusPageCap(_ int64, plan Plan) int {
+	if cap, ok := statusPageCaps[plan]; ok {
+		return cap
+	}
+	return statusPageCaps[PlanFree]
+}
+
+// FixedStatusPages is a status-page resolver that returns the same cap for every org
+// and plan. It is the test/dev override so the create path can be exercised above the
+// Free cap of 1. Production wires DefaultStatusPages.
+type FixedStatusPages struct{ Cap int }
+
+// StatusPageCap returns the fixed cap.
+func (f FixedStatusPages) StatusPageCap(int64, Plan) int { return f.Cap }
+
+// --- retention + feature flags + the plan catalog (PRD-006 3) ---
+
+// retentionDays is the per-plan raw-results retention window in days (PRD-006 3,
+// master 12: Free 7, Starter 30, Team 90, Business 180). The cleanup job ages out
+// results beyond this; the billing/usage screen shows it (PRD-006 7.1).
+var retentionDays = map[Plan]int{
+	PlanFree:     7,
+	PlanStarter:  30,
+	PlanTeam:     90,
+	PlanBusiness: 180,
+}
+
+// customDomainAllowed is whether a plan may put a status page on a custom domain
+// (PRD-006 3: Free/Starter no, Team/Business yes).
+var customDomainAllowed = map[Plan]bool{
+	PlanFree:     false,
+	PlanStarter:  false,
+	PlanTeam:     true,
+	PlanBusiness: true,
+}
+
+// apiWriteAllowed is whether the plan's API access can write (PRD-006 3: Free is
+// read-only, paid tiers get full access). The Free key can read but a write call
+// is rejected with an upsell (PRD-006 5.1).
+var apiWriteAllowed = map[Plan]bool{
+	PlanFree:     false,
+	PlanStarter:  true,
+	PlanTeam:     true,
+	PlanBusiness: true,
+}
+
+// apiRatePerMin is the per-key request rate ceiling per plan (PRD-006 3: 30/120/
+// 300/600 req/min). Illustrative GTM-tunable defaults built against the master's
+// "read-only-low / standard / higher / highest" tiers (master 9).
+var apiRatePerMin = map[Plan]int{
+	PlanFree:     30,
+	PlanStarter:  120,
+	PlanTeam:     300,
+	PlanBusiness: 600,
+}
+
+// channelTypesAllowed is the notification channel types a plan may use (PRD-006 3).
+// All v1 channels (Slack/Discord/webhook/email-over-SMTP) are on every tier; the
+// phased PagerDuty/Opsgenie/Telegram/Teams/Twilio types are not modeled here yet
+// (they arrive with the channel roadmap, master 7 / 15). The type strings are the
+// notify descriptor types and the OpenAPI ChannelType enum, so "smtp" (not "email").
+var channelTypesAllowed = map[Plan][]string{
+	// The four basics (chat, generic webhook, email) on every plan; the integrations
+	// unlock up the ladder. Starter adds Telegram, Team adds the on-call/incident tools
+	// plus Microsoft Teams, Business adds Twilio SMS/voice and so includes them all.
+	PlanFree:     {"slack", "discord", "webhook", "smtp"},
+	PlanStarter:  {"slack", "discord", "webhook", "smtp", "telegram"},
+	PlanTeam:     {"slack", "discord", "webhook", "smtp", "telegram", "pagerduty", "opsgenie", "teams"},
+	PlanBusiness: {"slack", "discord", "webhook", "smtp", "telegram", "pagerduty", "opsgenie", "teams", "twilio"},
+}
+
+// ChannelTypesAllowed returns the notification channel types a plan may use (the
+// notify descriptor types), falling back to Free (the tightest) for an unknown
+// plan. The channel CRUD reads this to plan-gate create/update and to mark each
+// catalog entry available or not.
+func ChannelTypesAllowed(plan Plan) []string {
+	if t, ok := channelTypesAllowed[plan]; ok {
+		return t
+	}
+	return channelTypesAllowed[PlanFree]
+}
+
+// CheckNowLimits is the two-layer rate limit on manual "check now" for a single
+// monitor, decoupled from the scheduled interval floor. A manual check is a human
+// "did my fix work?" action, so we want it to feel instant for a few retries but not
+// double as free high-frequency monitoring:
+//   - CooldownSeconds is the burst layer: the minimum gap between two manual checks.
+//   - MaxPerWindow within WindowSeconds is the sustained layer: it stops someone
+//     holding the burst gap forever to get, say, 1-minute monitoring for free.
+//
+// Both must pass for a manual check to run. Free is the tightest; paid tiers loosen
+// both. Numbers are GTM-tunable (PRD-006 appendix A).
+type CheckNowLimits struct {
+	CooldownSeconds int // burst: one manual check per this many seconds
+	MaxPerWindow    int // sustained: at most this many manual checks per window
+	WindowSeconds   int // the sustained window length
+}
+
+var checkNowLimits = map[Plan]CheckNowLimits{
+	PlanFree:     {CooldownSeconds: 60, MaxPerWindow: 10, WindowSeconds: 1800},
+	PlanStarter:  {CooldownSeconds: 30, MaxPerWindow: 30, WindowSeconds: 1800},
+	PlanTeam:     {CooldownSeconds: 20, MaxPerWindow: 60, WindowSeconds: 1800},
+	PlanBusiness: {CooldownSeconds: 10, MaxPerWindow: 200, WindowSeconds: 1800},
+}
+
+// CheckNowLimitsFor returns the per-monitor manual-check limits for a plan, falling
+// back to Free (the tightest) for an unknown plan.
+func CheckNowLimitsFor(plan Plan) CheckNowLimits {
+	if l, ok := checkNowLimits[plan]; ok {
+		return l
+	}
+	return checkNowLimits[PlanFree]
+}
+
+// Retention returns the raw-results retention window in days for a plan, falling
+// back to Free (the tightest) for an unknown plan.
+func Retention(plan Plan) int {
+	if d, ok := retentionDays[plan]; ok {
+		return d
+	}
+	return retentionDays[PlanFree]
+}
+
+// CustomDomainAllowed reports whether a plan may use a custom-domain status page.
+func CustomDomainAllowed(plan Plan) bool { return customDomainAllowed[plan] }
+
+// APIWriteAllowed reports whether a plan's API access can write.
+func APIWriteAllowed(plan Plan) bool { return apiWriteAllowed[plan] }
+
+// APIRatePerMin returns the per-key request-rate ceiling for a plan, falling back
+// to Free for an unknown plan.
+func APIRatePerMin(plan Plan) int {
+	if r, ok := apiRatePerMin[plan]; ok {
+		return r
+	}
+	return apiRatePerMin[PlanFree]
+}
+
+// FailureSnapshotAllowed reports whether a plan may store the last failed check's
+// response (PRD-002 3.8). On for every tier now; gateable per plan later (PRD-006 3).
+func FailureSnapshotAllowed(Plan) bool { return true }
+
+// PlanEntry is one tier in the public plan catalog: the plan id plus every gated/
+// metered limit for that tier (PRD-006 3 matrix). It is read-only reference config
+// the FE renders as a plan-comparison/upgrade table, so it carries no per-org usage.
+type PlanEntry struct {
+	Plan                 Plan
+	MonitorsCap          int
+	MinIntervalSeconds   int
+	SeatsCap             int
+	StatusPagesCap       int
+	RetentionDays        int
+	RegionsAllowed       []string
+	RegionsPerMonitorCap int
+	CustomDomainAllowed  bool
+	APIWriteAllowed      bool
+	APIRatePerMin        int
+	ChannelTypes         []string
+}
+
+// catalogOrder is the tier order the catalog returns, cheapest to richest, so the
+// FE renders the comparison table left to right without sorting.
+var catalogOrder = []Plan{PlanFree, PlanStarter, PlanTeam, PlanBusiness}
+
+// Catalog returns the public plan tiers and their limits (PRD-006 3), sourced from
+// the per-plan maps in this package so the FE renders the upgrade table without
+// hardcoding. It is store-free reference config; usage vs caps for one org is the
+// per-org entitlements endpoint, not this.
+func Catalog() []PlanEntry {
+	out := make([]PlanEntry, 0, len(catalogOrder))
+	for _, p := range catalogOrder {
+		ml := monitorLimits[p]
+		out = append(out, PlanEntry{
+			Plan:                 p,
+			MonitorsCap:          ml.MonitorsCap,
+			MinIntervalSeconds:   ml.EffectiveIntervalFloor(),
+			SeatsCap:             seatCaps[p],
+			StatusPagesCap:       statusPageCaps[p],
+			RetentionDays:        retentionDays[p],
+			RegionsAllowed:       ml.RegionsAllowed,
+			RegionsPerMonitorCap: ml.RegionsPerMonitorCap,
+			CustomDomainAllowed:  customDomainAllowed[p],
+			APIWriteAllowed:      apiWriteAllowed[p],
+			APIRatePerMin:        apiRatePerMin[p],
+			ChannelTypes:         channelTypesAllowed[p],
+		})
+	}
+	return out
+}

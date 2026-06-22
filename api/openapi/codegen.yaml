@@ -1,0 +1,15 @@
+# oapi-codegen config. Generates models + a strict (typed) server interface + a
+# net/http router from api/openapi/v1.yaml into internal/apigen. The dev stub and
+# the real api both implement the generated StrictServerInterface (RFC-012 8.1).
+package: apigen
+output: internal/apigen/apigen.gen.go
+generate:
+  models: true
+  strict-server: true
+  std-http-server: true
+  embedded-spec: true
+compatibility:
+  # Keep the short enum member names (e.g. apigen.Slack, apigen.Free) the codebase
+  # and its tests use, instead of the newer type-prefixed style (ChannelTypeSlack)
+  # that the current oapi-codegen defaults to. This keeps make gen drift-free.
+  always-prefix-enum-values: false
