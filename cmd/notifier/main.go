@@ -44,7 +44,7 @@ func main() {
 		svc.Log.Error("connect redis", "err", err)
 		os.Exit(1)
 	}
-	cons, err := svc.ConnectKafkaConsumer("notifier", bus.TopicNotifyEvents)
+	cons, err := svc.ConnectBusConsumer("notifier", bus.TopicNotifyEvents)
 	if err != nil {
 		svc.Log.Error("connect kafka consumer", "err", err)
 		os.Exit(1)

@@ -52,7 +52,11 @@ type Config struct {
 	PostgresDSN  string
 	RedisAddr    string
 	KafkaBrokers []string
-	SecretKey    string // base64 of 32 bytes, validated by crypto.LoadKey
+	// BusBackend selects the event transport: "kafka" (default, the distributed
+	// deployment) or "redis" (Redis Streams, a single-node lightweight mode that
+	// reuses Redis instead of a separate broker). See internal/bus.
+	BusBackend string
+	SecretKey  string // base64 of 32 bytes, validated by crypto.LoadKey
 
 	// BlockPrivateNetworks turns on the checker's SSRF guard. Default false here
 	// (v1 self-host default); the hosted product sets it true (PRD-013). Worker reads it.
@@ -147,12 +151,27 @@ func Load(service Service) (*Config, error) {
 			return nil, err
 		}
 	}
+	// n.kafka means "this service uses the event bus". Which transport it needs depends
+	// on PULSE_BUS: kafka needs the brokers; redis reuses PULSE_REDIS_ADDR.
+	cfg.BusBackend = withDefault("PULSE_BUS", "kafka")
+	if cfg.BusBackend != "kafka" && cfg.BusBackend != "redis" {
+		return nil, fmt.Errorf("PULSE_BUS must be \"kafka\" or \"redis\", got %q", cfg.BusBackend)
+	}
 	if n.kafka {
-		brokers, err := required("PULSE_KAFKA_BROKERS")
-		if err != nil {
-			return nil, err
+		switch cfg.BusBackend {
+		case "kafka":
+			brokers, err := required("PULSE_KAFKA_BROKERS")
+			if err != nil {
+				return nil, err
+			}
+			cfg.KafkaBrokers = splitList(brokers)
+		case "redis":
+			if cfg.RedisAddr == "" {
+				if cfg.RedisAddr, err = required("PULSE_REDIS_ADDR"); err != nil {
+					return nil, err
+				}
+			}
 		}
-		cfg.KafkaBrokers = splitList(brokers)
 	}
 	if n.secret {
 		if cfg.SecretKey, err = required("PULSE_SECRET_KEY"); err != nil {

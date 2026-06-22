@@ -77,24 +77,40 @@ func (s *Service) ConnectRedis(ctx context.Context) (*kv.Client, error) {
 	return rd, nil
 }
 
-// ConnectKafkaProducer opens a producer and registers its readiness check and closer.
-func (s *Service) ConnectKafkaProducer() (*bus.Producer, error) {
-	p, err := bus.NewProducer(s.Cfg.KafkaBrokers)
+// ConnectBusProducer opens an event-bus producer on the configured backend
+// (PULSE_BUS) and registers its readiness check and closer.
+func (s *Service) ConnectBusProducer() (*bus.Producer, error) {
+	var p *bus.Producer
+	var err error
+	switch s.Cfg.BusBackend {
+	case "redis":
+		p, err = bus.NewRedisProducer(s.Cfg.RedisAddr)
+	default:
+		p, err = bus.NewKafkaProducer(s.Cfg.KafkaBrokers)
+	}
 	if err != nil {
 		return nil, err
 	}
-	s.AddReady("kafka-producer", p.Ping)
+	s.AddReady("bus-producer", p.Ping)
 	s.AddCloser(func(context.Context) error { p.Close(); return nil })
 	return p, nil
 }
 
-// ConnectKafkaConsumer joins a group and registers its readiness check and closer.
-func (s *Service) ConnectKafkaConsumer(group string, topics ...string) (*bus.Consumer, error) {
-	c, err := bus.NewConsumer(s.Cfg.KafkaBrokers, group, topics...)
+// ConnectBusConsumer joins a group on the configured backend (PULSE_BUS) and
+// registers its readiness check and closer.
+func (s *Service) ConnectBusConsumer(group string, topics ...string) (*bus.Consumer, error) {
+	var c *bus.Consumer
+	var err error
+	switch s.Cfg.BusBackend {
+	case "redis":
+		c, err = bus.NewRedisConsumer(s.Cfg.RedisAddr, group, topics...)
+	default:
+		c, err = bus.NewKafkaConsumer(s.Cfg.KafkaBrokers, group, topics...)
+	}
 	if err != nil {
 		return nil, err
 	}
-	s.AddReady("kafka-consumer", c.Ping)
+	s.AddReady("bus-consumer", c.Ping)
 	s.AddCloser(func(context.Context) error { c.Close(); return nil })
 	return c, nil
 }

@@ -34,13 +34,13 @@ func main() {
 		svc.Log.Error("connect redis", "err", err)
 		os.Exit(1)
 	}
-	prod, err := svc.ConnectKafkaProducer()
+	prod, err := svc.ConnectBusProducer()
 	if err != nil {
 		svc.Log.Error("connect kafka producer", "err", err)
 		os.Exit(1)
 	}
 	region := svc.Cfg.Region
-	cons, err := svc.ConnectKafkaConsumer("worker-"+region, bus.CheckJobsTopic(region))
+	cons, err := svc.ConnectBusConsumer("worker-"+region, bus.CheckJobsTopic(region))
 	if err != nil {
 		svc.Log.Error("connect kafka consumer", "err", err, "region", region)
 		os.Exit(1)

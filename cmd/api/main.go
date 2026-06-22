@@ -47,7 +47,7 @@ func main() {
 		svc.Log.Error("connect redis", "err", err)
 		os.Exit(1)
 	}
-	prod, err := svc.ConnectKafkaProducer()
+	prod, err := svc.ConnectBusProducer()
 	if err != nil {
 		svc.Log.Error("connect kafka", "err", err)
 		os.Exit(1)

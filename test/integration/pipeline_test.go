@@ -109,19 +109,19 @@ func TestPipelineSchedulerToWorker(t *testing.T) {
 		t.Fatalf("create failing monitor: %v", err)
 	}
 
-	prod, err := bus.NewProducer([]string{broker})
+	prod, err := bus.NewKafkaProducer([]string{broker})
 	if err != nil {
 		t.Fatalf("producer: %v", err)
 	}
 	defer prod.Close()
-	cons, err := bus.NewConsumer([]string{broker}, "worker-home", bus.CheckJobsTopic("home"))
+	cons, err := bus.NewKafkaConsumer([]string{broker}, "worker-home", bus.CheckJobsTopic("home"))
 	if err != nil {
 		t.Fatalf("consumer: %v", err)
 	}
 	defer cons.Close()
 	// The worker emits check.results only (ADR-0011); the alerting consumer does the
 	// durable check_results upsert, so it must run for the result row to land.
-	alertCons, err := bus.NewConsumer([]string{broker}, "alerting", bus.TopicCheckResults)
+	alertCons, err := bus.NewKafkaConsumer([]string{broker}, "alerting", bus.TopicCheckResults)
 	if err != nil {
 		t.Fatalf("alerting consumer: %v", err)
 	}

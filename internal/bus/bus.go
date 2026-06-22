@@ -1,17 +1,18 @@
-// Package bus wraps the Kafka client (franz-go) with thin producer/consumer
-// helpers, the canonical topic names and partition keys (RFC-002 section 5), and
-// correlation-id propagation over a message header so one check can be followed
-// across services (RFC-010 section 1.2). The barebones covers reliable produce
-// and consume; DLQs and per-consumer idempotency land with the real consumers.
+// Package bus is the event transport: thin producer/consumer helpers, the canonical
+// topic names and partition keys (RFC-002 section 5), and correlation-id propagation
+// so one check can be followed across services (RFC-010 section 1.2).
+//
+// The transport is pluggable behind a small backend interface (PULSE_BUS):
+//   - "kafka" (default): franz-go against any Kafka-compatible broker. Used in the
+//     real distributed deployment (managed Kafka, RFC-011).
+//   - "redis": Redis Streams. A single-node lightweight mode that reuses the Redis
+//     the services already run, so a small box does not also need a Kafka/JVM broker.
+//
+// Both keep the same at-least-once contract: a handler that returns an error leaves
+// the message unacked so it is redelivered.
 package bus
 
-import (
-	"context"
-
-	"github.com/twmb/franz-go/pkg/kgo"
-
-	"pulse/internal/obs"
-)
+import "context"
 
 // Canonical topics (RFC-002 section 5.1). check.jobs is per-region, see CheckJobsTopic.
 const (
@@ -36,100 +37,83 @@ type Record struct {
 	CorrelationID string
 }
 
-// Producer publishes messages.
-type Producer struct {
-	cl *kgo.Client
+// producerBackend is the transport a Producer delegates to (kafka or redis).
+type producerBackend interface {
+	produce(ctx context.Context, topic, key string, value []byte) error
+	ping(ctx context.Context) error
+	close()
 }
 
-// NewProducer connects a producer to the brokers.
-func NewProducer(brokers []string) (*Producer, error) {
-	cl, err := kgo.NewClient(
-		kgo.SeedBrokers(brokers...),
-		// Let the broker create a topic on first produce when it permits it. In
-		// prod, topics are provisioned by RFC-011 and the broker disallows this,
-		// so the flag is a harmless no-op there.
-		kgo.AllowAutoTopicCreation(),
-	)
-	if err != nil {
-		return nil, err
-	}
-	return &Producer{cl: cl}, nil
+// consumerBackend is the transport a Consumer delegates to.
+type consumerBackend interface {
+	poll(ctx context.Context, handler func(Record) error) error
+	ping(ctx context.Context) error
+	close()
 }
+
+// Producer publishes messages over the configured backend.
+type Producer struct{ b producerBackend }
 
 // Produce synchronously publishes one message, keyed for per-key ordering, and
-// stamps the context's correlation id as a header.
+// carries the context's correlation id.
 func (p *Producer) Produce(ctx context.Context, topic, key string, value []byte) error {
-	rec := &kgo.Record{
-		Topic: topic,
-		Key:   []byte(key),
-		Value: value,
-	}
-	if id := obs.CorrelationID(ctx); id != "" {
-		rec.Headers = append(rec.Headers, kgo.RecordHeader{Key: correlationHeader, Value: []byte(id)})
-	}
-	return p.cl.ProduceSync(ctx, rec).FirstErr()
+	return p.b.produce(ctx, topic, key, value)
 }
 
-// Ping checks broker connectivity (used by /readyz).
-func (p *Producer) Ping(ctx context.Context) error { return p.cl.Ping(ctx) }
+// Ping checks backend connectivity (used by /readyz).
+func (p *Producer) Ping(ctx context.Context) error { return p.b.ping(ctx) }
 
 // Close flushes and closes the producer.
-func (p *Producer) Close() { p.cl.Close() }
+func (p *Producer) Close() { p.b.close() }
 
-// Consumer reads from a consumer group.
-type Consumer struct {
-	cl *kgo.Client
+// Consumer reads from a consumer group over the configured backend.
+type Consumer struct{ b consumerBackend }
+
+// Poll fetches a batch and calls handler for each record. It returns on context
+// cancellation or the first handler error; an errored record is left unacked and
+// redelivered on a later poll.
+func (c *Consumer) Poll(ctx context.Context, handler func(Record) error) error {
+	return c.b.poll(ctx, handler)
 }
 
-// NewConsumer joins the group and subscribes to the topics.
-func NewConsumer(brokers []string, group string, topics ...string) (*Consumer, error) {
-	cl, err := kgo.NewClient(
-		kgo.SeedBrokers(brokers...),
-		kgo.ConsumerGroup(group),
-		kgo.ConsumeTopics(topics...),
-		// A fresh group reads from the start. Our consumers are idempotent
-		// (RFC-002 section 6), so reprocessing from the beginning is safe.
-		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
-	)
+// Ping checks backend connectivity (used by /readyz).
+func (c *Consumer) Ping(ctx context.Context) error { return c.b.ping(ctx) }
+
+// Close leaves the group and closes the consumer.
+func (c *Consumer) Close() { c.b.close() }
+
+// NewKafkaProducer connects a Kafka-backed producer to the brokers.
+func NewKafkaProducer(brokers []string) (*Producer, error) {
+	b, err := newKafkaProducer(brokers)
 	if err != nil {
 		return nil, err
 	}
-	return &Consumer{cl: cl}, nil
+	return &Producer{b: b}, nil
 }
 
-// Poll fetches one batch and calls handler for each record. It returns on context
-// cancellation or the first fetch/handler error. Offsets autocommit by default;
-// the real consumers tighten this with explicit commits once idempotency lands.
-func (c *Consumer) Poll(ctx context.Context, handler func(Record) error) error {
-	fetches := c.cl.PollFetches(ctx)
-	if err := ctx.Err(); err != nil {
-		return err
+// NewKafkaConsumer joins the group and subscribes to the topics over Kafka.
+func NewKafkaConsumer(brokers []string, group string, topics ...string) (*Consumer, error) {
+	b, err := newKafkaConsumer(brokers, group, topics...)
+	if err != nil {
+		return nil, err
 	}
-	if errs := fetches.Errors(); len(errs) > 0 {
-		return errs[0].Err
-	}
-	var herr error
-	fetches.EachRecord(func(r *kgo.Record) {
-		if herr != nil {
-			return
-		}
-		herr = handler(toRecord(r))
-	})
-	return herr
+	return &Consumer{b: b}, nil
 }
 
-// Ping checks broker connectivity (used by /readyz).
-func (c *Consumer) Ping(ctx context.Context) error { return c.cl.Ping(ctx) }
-
-// Close leaves the group and closes the consumer.
-func (c *Consumer) Close() { c.cl.Close() }
-
-func toRecord(r *kgo.Record) Record {
-	rec := Record{Topic: r.Topic, Key: string(r.Key), Value: r.Value}
-	for _, h := range r.Headers {
-		if h.Key == correlationHeader {
-			rec.CorrelationID = string(h.Value)
-		}
+// NewRedisProducer connects a Redis Streams-backed producer to addr.
+func NewRedisProducer(addr string) (*Producer, error) {
+	b, err := newRedisProducer(addr)
+	if err != nil {
+		return nil, err
 	}
-	return rec
+	return &Producer{b: b}, nil
+}
+
+// NewRedisConsumer joins the group and subscribes to the topics over Redis Streams.
+func NewRedisConsumer(addr, group string, topics ...string) (*Consumer, error) {
+	b, err := newRedisConsumer(addr, group, topics...)
+	if err != nil {
+		return nil, err
+	}
+	return &Consumer{b: b}, nil
 }

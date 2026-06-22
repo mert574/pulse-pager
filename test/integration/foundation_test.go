@@ -187,7 +187,7 @@ func TestFoundation(t *testing.T) {
 	t.Run("kafka_roundtrip", func(t *testing.T) {
 		const topic = "pulse.itest"
 
-		prod, err := bus.NewProducer([]string{broker})
+		prod, err := bus.NewKafkaProducer([]string{broker})
 		if err != nil {
 			t.Fatalf("producer: %v", err)
 		}
@@ -198,7 +198,7 @@ func TestFoundation(t *testing.T) {
 			t.Fatalf("produce: %v", err)
 		}
 
-		cons, err := bus.NewConsumer([]string{broker}, "itest-group", topic)
+		cons, err := bus.NewKafkaConsumer([]string{broker}, "itest-group", topic)
 		if err != nil {
 			t.Fatalf("consumer: %v", err)
 		}
