@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Pulse Pager Postgres backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+# Run on next boot if the machine was off at the scheduled time (a Pi is not 24/7).
+Persistent=true
+
+[Install]
+WantedBy=timers.target
