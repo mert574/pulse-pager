@@ -8,3 +8,6 @@ docs
 
 # local agent config
 .claude/
+
+# temporary single-host (Pi) deployment config; real deploy is k8s (RFC-011)
+deploy/
