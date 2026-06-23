@@ -25,13 +25,16 @@ lint:
 # schema changes go through `make migrate`, never by re-running this.
 .PHONY: schema
 schema:
-	go run ./cmd/schema
+	@test -f .env || { echo ".env not found; copy .env.example to .env first"; exit 1; }
+	set -a; . ./.env; set +a; go run ./cmd/schema
 
 # Apply pending migrations to PULSE_POSTGRES_DSN (forward-only, never drops data).
-# This is the normal way to change the schema of any real database.
+# This is the normal way to change the schema of any real database. Sources .env so
+# PULSE_POSTGRES_DSN is set (the app does not read .env itself).
 .PHONY: migrate
 migrate:
-	go run ./cmd/migrate
+	@test -f .env || { echo ".env not found; copy .env.example to .env first"; exit 1; }
+	set -a; . ./.env; set +a; go run ./cmd/migrate
 
 # Create a new timestamped migration: make migrate-create name=add_widget_table
 .PHONY: migrate-create
