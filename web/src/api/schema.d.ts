@@ -476,6 +476,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/orgs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every organization with its plan (platform admins only).
+         * @description Flat list of all orgs for the operator admin panel, each with its current plan, so an admin can see and change which plan an org is on. Gated by the PULSE_PLATFORM_ADMINS allowlist; a signed-in non-admin gets a 403. Not org-scoped.
+         */
+        get: operations["listAdminOrgs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/orgs/{orgId}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set an organization's plan (platform admins only).
+         * @description Operator override of an org's billing tier, set by hand until Stripe lands (RFC-001 4.2). Gated by the PULSE_PLATFORM_ADMINS allowlist; a signed-in non-admin gets a 403.
+         */
+        put: operations["setAdminOrgPlan"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgId}/monitors": {
         parameters: {
             query?: never;
@@ -944,6 +986,18 @@ export interface components {
             date: string;
             users: number;
             orgs: number;
+        };
+        /** @description One organization with its current plan, for the admin panel. */
+        AdminOrg: {
+            id: string;
+            name: string;
+            slug: string;
+            plan: components["schemas"]["Plan"];
+            /** Format: date-time */
+            created_at: string;
+        };
+        AdminOrgPlanUpdate: {
+            plan: components["schemas"]["Plan"];
         };
         /** @description Editable profile fields. All optional; an omitted field is left unchanged. */
         MeUpdate: {
@@ -2252,6 +2306,58 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listAdminOrgs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOrg"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    setAdminOrgPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminOrgPlanUpdate"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOrg"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
         };
     };
     listMonitors: {

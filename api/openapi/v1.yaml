@@ -563,6 +563,54 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /admin/orgs:
+    get:
+      operationId: listAdminOrgs
+      tags: [admin]
+      summary: Every organization with its plan (platform admins only).
+      description: >
+        Flat list of all orgs for the operator admin panel, each with its current
+        plan, so an admin can see and change which plan an org is on. Gated by the
+        PULSE_PLATFORM_ADMINS allowlist; a signed-in non-admin gets a 403. Not
+        org-scoped.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AdminOrg" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/orgs/{orgId}/plan:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    put:
+      operationId: setAdminOrgPlan
+      tags: [admin]
+      summary: Set an organization's plan (platform admins only).
+      description: >
+        Operator override of an org's billing tier, set by hand until Stripe lands
+        (RFC-001 4.2). Gated by the PULSE_PLATFORM_ADMINS allowlist; a signed-in
+        non-admin gets a 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminOrgPlanUpdate" }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminOrg" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /orgs/{orgId}/monitors:
     parameters:
       - $ref: "#/components/parameters/OrgId"
@@ -1316,6 +1364,21 @@ components:
         date: { type: string, description: "the UTC day, YYYY-MM-DD" }
         users: { type: integer }
         orgs: { type: integer }
+    AdminOrg:
+      type: object
+      description: One organization with its current plan, for the admin panel.
+      required: [id, name, slug, plan, created_at]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        slug: { type: string }
+        plan: { $ref: "#/components/schemas/Plan" }
+        created_at: { type: string, format: date-time }
+    AdminOrgPlanUpdate:
+      type: object
+      required: [plan]
+      properties:
+        plan: { $ref: "#/components/schemas/Plan" }
     MeUpdate:
       type: object
       description: >

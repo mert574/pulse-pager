@@ -5,7 +5,12 @@ import { client, ApiError } from "../api/client.js";
 import { t, type MessageKey } from "../i18n.js";
 import { icon } from "../icons.js";
 import { formatDuration } from "../format.js";
-import type { AdminMetrics, MonitorType, Plan } from "../api/types.js";
+import type {
+  AdminMetrics,
+  AdminOrg,
+  MonitorType,
+  Plan,
+} from "../api/types.js";
 
 // Operator admin panel: platform-wide totals across every org (signed-up users,
 // orgs, monitors, channels), orgs by plan, and a 30-day signup trend. It lives in
@@ -36,8 +41,13 @@ const TYPE_LABEL: Record<MonitorType, MessageKey> = {
 @customElement("admin-view")
 export class AdminView extends AppElement {
   @state() private metrics: AdminMetrics | null = null;
+  @state() private orgs: AdminOrg[] | null = null;
   @state() private error: string | null = null;
   @state() private forbidden = false;
+  // id of the org whose plan is being saved right now (disables its select), and
+  // a separate error for a failed plan change so it doesn't blow away the panel.
+  @state() private savingOrgId: string | null = null;
+  @state() private planError: string | null = null;
 
   override firstUpdated(): void {
     void this.load();
@@ -47,9 +57,15 @@ export class AdminView extends AppElement {
     this.error = null;
     this.forbidden = false;
     try {
-      this.metrics = await client.getAdminMetrics();
+      const [metrics, orgs] = await Promise.all([
+        client.getAdminMetrics(),
+        client.listAdminOrgs(),
+      ]);
+      this.metrics = metrics;
+      this.orgs = orgs;
     } catch (err) {
       this.metrics = null;
+      this.orgs = null;
       if (err instanceof ApiError && err.status === 403) {
         this.forbidden = true;
       } else {
@@ -60,7 +76,21 @@ export class AdminView extends AppElement {
 
   private retry(): void {
     this.metrics = null;
+    this.orgs = null;
     void this.load();
+  }
+
+  private async changePlan(orgId: string, plan: Plan): Promise<void> {
+    this.savingOrgId = orgId;
+    this.planError = null;
+    try {
+      const updated = await client.setAdminOrgPlan(orgId, plan);
+      this.orgs = (this.orgs ?? []).map((o) => (o.id === orgId ? updated : o));
+    } catch (err) {
+      this.planError = err instanceof ApiError ? err.message : t("state.error");
+    } finally {
+      this.savingOrgId = null;
+    }
   }
 
   override render() {
@@ -68,7 +98,9 @@ export class AdminView extends AppElement {
       <div class="flex flex-col gap-8 w-full">
         <div>
           <h1 class="text-2xl font-bold">${t("admin.title")}</h1>
-          <p class="text-base-content/60 text-sm mt-1">${t("admin.subtitle")}</p>
+          <p class="text-base-content/60 text-sm mt-1">
+            ${t("admin.subtitle")}
+          </p>
         </div>
         ${this.body()}
       </div>
@@ -85,7 +117,9 @@ export class AdminView extends AppElement {
     if (this.error) {
       return html`<div role="alert" class="alert alert-error">
         <span>${this.error}</span>
-        <button class="btn btn-sm" @click=${this.retry}>${t("state.retry")}</button>
+        <button class="btn btn-sm" @click=${this.retry}>
+          ${t("state.retry")}
+        </button>
       </div>`;
     }
     if (!this.metrics) {
@@ -97,15 +131,71 @@ export class AdminView extends AppElement {
     }
     return html`
       ${this.totals(this.metrics)} ${this.activation(this.metrics)}
-      ${this.byPlan(this.metrics)} ${this.byType(this.metrics)}
-      ${this.signups(this.metrics)}
+      ${this.byPlan(this.metrics)} ${this.orgsTable()}
+      ${this.byType(this.metrics)} ${this.signups(this.metrics)}
+    `;
+  }
+
+  // --- organizations (see and change each org's plan) ---
+
+  private orgsTable() {
+    const orgs = this.orgs;
+    if (!orgs) return nothing;
+    return html`
+      <section class="flex flex-col gap-3">
+        <h2 class="text-lg font-semibold">${t("admin.organizations")}</h2>
+        ${this.planError
+          ? html`<div role="alert" class="alert alert-error">
+              <span>${this.planError}</span>
+            </div>`
+          : nothing}
+        <table class="table border border-base-300 rounded-box">
+          <thead>
+            <tr>
+              <th>${t("admin.orgName")}</th>
+              <th>${t("admin.orgSlug")}</th>
+              <th>${t("admin.plan")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${orgs.map(
+              (o) =>
+                html`<tr>
+                  <td>${o.name}</td>
+                  <td class="text-base-content/60">${o.slug}</td>
+                  <td>
+                    <select
+                      class="select select-sm select-bordered w-44"
+                      aria-label=${`${t("admin.plan")} — ${o.name}`}
+                      .value=${o.plan}
+                      ?disabled=${this.savingOrgId === o.id}
+                      @change=${(e: Event) =>
+                        this.changePlan(
+                          o.id,
+                          (e.target as HTMLSelectElement).value as Plan,
+                        )}
+                    >
+                      ${PLAN_ORDER.map(
+                        (p) =>
+                          html`<option value=${p} ?selected=${p === o.plan}>
+                            ${t(PLAN_LABEL[p])}
+                          </option>`,
+                      )}
+                    </select>
+                  </td>
+                </tr>`,
+            )}
+          </tbody>
+        </table>
+      </section>
     `;
   }
 
   // --- activation (orgs actually using the product) ---
 
   private activation(m: AdminMetrics) {
-    const rate = m.orgs > 0 ? Math.round((m.orgs_with_monitor / m.orgs) * 100) : 0;
+    const rate =
+      m.orgs > 0 ? Math.round((m.orgs_with_monitor / m.orgs) * 100) : 0;
     const ttfm =
       m.median_time_to_first_monitor_seconds == null
         ? "—"
@@ -129,7 +219,9 @@ export class AdminView extends AppElement {
 
   // A card whose value is already-formatted text (not a raw number).
   private textCard(label: string, value: string) {
-    return html`<div class="rounded-box border border-base-300 p-5 flex flex-col gap-1">
+    return html`<div
+      class="rounded-box border border-base-300 p-5 flex flex-col gap-1"
+    >
       <span class="text-base-content/60 text-sm">${label}</span>
       <span class="text-3xl font-bold tabular-nums">${value}</span>
     </div>`;
@@ -153,12 +245,18 @@ export class AdminView extends AppElement {
   }
 
   private card(label: string, value: number, sub?: string, suffix?: string) {
-    return html`<div class="rounded-box border border-base-300 p-5 flex flex-col gap-1">
+    return html`<div
+      class="rounded-box border border-base-300 p-5 flex flex-col gap-1"
+    >
       <span class="text-base-content/60 text-sm">${label}</span>
       <span class="text-3xl font-bold tabular-nums"
-        >${value}${suffix ? html`<span class="text-xl">${suffix}</span>` : nothing}</span
+        >${value}${suffix
+          ? html`<span class="text-xl">${suffix}</span>`
+          : nothing}</span
       >
-      ${sub ? html`<span class="text-xs text-base-content/50">${sub}</span>` : nothing}
+      ${sub
+        ? html`<span class="text-xs text-base-content/50">${sub}</span>`
+        : nothing}
     </div>`;
   }
 
@@ -179,10 +277,11 @@ export class AdminView extends AppElement {
           </thead>
           <tbody>
             ${PLAN_ORDER.map(
-              (p) => html`<tr>
-                <td>${t(PLAN_LABEL[p])}</td>
-                <td class="text-right tabular-nums">${counts.get(p) ?? 0}</td>
-              </tr>`,
+              (p) =>
+                html`<tr>
+                  <td>${t(PLAN_LABEL[p])}</td>
+                  <td class="text-right tabular-nums">${counts.get(p) ?? 0}</td>
+                </tr>`,
             )}
           </tbody>
         </table>
@@ -207,10 +306,13 @@ export class AdminView extends AppElement {
           </thead>
           <tbody>
             ${TYPE_ORDER.map(
-              (ty) => html`<tr>
-                <td>${t(TYPE_LABEL[ty])}</td>
-                <td class="text-right tabular-nums">${counts.get(ty) ?? 0}</td>
-              </tr>`,
+              (ty) =>
+                html`<tr>
+                  <td>${t(TYPE_LABEL[ty])}</td>
+                  <td class="text-right tabular-nums">
+                    ${counts.get(ty) ?? 0}
+                  </td>
+                </tr>`,
             )}
           </tbody>
         </table>
@@ -229,16 +331,27 @@ export class AdminView extends AppElement {
         <h2 class="text-lg font-semibold">${t("admin.signups")}</h2>
         <div class="rounded-box border border-base-300 p-5 flex flex-col gap-4">
           <div class="flex gap-6 text-sm">
-            <span>${t("admin.newUsers")}: <b class="tabular-nums">${totalUsers}</b></span>
-            <span>${t("admin.newOrgs")}: <b class="tabular-nums">${totalOrgs}</b></span>
+            <span
+              >${t("admin.newUsers")}:
+              <b class="tabular-nums">${totalUsers}</b></span
+            >
+            <span
+              >${t("admin.newOrgs")}:
+              <b class="tabular-nums">${totalOrgs}</b></span
+            >
           </div>
-          <div class="flex items-end gap-0.5 h-24" role="img" aria-label=${t("admin.signups")}>
+          <div
+            class="flex items-end gap-0.5 h-24"
+            role="img"
+            aria-label=${t("admin.signups")}
+          >
             ${m.signups.map(
-              (s) => html`<div
-                class="flex-1 bg-primary/70 rounded-t min-h-px"
-                style=${`height:${Math.round((s.users / max) * 100)}%`}
-                title=${`${s.date}: ${s.users} ${t("admin.newUsers")}, ${s.orgs} ${t("admin.newOrgs")}`}
-              ></div>`,
+              (s) =>
+                html`<div
+                  class="flex-1 bg-primary/70 rounded-t min-h-px"
+                  style=${`height:${Math.round((s.users / max) * 100)}%`}
+                  title=${`${s.date}: ${s.users} ${t("admin.newUsers")}, ${s.orgs} ${t("admin.newOrgs")}`}
+                ></div>`,
             )}
           </div>
           <div class="flex justify-between text-xs text-base-content/50">

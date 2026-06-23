@@ -76,6 +76,10 @@ func (s *Server) Router() http.Handler {
 	// Cloudflare Access identity (or falls back to the session in local/dev); the
 	// handler then enforces the PULSE_PLATFORM_ADMINS allowlist and 403s a non-admin.
 	mux.Handle("GET /api/v1/admin/metrics", s.adminAuth(http.HandlerFunc(wrapper.GetAdminMetrics)))
+	// admin: list every org and set an org's plan by hand (operator override until
+	// Stripe lands). Same adminAuth + allowlist as the metrics endpoint.
+	mux.Handle("GET /api/v1/admin/orgs", s.adminAuth(http.HandlerFunc(wrapper.ListAdminOrgs)))
+	mux.Handle("PUT /api/v1/admin/orgs/{orgId}/plan", s.adminAuth(http.HandlerFunc(wrapper.SetAdminOrgPlan)))
 
 	// orgs: list/create are per-user (Identify only).
 	mux.Handle("GET /api/v1/orgs", identify(http.HandlerFunc(wrapper.ListOrgs)))

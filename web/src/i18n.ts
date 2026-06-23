@@ -26,7 +26,8 @@ const en = {
   // create organization (RFC-013 section 4.2)
   "orgForm.heading": "Create organization",
   "orgForm.name": "Organization name",
-  "orgForm.helpName": "A name for the new organization. You can change it later.",
+  "orgForm.helpName":
+    "A name for the new organization. You can change it later.",
   "orgForm.create": "Create organization",
   "orgForm.creating": "Creating…",
   "orgForm.created": "Organization created",
@@ -37,14 +38,16 @@ const en = {
   "account.profile": "Profile",
   "account.name": "Name",
   "account.email": "Email",
-  "account.emailHint": "Your email comes from your sign-in provider and cannot be changed here.",
+  "account.emailHint":
+    "Your email comes from your sign-in provider and cannot be changed here.",
   "account.language": "Language",
   "account.timezone": "Timezone",
   "account.save": "Save changes",
   "account.saving": "Saving…",
   "account.saved": "Profile saved",
   "account.providers": "Linked accounts",
-  "account.providersHint": "Sign in to Pulse Pager with any of these providers.",
+  "account.providersHint":
+    "Sign in to Pulse Pager with any of these providers.",
   "account.google": "Google",
   "account.github": "GitHub",
   "account.connected": "Connected",
@@ -55,7 +58,8 @@ const en = {
   "account.sessions": "Sessions",
   "account.logout": "Log out",
   "account.logoutAll": "Log out of all devices",
-  "account.logoutAllHint": "Signs you out everywhere, including other browsers and devices.",
+  "account.logoutAllHint":
+    "Signs you out everywhere, including other browsers and devices.",
 
   // nav
   "nav.monitors": "Monitors",
@@ -93,6 +97,9 @@ const en = {
   "admin.timeToFirstMonitor": "Median time to first monitor",
   "admin.backToApp": "Back to app",
   "admin.forbidden": "You do not have access to the admin panel.",
+  "admin.organizations": "Organizations",
+  "admin.orgName": "Name",
+  "admin.orgSlug": "Slug",
 
   // shared states (RFC-013 section 10.2)
   "state.loading": "Loading…",
@@ -114,7 +121,8 @@ const en = {
 
   // public status page (RFC-013 section 8.2)
   "statusPage.allOperational": "All systems operational",
-  "statusPage.placeholder": "Status page content lands in the status-page phase.",
+  "statusPage.placeholder":
+    "Status page content lands in the status-page phase.",
 
   // upsell (RFC-013 section 6.3)
   "upsell.limit": "You have reached your plan limit.",
@@ -152,12 +160,14 @@ const en = {
   "monitor.edit": "Edit",
   "monitor.delete": "Delete",
   "monitor.deleteHeading": "Delete monitor?",
-  "monitor.deleteMessage": "This permanently deletes the monitor and its history.",
+  "monitor.deleteMessage":
+    "This permanently deletes the monitor and its history.",
   "monitor.checkConflict": "A check is already running.",
   "monitor.checkDisabled": "This monitor is off. Enable it to run a check.",
   "monitor.checkQueued": "Check queued. Watching each region…",
   "monitor.checkRateLimited": "Too many checks. Try again in {seconds}s.",
-  "monitor.checkRateLimitedUpgrade": "Too many checks. Try again in {seconds}s, or upgrade for a higher limit.",
+  "monitor.checkRateLimitedUpgrade":
+    "Too many checks. Try again in {seconds}s, or upgrade for a higher limit.",
   "monitor.statUptime": "Uptime",
   "monitor.statAvgLatency": "Avg latency",
   "monitor.statP95Latency": "p95 latency",
@@ -167,7 +177,8 @@ const en = {
   "monitor.latencyTitle": "Latency (recent checks)",
   "monitor.resultsTitle": "Recent checks",
   "monitor.regionsTitle": "Status by region",
-  "monitor.helpRegions": "The latest check outcome from each region this monitor runs in.",
+  "monitor.helpRegions":
+    "The latest check outcome from each region this monitor runs in.",
   "monitor.incidentsTitle": "Incidents",
   "monitor.certTitle": "TLS certificate",
   "monitor.certIssuedTo": "Issued to",
@@ -201,14 +212,17 @@ const en = {
   "monitor.lastFailureBody": "Response body",
   "monitor.lastFailureTruncated": "Truncated at 64 KB",
   "monitor.helpUptime": "How many of the recent checks passed, as a percent.",
-  "monitor.helpAvgLatency": "Average time the endpoint took to respond, across recent checks.",
+  "monitor.helpAvgLatency":
+    "Average time the endpoint took to respond, across recent checks.",
   "monitor.helpP95Latency":
     "95 out of 100 recent checks were at least this fast. It shows the slow ones that a simple average can hide.",
   "monitor.helpLastCheck": "When the last check ran, and which region ran it.",
-  "monitor.helpNextCheck": "About when the next check runs, based on the last check plus the interval.",
+  "monitor.helpNextCheck":
+    "About when the next check runs, based on the last check plus the interval.",
   "monitor.helpUptimeBar":
     "Each block is one recent check, newest on the right. Green passed, red failed.",
-  "monitor.helpLatencyChart": "How the response time changed over the recent checks.",
+  "monitor.helpLatencyChart":
+    "How the response time changed over the recent checks.",
   "monitor.helpRecentChecks":
     "The most recent check runs, one row per run. Expand a run to see each region.",
   "monitor.helpIncidents":
@@ -217,7 +231,8 @@ const en = {
     "What the endpoint sent back the last time a check failed, so you can see what went wrong.",
   "monitor.helpColTime": "When this check ran.",
   "monitor.helpColRegion": "Which region ran this check.",
-  "monitor.helpColRegions": "How many regions ran this check. Expand the row to see each one.",
+  "monitor.helpColRegions":
+    "How many regions ran this check. Expand the row to see each one.",
   "monitor.helpColResult": "Whether the check passed, or why it failed.",
   "monitor.helpColCode": "The HTTP status code the endpoint returned.",
   "monitor.helpColLatency": "How long the endpoint took to respond.",
@@ -265,7 +280,8 @@ const en = {
   "monitorForm.name": "Name",
   "monitorForm.url": "URL",
   "monitorForm.host": "Host",
-  "monitorForm.hostHint": "The hostname to check, e.g. example.com (port defaults to 443).",
+  "monitorForm.hostHint":
+    "The hostname to check, e.g. example.com (port defaults to 443).",
   "monitorForm.sslNotifyInfo":
     "We check the TLS certificate and alert you 7, 3, and 1 day before it expires, and again once it has expired.",
   "monitorForm.method": "Method",
@@ -311,21 +327,33 @@ const en = {
   "monitorForm.errUrl": "Enter a valid http(s) URL",
   "monitorForm.errHost": "Enter a host, e.g. example.com",
   "monitorForm.capReached": "You have reached your plan's monitor limit.",
-  "monitorForm.helpName": "A label to identify this monitor in lists and alerts.",
-  "monitorForm.helpUrl": "The endpoint to check. Must start with http:// or https://.",
+  "monitorForm.helpName":
+    "A label to identify this monitor in lists and alerts.",
+  "monitorForm.helpUrl":
+    "The endpoint to check. Must start with http:// or https://.",
   "monitorForm.helpMethod": "The HTTP method used for the check request.",
   "monitorForm.helpBody": "Request body sent with POST, PUT or PATCH.",
-  "monitorForm.helpExpected": "Status codes that count as healthy. Use explicit codes or wildcards like 2xx.",
-  "monitorForm.helpMaxLatency": "Fail the check if the response is slower than this. Leave empty for no limit.",
-  "monitorForm.helpBodyContains": "Fail the check if the response body does not contain this text.",
-  "monitorForm.helpTimeout": "How long to wait for a response before the check times out (1-60s).",
+  "monitorForm.helpExpected":
+    "Status codes that count as healthy. Use explicit codes or wildcards like 2xx.",
+  "monitorForm.helpMaxLatency":
+    "Fail the check if the response is slower than this. Leave empty for no limit.",
+  "monitorForm.helpBodyContains":
+    "Fail the check if the response body does not contain this text.",
+  "monitorForm.helpTimeout":
+    "How long to wait for a response before the check times out (1-60s).",
   "monitorForm.helpInterval": "How often this monitor runs a check.",
-  "monitorForm.helpFailureThreshold": "Consecutive failed checks before an incident opens.",
-  "monitorForm.helpRegions": "Locations that run the check. More regions give broader coverage.",
-  "monitorForm.helpDownPolicy": "How per-region results combine into the overall up/down verdict.",
-  "monitorForm.helpHeaders": "Custom request headers. Mark sensitive values as secret so they are stored encrypted.",
-  "monitorForm.helpChannels": "Where alerts are sent when an incident opens or recovers.",
-  "monitorForm.helpEnabled": "When off, the monitor keeps its config but runs no checks.",
+  "monitorForm.helpFailureThreshold":
+    "Consecutive failed checks before an incident opens.",
+  "monitorForm.helpRegions":
+    "Locations that run the check. More regions give broader coverage.",
+  "monitorForm.helpDownPolicy":
+    "How per-region results combine into the overall up/down verdict.",
+  "monitorForm.helpHeaders":
+    "Custom request headers. Mark sensitive values as secret so they are stored encrypted.",
+  "monitorForm.helpChannels":
+    "Where alerts are sent when an incident opens or recovers.",
+  "monitorForm.helpEnabled":
+    "When off, the monitor keeps its config but runs no checks.",
 
   // channels list (PRD-006, RFC-013 section 7)
   "channels.heading": "Notification channels",
@@ -342,7 +370,8 @@ const en = {
   "channels.test": "Send test",
   "channels.testing": "Sending…",
   "channels.deleteHeading": "Delete channel?",
-  "channels.deleteMessage": "This permanently removes the channel. Monitors using it stop sending to it.",
+  "channels.deleteMessage":
+    "This permanently removes the channel. Monitors using it stop sending to it.",
   "channels.deleted": "Channel deleted",
   "channels.testSent": "Test notification sent",
   "channels.testFailed": "Could not send the test notification",
@@ -352,11 +381,13 @@ const en = {
   "channelForm.editHeading": "Edit channel",
   "channelForm.upsellTypes": "{types} are available on a higher plan.",
   "channelForm.name": "Name",
-  "channelForm.helpName": "A label to identify this channel in lists and on monitors.",
+  "channelForm.helpName":
+    "A label to identify this channel in lists and on monitors.",
   "channelForm.type": "Channel type",
   "channelForm.pickType": "Choose a channel type",
   "channelForm.enabled": "Enabled",
-  "channelForm.helpEnabled": "When off, the channel is kept but receives no notifications.",
+  "channelForm.helpEnabled":
+    "When off, the channel is kept but receives no notifications.",
   "channelForm.sectionConfig": "Configuration",
   "channelForm.create": "Create channel",
   "channelForm.saveChanges": "Save changes",
@@ -384,18 +415,22 @@ const en = {
   "members.you": "You",
   "members.remove": "Remove",
   "members.removeHeading": "Remove member?",
-  "members.removeMessage": "This removes {name} from the organization. They lose access right away.",
+  "members.removeMessage":
+    "This removes {name} from the organization. They lose access right away.",
   "members.removed": "Member removed",
   "members.roleChanged": "Role updated",
   "members.transfer": "Make owner",
   "members.transferHeading": "Transfer ownership?",
-  "members.transferMessage": "This makes {name} the owner. You stay on as an admin.",
+  "members.transferMessage":
+    "This makes {name} the owner. You stay on as an admin.",
   "members.transferred": "Ownership transferred",
   "members.leave": "Leave organization",
   "members.leaveHeading": "Leave organization?",
-  "members.leaveMessage": "You lose access to this organization. You can rejoin only with a new invitation.",
+  "members.leaveMessage":
+    "You lose access to this organization. You can rejoin only with a new invitation.",
   "members.left": "You left the organization",
-  "members.leaveLastOwner": "You are the only owner. Transfer ownership to someone else before you leave.",
+  "members.leaveLastOwner":
+    "You are the only owner. Transfer ownership to someone else before you leave.",
   "members.empty": "No members yet",
   "role.owner": "Owner",
   "role.admin": "Admin",
@@ -417,7 +452,8 @@ const en = {
   "invites.errEmail": "Enter a valid email",
   "invites.revoke": "Revoke",
   "invites.revokeHeading": "Revoke invitation?",
-  "invites.revokeMessage": "This cancels the invitation to {email} and frees its seat.",
+  "invites.revokeMessage":
+    "This cancels the invitation to {email} and frees its seat.",
   "invites.revoked": "Invitation revoked",
   "invites.resend": "Resend",
   "invites.resending": "Resending…",
@@ -431,7 +467,8 @@ const en = {
   // incidents list (PRD-002 4)
   "incidents.heading": "Incidents",
   "incidents.empty": "No incidents",
-  "incidents.emptyHint": "Incidents are opened automatically when a monitor goes down.",
+  "incidents.emptyHint":
+    "Incidents are opened automatically when a monitor goes down.",
   "incidents.colMonitor": "Monitor",
   "incidents.colStarted": "Started",
   "incidents.colDuration": "Duration",
@@ -461,7 +498,8 @@ const en = {
   "incident.noteAdded": "Note added",
   "incident.close": "Close incident",
   "incident.closeHeading": "Close incident?",
-  "incident.closeMessage": "This closes the incident as an operator override. No recovery notification is sent.",
+  "incident.closeMessage":
+    "This closes the incident as an operator override. No recovery notification is sent.",
   "incident.closed": "Incident closed",
   "incident.alreadyClosed": "This incident is already closed.",
 
@@ -477,14 +515,16 @@ const en = {
   "accept.accepted": "You joined {org}",
   "accept.decline": "Not now",
   "accept.errExpired": "This invitation has expired or is no longer valid.",
-  "accept.errMismatch": "This invitation is for a different email. Sign in with the invited address.",
+  "accept.errMismatch":
+    "This invitation is for a different email. Sign in with the invited address.",
   "accept.errNotFound": "We could not find this invitation.",
 
   // status pages list (PRD-004, RFC-013 section 8)
   "statusPages.heading": "Status pages",
   "statusPages.new": "New status page",
   "statusPages.empty": "No status pages yet",
-  "statusPages.emptyHint": "Create a status page to share uptime with your customers.",
+  "statusPages.emptyHint":
+    "Create a status page to share uptime with your customers.",
   "statusPages.colName": "Name",
   "statusPages.colSlug": "Slug",
   "statusPages.colState": "State",
@@ -499,7 +539,8 @@ const en = {
   "statusPages.edit": "Edit",
   "statusPages.delete": "Delete",
   "statusPages.deleteHeading": "Delete status page?",
-  "statusPages.deleteMessage": "This permanently deletes the status page. Its public URL stops resolving.",
+  "statusPages.deleteMessage":
+    "This permanently deletes the status page. Its public URL stops resolving.",
   "statusPages.deleted": "Status page deleted",
   "statusPages.draftNoUrl": "Not public until published",
 
@@ -512,30 +553,37 @@ const en = {
   "statusPageForm.name": "Name",
   "statusPageForm.helpName": "Shown as the heading of your public status page.",
   "statusPageForm.slug": "Slug",
-  "statusPageForm.helpSlug": "The address of your public page. Lowercase letters, numbers and dashes.",
+  "statusPageForm.helpSlug":
+    "The address of your public page. Lowercase letters, numbers and dashes.",
   "statusPageForm.logoUrl": "Logo URL",
-  "statusPageForm.helpLogoUrl": "An https image URL shown at the top of the page. Leave empty for none.",
+  "statusPageForm.helpLogoUrl":
+    "An https image URL shown at the top of the page. Leave empty for none.",
   "statusPageForm.accentColor": "Accent color",
-  "statusPageForm.helpAccentColor": "The brand color used for headings and the banner.",
+  "statusPageForm.helpAccentColor":
+    "The brand color used for headings and the banner.",
   "statusPageForm.theme": "Theme",
   "statusPageForm.themeLight": "Light",
   "statusPageForm.themeDark": "Dark",
-  "statusPageForm.monitorsHint": "Pick the monitors to show and give each a friendly public name.",
+  "statusPageForm.monitorsHint":
+    "Pick the monitors to show and give each a friendly public name.",
   "statusPageForm.noMonitors": "No monitors yet",
   "statusPageForm.displayName": "Display name",
   "statusPageForm.moveUp": "Move up",
   "statusPageForm.moveDown": "Move down",
   "statusPageForm.published": "Published",
-  "statusPageForm.helpPublished": "When on, the public URL resolves. When off, the page stays a draft.",
+  "statusPageForm.helpPublished":
+    "When on, the public URL resolves. When off, the page stays a draft.",
   "statusPageForm.publicUrl": "Public URL",
   "statusPageForm.create": "Create status page",
   "statusPageForm.saveChanges": "Save changes",
   "statusPageForm.created": "Status page created",
   "statusPageForm.saved": "Status page saved",
   "statusPageForm.errName": "Name is required",
-  "statusPageForm.errSlug": "Enter a valid slug (lowercase letters, numbers, dashes)",
+  "statusPageForm.errSlug":
+    "Enter a valid slug (lowercase letters, numbers, dashes)",
   "statusPageForm.errLogoUrl": "Enter a valid https URL or leave empty",
-  "statusPageForm.capReached": "You have reached your plan's status page limit.",
+  "statusPageForm.capReached":
+    "You have reached your plan's status page limit.",
   "statusPageForm.copyUrl": "Copy URL",
   "statusPageForm.copied": "Copied",
 
@@ -554,9 +602,11 @@ const en = {
   "publicStatus.incidentOngoing": "Ongoing",
   "publicStatus.incidentResolved": "Resolved",
   "publicStatus.notFoundTitle": "Status page not found",
-  "publicStatus.notFoundBody": "This status page does not exist or is not published.",
+  "publicStatus.notFoundBody":
+    "This status page does not exist or is not published.",
   "publicStatus.errorTitle": "Could not load status",
-  "publicStatus.errorBody": "Something went wrong loading this page. Please try again.",
+  "publicStatus.errorBody":
+    "Something went wrong loading this page. Please try again.",
   "publicStatus.retry": "Retry",
   "publicStatus.poweredBy": "Powered by Pulse Pager",
 
@@ -566,7 +616,8 @@ const en = {
   "plan.tierCustom": "Custom",
 
   "billing.heading": "Billing & usage",
-  "billing.noAccess": "Billing is managed by owners and admins. Ask an owner or admin of this organization for changes to the plan.",
+  "billing.noAccess":
+    "Billing is managed by owners and admins. Ask an owner or admin of this organization for changes to the plan.",
   "billing.currentPlan": "Current plan",
   "billing.currentPlanBadge": "Your plan",
   "billing.usage": "Usage",
@@ -600,19 +651,24 @@ const en = {
   "billing.currentTier": "Current",
   "billing.upgrade": "Upgrade",
   "billing.upgradeHeading": "Upgrade coming soon",
-  "billing.upgradeBody": "Self-serve checkout is on the way. For now, reach out and we will move your organization to the {plan} plan.",
+  "billing.upgradeBody":
+    "Self-serve checkout is on the way. For now, reach out and we will move your organization to the {plan} plan.",
   "billing.upgradeContact": "Contact us",
   "billing.upgradeClose": "Close",
 
   // api keys (PRD-001 App A, owner/admin only)
   "apiKeys.heading": "API keys",
-  "apiKeys.noAccess": "API keys are managed by owners and admins. Ask an owner or admin of this organization to create or revoke a key.",
-  "apiKeys.upgrade": "API keys are available on a paid plan. Upgrade to create and use the API.",
-  "apiKeys.readOnlyNote": "On your plan, API keys are read-only. Upgrade for full read and write access.",
+  "apiKeys.noAccess":
+    "API keys are managed by owners and admins. Ask an owner or admin of this organization to create or revoke a key.",
+  "apiKeys.upgrade":
+    "API keys are available on a paid plan. Upgrade to create and use the API.",
+  "apiKeys.readOnlyNote":
+    "On your plan, API keys are read-only. Upgrade for full read and write access.",
   "apiKeys.docs": "API documentation",
   "apiKeys.new": "New API key",
   "apiKeys.empty": "No API keys yet",
-  "apiKeys.emptyHint": "Create a key to call the Pulse Pager API from your own scripts and services.",
+  "apiKeys.emptyHint":
+    "Create a key to call the Pulse Pager API from your own scripts and services.",
   "apiKeys.colName": "Name",
   "apiKeys.colPrefix": "Prefix",
   "apiKeys.colRole": "Role",
@@ -627,14 +683,16 @@ const en = {
   "apiKeys.created": "API key created",
   "apiKeys.errName": "Name is required",
   "apiKeys.secretHeading": "Copy your API key",
-  "apiKeys.secretWarning": "This is the only time the full key is shown. Copy it now and store it somewhere safe. You will not see it again.",
+  "apiKeys.secretWarning":
+    "This is the only time the full key is shown. Copy it now and store it somewhere safe. You will not see it again.",
   "apiKeys.copy": "Copy key",
   "apiKeys.copied": "Key copied",
   "apiKeys.copyFailed": "Could not copy the key. Copy it manually.",
   "apiKeys.secretDone": "Done",
   "apiKeys.revoke": "Revoke",
   "apiKeys.revokeHeading": "Revoke API key?",
-  "apiKeys.revokeMessage": "This permanently revokes the key. Anything using it stops working right away.",
+  "apiKeys.revokeMessage":
+    "This permanently revokes the key. Anything using it stops working right away.",
   "apiKeys.revoked": "API key revoked",
 } satisfies Record<string, string>;
 
@@ -653,7 +711,8 @@ const es: Record<MessageKey, string> = {
   "org.id": "ID",
   "orgForm.heading": "Crear organización",
   "orgForm.name": "Nombre de la organización",
-  "orgForm.helpName": "Un nombre para la nueva organización. Puedes cambiarlo más tarde.",
+  "orgForm.helpName":
+    "Un nombre para la nueva organización. Puedes cambiarlo más tarde.",
   "orgForm.create": "Crear organización",
   "orgForm.creating": "Creando…",
   "orgForm.created": "Organización creada",
@@ -662,25 +721,29 @@ const es: Record<MessageKey, string> = {
   "account.profile": "Perfil",
   "account.name": "Nombre",
   "account.email": "Correo electrónico",
-  "account.emailHint": "Tu correo proviene de tu proveedor de inicio de sesión y no se puede cambiar aquí.",
+  "account.emailHint":
+    "Tu correo proviene de tu proveedor de inicio de sesión y no se puede cambiar aquí.",
   "account.language": "Idioma",
   "account.timezone": "Zona horaria",
   "account.save": "Guardar cambios",
   "account.saving": "Guardando…",
   "account.saved": "Perfil guardado",
   "account.providers": "Cuentas vinculadas",
-  "account.providersHint": "Inicia sesión en Pulse Pager con cualquiera de estos proveedores.",
+  "account.providersHint":
+    "Inicia sesión en Pulse Pager con cualquiera de estos proveedores.",
   "account.google": "Google",
   "account.github": "GitHub",
   "account.connected": "Conectada",
   "account.connect": "Conectar",
   "account.unlink": "Desvincular",
   "account.unlinked": "Cuenta desvinculada",
-  "account.unlinkLast": "No puedes desvincular tu único método de inicio de sesión.",
+  "account.unlinkLast":
+    "No puedes desvincular tu único método de inicio de sesión.",
   "account.sessions": "Sesiones",
   "account.logout": "Cerrar sesión",
   "account.logoutAll": "Cerrar sesión en todos los dispositivos",
-  "account.logoutAllHint": "Cierra tu sesión en todas partes, incluidos otros navegadores y dispositivos.",
+  "account.logoutAllHint":
+    "Cierra tu sesión en todas partes, incluidos otros navegadores y dispositivos.",
   "nav.monitors": "Monitores",
   "nav.channels": "Canales",
   "nav.incidents": "Incidencias",
@@ -715,6 +778,9 @@ const es: Record<MessageKey, string> = {
   "admin.timeToFirstMonitor": "Tiempo medio hasta el primer monitor",
   "admin.backToApp": "Volver a la app",
   "admin.forbidden": "No tienes acceso al panel de administración.",
+  "admin.organizations": "Organizaciones",
+  "admin.orgName": "Nombre",
+  "admin.orgSlug": "Slug",
   "state.loading": "Cargando…",
   "state.error": "Algo salió mal.",
   "state.retry": "Reintentar",
@@ -763,10 +829,13 @@ const es: Record<MessageKey, string> = {
   "monitor.deleteMessage":
     "Esto elimina el monitor y su historial de forma permanente.",
   "monitor.checkConflict": "Ya hay una comprobación en curso.",
-  "monitor.checkDisabled": "Este monitor está desactivado. Actívalo para ejecutar una comprobación.",
+  "monitor.checkDisabled":
+    "Este monitor está desactivado. Actívalo para ejecutar una comprobación.",
   "monitor.checkQueued": "Comprobación en cola. Observando cada región…",
-  "monitor.checkRateLimited": "Demasiadas comprobaciones. Inténtalo de nuevo en {seconds}s.",
-  "monitor.checkRateLimitedUpgrade": "Demasiadas comprobaciones. Inténtalo de nuevo en {seconds}s, o mejora tu plan para un límite mayor.",
+  "monitor.checkRateLimited":
+    "Demasiadas comprobaciones. Inténtalo de nuevo en {seconds}s.",
+  "monitor.checkRateLimitedUpgrade":
+    "Demasiadas comprobaciones. Inténtalo de nuevo en {seconds}s, o mejora tu plan para un límite mayor.",
   "monitor.statUptime": "Disponibilidad",
   "monitor.statAvgLatency": "Latencia media",
   "monitor.statP95Latency": "Latencia p95",
@@ -776,7 +845,8 @@ const es: Record<MessageKey, string> = {
   "monitor.latencyTitle": "Latencia (comprobaciones recientes)",
   "monitor.resultsTitle": "Comprobaciones recientes",
   "monitor.regionsTitle": "Estado por región",
-  "monitor.helpRegions": "El último resultado de comprobación de cada región en la que se ejecuta este monitor.",
+  "monitor.helpRegions":
+    "El último resultado de comprobación de cada región en la que se ejecuta este monitor.",
   "monitor.incidentsTitle": "Incidencias",
   "monitor.certTitle": "Certificado TLS",
   "monitor.certIssuedTo": "Emitido para",
@@ -809,12 +879,16 @@ const es: Record<MessageKey, string> = {
   "monitor.lastFailureHeaders": "Cabeceras de respuesta",
   "monitor.lastFailureBody": "Cuerpo de respuesta",
   "monitor.lastFailureTruncated": "Truncado a 64 KB",
-  "monitor.helpUptime": "Cuántas de las comprobaciones recientes pasaron, en porcentaje.",
-  "monitor.helpAvgLatency": "Tiempo medio que tardó el endpoint en responder, en las comprobaciones recientes.",
+  "monitor.helpUptime":
+    "Cuántas de las comprobaciones recientes pasaron, en porcentaje.",
+  "monitor.helpAvgLatency":
+    "Tiempo medio que tardó el endpoint en responder, en las comprobaciones recientes.",
   "monitor.helpP95Latency":
     "95 de cada 100 comprobaciones recientes fueron al menos así de rápidas. Muestra las lentas que una media simple puede ocultar.",
-  "monitor.helpLastCheck": "Cuándo se ejecutó la última comprobación y qué región la ejecutó.",
-  "monitor.helpNextCheck": "Aproximadamente cuándo se ejecuta la próxima comprobación, según la última más el intervalo.",
+  "monitor.helpLastCheck":
+    "Cuándo se ejecutó la última comprobación y qué región la ejecutó.",
+  "monitor.helpNextCheck":
+    "Aproximadamente cuándo se ejecuta la próxima comprobación, según la última más el intervalo.",
   "monitor.helpUptimeBar":
     "Cada bloque es una comprobación reciente, la más nueva a la derecha. Verde pasó, rojo falló.",
   "monitor.helpLatencyChart":
@@ -827,7 +901,8 @@ const es: Record<MessageKey, string> = {
     "Lo que devolvió el endpoint la última vez que falló una comprobación, para que veas qué pasó.",
   "monitor.helpColTime": "Cuándo se ejecutó esta comprobación.",
   "monitor.helpColRegion": "Qué región ejecutó esta comprobación.",
-  "monitor.helpColRegions": "Cuántas regiones ejecutaron esta comprobación. Expande la fila para ver cada una.",
+  "monitor.helpColRegions":
+    "Cuántas regiones ejecutaron esta comprobación. Expande la fila para ver cada una.",
   "monitor.helpColResult": "Si la comprobación pasó, o por qué falló.",
   "monitor.helpColCode": "El código de estado HTTP que devolvió el endpoint.",
   "monitor.helpColLatency": "Cuánto tardó el endpoint en responder.",
@@ -866,7 +941,8 @@ const es: Record<MessageKey, string> = {
   "monitorForm.name": "Nombre",
   "monitorForm.url": "URL",
   "monitorForm.host": "Host",
-  "monitorForm.hostHint": "El host a comprobar, p. ej. example.com (el puerto es 443 por defecto).",
+  "monitorForm.hostHint":
+    "El host a comprobar, p. ej. example.com (el puerto es 443 por defecto).",
   "monitorForm.sslNotifyInfo":
     "Comprobamos el certificado TLS y te avisamos 7, 3 y 1 día antes de que caduque, y de nuevo cuando ya haya caducado.",
   "monitorForm.method": "Método",
@@ -884,7 +960,8 @@ const es: Record<MessageKey, string> = {
   "monitorForm.timeout": "Tiempo de espera (segundos)",
   "monitorForm.interval": "Intervalo de comprobación (segundos)",
   "monitorForm.planMin": "Mínimo del plan",
-  "monitorForm.intervalLocked": "Las comprobaciones más frecuentes están disponibles en planes superiores",
+  "monitorForm.intervalLocked":
+    "Las comprobaciones más frecuentes están disponibles en planes superiores",
   "monitorForm.int30s": "30 segundos",
   "monitorForm.int1m": "1 minuto",
   "monitorForm.int2m": "2 minutos",
@@ -912,25 +989,41 @@ const es: Record<MessageKey, string> = {
   "monitorForm.errUrl": "Introduce una URL http(s) válida",
   "monitorForm.errHost": "Introduce un host, p. ej. example.com",
   "monitorForm.capReached": "Has alcanzado el límite de monitores de tu plan.",
-  "monitorForm.helpName": "Una etiqueta para identificar este monitor en listas y alertas.",
-  "monitorForm.helpUrl": "El endpoint que se comprueba. Debe empezar por http:// o https://.",
-  "monitorForm.helpMethod": "El método HTTP usado en la solicitud de comprobación.",
-  "monitorForm.helpBody": "Cuerpo de la solicitud enviado con POST, PUT o PATCH.",
-  "monitorForm.helpExpected": "Códigos de estado que se consideran correctos. Usa códigos explícitos o comodines como 2xx.",
-  "monitorForm.helpMaxLatency": "Marca la comprobación como fallida si la respuesta es más lenta que esto. Déjalo vacío para no poner límite.",
-  "monitorForm.helpBodyContains": "Marca la comprobación como fallida si el cuerpo de la respuesta no contiene este texto.",
-  "monitorForm.helpTimeout": "Cuánto esperar una respuesta antes de que la comprobación expire (1-60s).",
-  "monitorForm.helpInterval": "Con qué frecuencia este monitor ejecuta una comprobación.",
-  "monitorForm.helpFailureThreshold": "Comprobaciones fallidas consecutivas antes de abrir una incidencia.",
-  "monitorForm.helpRegions": "Ubicaciones que ejecutan la comprobación. Más regiones dan mayor cobertura.",
-  "monitorForm.helpDownPolicy": "Cómo se combinan los resultados por región en el veredicto general.",
-  "monitorForm.helpHeaders": "Cabeceras personalizadas. Marca los valores sensibles como secretos para guardarlos cifrados.",
-  "monitorForm.helpChannels": "Dónde se envían las alertas cuando se abre o se recupera una incidencia.",
-  "monitorForm.helpEnabled": "Si está desactivado, el monitor conserva su configuración pero no ejecuta comprobaciones.",
+  "monitorForm.helpName":
+    "Una etiqueta para identificar este monitor en listas y alertas.",
+  "monitorForm.helpUrl":
+    "El endpoint que se comprueba. Debe empezar por http:// o https://.",
+  "monitorForm.helpMethod":
+    "El método HTTP usado en la solicitud de comprobación.",
+  "monitorForm.helpBody":
+    "Cuerpo de la solicitud enviado con POST, PUT o PATCH.",
+  "monitorForm.helpExpected":
+    "Códigos de estado que se consideran correctos. Usa códigos explícitos o comodines como 2xx.",
+  "monitorForm.helpMaxLatency":
+    "Marca la comprobación como fallida si la respuesta es más lenta que esto. Déjalo vacío para no poner límite.",
+  "monitorForm.helpBodyContains":
+    "Marca la comprobación como fallida si el cuerpo de la respuesta no contiene este texto.",
+  "monitorForm.helpTimeout":
+    "Cuánto esperar una respuesta antes de que la comprobación expire (1-60s).",
+  "monitorForm.helpInterval":
+    "Con qué frecuencia este monitor ejecuta una comprobación.",
+  "monitorForm.helpFailureThreshold":
+    "Comprobaciones fallidas consecutivas antes de abrir una incidencia.",
+  "monitorForm.helpRegions":
+    "Ubicaciones que ejecutan la comprobación. Más regiones dan mayor cobertura.",
+  "monitorForm.helpDownPolicy":
+    "Cómo se combinan los resultados por región en el veredicto general.",
+  "monitorForm.helpHeaders":
+    "Cabeceras personalizadas. Marca los valores sensibles como secretos para guardarlos cifrados.",
+  "monitorForm.helpChannels":
+    "Dónde se envían las alertas cuando se abre o se recupera una incidencia.",
+  "monitorForm.helpEnabled":
+    "Si está desactivado, el monitor conserva su configuración pero no ejecuta comprobaciones.",
   "channels.heading": "Canales de notificación",
   "channels.new": "Nuevo canal",
   "channels.empty": "Aún no hay canales",
-  "channels.emptyHint": "Añade un canal para que las incidencias lleguen a tu equipo.",
+  "channels.emptyHint":
+    "Añade un canal para que las incidencias lleguen a tu equipo.",
   "channels.colName": "Nombre",
   "channels.colType": "Tipo",
   "channels.colEnabled": "Activo",
@@ -941,7 +1034,8 @@ const es: Record<MessageKey, string> = {
   "channels.test": "Enviar prueba",
   "channels.testing": "Enviando…",
   "channels.deleteHeading": "¿Eliminar canal?",
-  "channels.deleteMessage": "Esto elimina el canal de forma permanente. Los monitores que lo usan dejan de enviarle notificaciones.",
+  "channels.deleteMessage":
+    "Esto elimina el canal de forma permanente. Los monitores que lo usan dejan de enviarle notificaciones.",
   "channels.deleted": "Canal eliminado",
   "channels.testSent": "Notificación de prueba enviada",
   "channels.testFailed": "No se pudo enviar la notificación de prueba",
@@ -949,11 +1043,13 @@ const es: Record<MessageKey, string> = {
   "channelForm.editHeading": "Editar canal",
   "channelForm.upsellTypes": "{types} están disponibles en un plan superior.",
   "channelForm.name": "Nombre",
-  "channelForm.helpName": "Una etiqueta para identificar este canal en listas y en los monitores.",
+  "channelForm.helpName":
+    "Una etiqueta para identificar este canal en listas y en los monitores.",
   "channelForm.type": "Tipo de canal",
   "channelForm.pickType": "Elige un tipo de canal",
   "channelForm.enabled": "Activo",
-  "channelForm.helpEnabled": "Si está desactivado, el canal se conserva pero no recibe notificaciones.",
+  "channelForm.helpEnabled":
+    "Si está desactivado, el canal se conserva pero no recibe notificaciones.",
   "channelForm.sectionConfig": "Configuración",
   "channelForm.create": "Crear canal",
   "channelForm.saveChanges": "Guardar cambios",
@@ -964,7 +1060,8 @@ const es: Record<MessageKey, string> = {
   "channelForm.errRequired": "Este campo es obligatorio",
   "channelForm.secretConfigured": "Configurado",
   "channelForm.secretHint": "Déjalo en blanco para conservar el valor actual.",
-  "channelForm.secretReplaceHint": "Introduce un nuevo valor para reemplazarlo.",
+  "channelForm.secretReplaceHint":
+    "Introduce un nuevo valor para reemplazarlo.",
   "channelForm.addItem": "Añadir",
   "channelForm.removeItem": "Quitar",
   "channel.unavailable.plan_upgrade": "Disponible en un plan superior.",
@@ -976,18 +1073,22 @@ const es: Record<MessageKey, string> = {
   "members.you": "Tú",
   "members.remove": "Quitar",
   "members.removeHeading": "¿Quitar miembro?",
-  "members.removeMessage": "Esto quita a {name} de la organización. Pierde el acceso de inmediato.",
+  "members.removeMessage":
+    "Esto quita a {name} de la organización. Pierde el acceso de inmediato.",
   "members.removed": "Miembro eliminado",
   "members.roleChanged": "Rol actualizado",
   "members.transfer": "Hacer propietario",
   "members.transferHeading": "¿Transferir la propiedad?",
-  "members.transferMessage": "Esto convierte a {name} en propietario. Tú quedas como administrador.",
+  "members.transferMessage":
+    "Esto convierte a {name} en propietario. Tú quedas como administrador.",
   "members.transferred": "Propiedad transferida",
   "members.leave": "Salir de la organización",
   "members.leaveHeading": "¿Salir de la organización?",
-  "members.leaveMessage": "Pierdes el acceso a esta organización. Solo puedes volver con una nueva invitación.",
+  "members.leaveMessage":
+    "Pierdes el acceso a esta organización. Solo puedes volver con una nueva invitación.",
   "members.left": "Has salido de la organización",
-  "members.leaveLastOwner": "Eres el único propietario. Transfiere la propiedad a otra persona antes de salir.",
+  "members.leaveLastOwner":
+    "Eres el único propietario. Transfiere la propiedad a otra persona antes de salir.",
   "members.empty": "Aún no hay miembros",
   "role.owner": "Propietario",
   "role.admin": "Administrador",
@@ -1008,7 +1109,8 @@ const es: Record<MessageKey, string> = {
   "invites.errEmail": "Introduce un correo válido",
   "invites.revoke": "Revocar",
   "invites.revokeHeading": "¿Revocar la invitación?",
-  "invites.revokeMessage": "Esto cancela la invitación a {email} y libera su plaza.",
+  "invites.revokeMessage":
+    "Esto cancela la invitación a {email} y libera su plaza.",
   "invites.revoked": "Invitación revocada",
   "invites.resend": "Reenviar",
   "invites.resending": "Reenviando…",
@@ -1021,7 +1123,8 @@ const es: Record<MessageKey, string> = {
 
   "incidents.heading": "Incidencias",
   "incidents.empty": "Sin incidencias",
-  "incidents.emptyHint": "Las incidencias se abren automáticamente cuando un monitor cae.",
+  "incidents.emptyHint":
+    "Las incidencias se abren automáticamente cuando un monitor cae.",
   "incidents.colMonitor": "Monitor",
   "incidents.colStarted": "Inicio",
   "incidents.colDuration": "Duración",
@@ -1050,7 +1153,8 @@ const es: Record<MessageKey, string> = {
   "incident.noteAdded": "Nota añadida",
   "incident.close": "Cerrar incidencia",
   "incident.closeHeading": "¿Cerrar incidencia?",
-  "incident.closeMessage": "Esto cierra la incidencia como anulación del operador. No se envía notificación de recuperación.",
+  "incident.closeMessage":
+    "Esto cierra la incidencia como anulación del operador. No se envía notificación de recuperación.",
   "incident.closed": "Incidencia cerrada",
   "incident.alreadyClosed": "Esta incidencia ya está cerrada.",
 
@@ -1065,13 +1169,15 @@ const es: Record<MessageKey, string> = {
   "accept.accepted": "Te has unido a {org}",
   "accept.decline": "Ahora no",
   "accept.errExpired": "Esta invitación ha caducado o ya no es válida.",
-  "accept.errMismatch": "Esta invitación es para otro correo. Inicia sesión con la dirección invitada.",
+  "accept.errMismatch":
+    "Esta invitación es para otro correo. Inicia sesión con la dirección invitada.",
   "accept.errNotFound": "No encontramos esta invitación.",
 
   "statusPages.heading": "Páginas de estado",
   "statusPages.new": "Nueva página de estado",
   "statusPages.empty": "Aún no hay páginas de estado",
-  "statusPages.emptyHint": "Crea una página de estado para compartir la disponibilidad con tus clientes.",
+  "statusPages.emptyHint":
+    "Crea una página de estado para compartir la disponibilidad con tus clientes.",
   "statusPages.colName": "Nombre",
   "statusPages.colSlug": "Slug",
   "statusPages.colState": "Estado",
@@ -1086,7 +1192,8 @@ const es: Record<MessageKey, string> = {
   "statusPages.edit": "Editar",
   "statusPages.delete": "Eliminar",
   "statusPages.deleteHeading": "¿Eliminar página de estado?",
-  "statusPages.deleteMessage": "Esto elimina la página de estado de forma permanente. Su URL pública deja de funcionar.",
+  "statusPages.deleteMessage":
+    "Esto elimina la página de estado de forma permanente. Su URL pública deja de funcionar.",
   "statusPages.deleted": "Página de estado eliminada",
   "statusPages.draftNoUrl": "No es pública hasta que se publique",
 
@@ -1096,32 +1203,40 @@ const es: Record<MessageKey, string> = {
   "statusPageForm.sectionBranding": "Marca",
   "statusPageForm.sectionMonitors": "Monitores mostrados",
   "statusPageForm.name": "Nombre",
-  "statusPageForm.helpName": "Se muestra como el título de tu página de estado pública.",
+  "statusPageForm.helpName":
+    "Se muestra como el título de tu página de estado pública.",
   "statusPageForm.slug": "Slug",
-  "statusPageForm.helpSlug": "La dirección de tu página pública. Letras minúsculas, números y guiones.",
+  "statusPageForm.helpSlug":
+    "La dirección de tu página pública. Letras minúsculas, números y guiones.",
   "statusPageForm.logoUrl": "URL del logotipo",
-  "statusPageForm.helpLogoUrl": "Una URL de imagen https mostrada arriba de la página. Déjalo vacío para ninguna.",
+  "statusPageForm.helpLogoUrl":
+    "Una URL de imagen https mostrada arriba de la página. Déjalo vacío para ninguna.",
   "statusPageForm.accentColor": "Color de acento",
-  "statusPageForm.helpAccentColor": "El color de marca usado en los títulos y el banner.",
+  "statusPageForm.helpAccentColor":
+    "El color de marca usado en los títulos y el banner.",
   "statusPageForm.theme": "Tema",
   "statusPageForm.themeLight": "Claro",
   "statusPageForm.themeDark": "Oscuro",
-  "statusPageForm.monitorsHint": "Elige los monitores a mostrar y dale a cada uno un nombre público amigable.",
+  "statusPageForm.monitorsHint":
+    "Elige los monitores a mostrar y dale a cada uno un nombre público amigable.",
   "statusPageForm.noMonitors": "Aún no hay monitores",
   "statusPageForm.displayName": "Nombre visible",
   "statusPageForm.moveUp": "Subir",
   "statusPageForm.moveDown": "Bajar",
   "statusPageForm.published": "Publicada",
-  "statusPageForm.helpPublished": "Cuando está activado, la URL pública funciona. Cuando está desactivado, sigue siendo un borrador.",
+  "statusPageForm.helpPublished":
+    "Cuando está activado, la URL pública funciona. Cuando está desactivado, sigue siendo un borrador.",
   "statusPageForm.publicUrl": "URL pública",
   "statusPageForm.create": "Crear página de estado",
   "statusPageForm.saveChanges": "Guardar cambios",
   "statusPageForm.created": "Página de estado creada",
   "statusPageForm.saved": "Página de estado guardada",
   "statusPageForm.errName": "El nombre es obligatorio",
-  "statusPageForm.errSlug": "Introduce un slug válido (letras minúsculas, números, guiones)",
+  "statusPageForm.errSlug":
+    "Introduce un slug válido (letras minúsculas, números, guiones)",
   "statusPageForm.errLogoUrl": "Introduce una URL https válida o déjalo vacío",
-  "statusPageForm.capReached": "Has alcanzado el límite de páginas de estado de tu plan.",
+  "statusPageForm.capReached":
+    "Has alcanzado el límite de páginas de estado de tu plan.",
   "statusPageForm.copyUrl": "Copiar URL",
   "statusPageForm.copied": "Copiado",
 
@@ -1139,9 +1254,11 @@ const es: Record<MessageKey, string> = {
   "publicStatus.incidentOngoing": "En curso",
   "publicStatus.incidentResolved": "Resuelta",
   "publicStatus.notFoundTitle": "Página de estado no encontrada",
-  "publicStatus.notFoundBody": "Esta página de estado no existe o no está publicada.",
+  "publicStatus.notFoundBody":
+    "Esta página de estado no existe o no está publicada.",
   "publicStatus.errorTitle": "No se pudo cargar el estado",
-  "publicStatus.errorBody": "Algo salió mal al cargar esta página. Inténtalo de nuevo.",
+  "publicStatus.errorBody":
+    "Algo salió mal al cargar esta página. Inténtalo de nuevo.",
   "publicStatus.retry": "Reintentar",
   "publicStatus.poweredBy": "Powered by Pulse Pager",
 
@@ -1151,7 +1268,8 @@ const es: Record<MessageKey, string> = {
   "plan.tierCustom": "Custom",
 
   "billing.heading": "Facturación y uso",
-  "billing.noAccess": "La facturación la gestionan los propietarios y administradores. Pide a un propietario o administrador de esta organización que cambie el plan.",
+  "billing.noAccess":
+    "La facturación la gestionan los propietarios y administradores. Pide a un propietario o administrador de esta organización que cambie el plan.",
   "billing.currentPlan": "Plan actual",
   "billing.currentPlanBadge": "Tu plan",
   "billing.usage": "Uso",
@@ -1185,18 +1303,23 @@ const es: Record<MessageKey, string> = {
   "billing.currentTier": "Actual",
   "billing.upgrade": "Mejorar",
   "billing.upgradeHeading": "Mejora disponible pronto",
-  "billing.upgradeBody": "El pago de autoservicio está en camino. Por ahora, contáctanos y moveremos tu organización al plan {plan}.",
+  "billing.upgradeBody":
+    "El pago de autoservicio está en camino. Por ahora, contáctanos y moveremos tu organización al plan {plan}.",
   "billing.upgradeContact": "Contáctanos",
   "billing.upgradeClose": "Cerrar",
 
   "apiKeys.heading": "Claves de API",
-  "apiKeys.noAccess": "Las claves de API las gestionan los propietarios y administradores. Pide a un propietario o administrador de esta organización que cree o revoque una clave.",
-  "apiKeys.upgrade": "Las claves de API están disponibles en un plan de pago. Mejora tu plan para crear y usar la API.",
-  "apiKeys.readOnlyNote": "En tu plan, las claves de API son de solo lectura. Mejora tu plan para acceso completo de lectura y escritura.",
+  "apiKeys.noAccess":
+    "Las claves de API las gestionan los propietarios y administradores. Pide a un propietario o administrador de esta organización que cree o revoque una clave.",
+  "apiKeys.upgrade":
+    "Las claves de API están disponibles en un plan de pago. Mejora tu plan para crear y usar la API.",
+  "apiKeys.readOnlyNote":
+    "En tu plan, las claves de API son de solo lectura. Mejora tu plan para acceso completo de lectura y escritura.",
   "apiKeys.docs": "Documentación de la API",
   "apiKeys.new": "Nueva clave de API",
   "apiKeys.empty": "Aún no hay claves de API",
-  "apiKeys.emptyHint": "Crea una clave para llamar a la API de Pulse Pager desde tus propios scripts y servicios.",
+  "apiKeys.emptyHint":
+    "Crea una clave para llamar a la API de Pulse Pager desde tus propios scripts y servicios.",
   "apiKeys.colName": "Nombre",
   "apiKeys.colPrefix": "Prefijo",
   "apiKeys.colRole": "Rol",
@@ -1211,14 +1334,16 @@ const es: Record<MessageKey, string> = {
   "apiKeys.created": "Clave de API creada",
   "apiKeys.errName": "El nombre es obligatorio",
   "apiKeys.secretHeading": "Copia tu clave de API",
-  "apiKeys.secretWarning": "Esta es la única vez que se muestra la clave completa. Cópiala ahora y guárdala en un lugar seguro. No volverás a verla.",
+  "apiKeys.secretWarning":
+    "Esta es la única vez que se muestra la clave completa. Cópiala ahora y guárdala en un lugar seguro. No volverás a verla.",
   "apiKeys.copy": "Copiar clave",
   "apiKeys.copied": "Clave copiada",
   "apiKeys.copyFailed": "No se pudo copiar la clave. Cópiala manualmente.",
   "apiKeys.secretDone": "Listo",
   "apiKeys.revoke": "Revocar",
   "apiKeys.revokeHeading": "¿Revocar la clave de API?",
-  "apiKeys.revokeMessage": "Esto revoca la clave de forma permanente. Todo lo que la use deja de funcionar de inmediato.",
+  "apiKeys.revokeMessage":
+    "Esto revoca la clave de forma permanente. Todo lo que la use deja de funcionar de inmediato.",
   "apiKeys.revoked": "Clave de API revocada",
 };
 
@@ -1234,7 +1359,8 @@ const de: Record<MessageKey, string> = {
   "org.id": "ID",
   "orgForm.heading": "Organisation erstellen",
   "orgForm.name": "Name der Organisation",
-  "orgForm.helpName": "Ein Name für die neue Organisation. Du kannst ihn später ändern.",
+  "orgForm.helpName":
+    "Ein Name für die neue Organisation. Du kannst ihn später ändern.",
   "orgForm.create": "Organisation erstellen",
   "orgForm.creating": "Wird erstellt…",
   "orgForm.created": "Organisation erstellt",
@@ -1243,14 +1369,16 @@ const de: Record<MessageKey, string> = {
   "account.profile": "Profil",
   "account.name": "Name",
   "account.email": "E-Mail",
-  "account.emailHint": "Deine E-Mail stammt von deinem Anmelde-Anbieter und kann hier nicht geändert werden.",
+  "account.emailHint":
+    "Deine E-Mail stammt von deinem Anmelde-Anbieter und kann hier nicht geändert werden.",
   "account.language": "Sprache",
   "account.timezone": "Zeitzone",
   "account.save": "Änderungen speichern",
   "account.saving": "Wird gespeichert…",
   "account.saved": "Profil gespeichert",
   "account.providers": "Verknüpfte Konten",
-  "account.providersHint": "Melde dich bei Pulse Pager mit einem dieser Anbieter an.",
+  "account.providersHint":
+    "Melde dich bei Pulse Pager mit einem dieser Anbieter an.",
   "account.google": "Google",
   "account.github": "GitHub",
   "account.connected": "Verbunden",
@@ -1261,7 +1389,8 @@ const de: Record<MessageKey, string> = {
   "account.sessions": "Sitzungen",
   "account.logout": "Abmelden",
   "account.logoutAll": "Auf allen Geräten abmelden",
-  "account.logoutAllHint": "Meldet dich überall ab, auch in anderen Browsern und auf anderen Geräten.",
+  "account.logoutAllHint":
+    "Meldet dich überall ab, auch in anderen Browsern und auf anderen Geräten.",
   "nav.monitors": "Monitore",
   "nav.channels": "Kanäle",
   "nav.incidents": "Vorfälle",
@@ -1296,6 +1425,9 @@ const de: Record<MessageKey, string> = {
   "admin.timeToFirstMonitor": "Mittlere Zeit bis zum ersten Monitor",
   "admin.backToApp": "Zurück zur App",
   "admin.forbidden": "Du hast keinen Zugriff auf den Admin-Bereich.",
+  "admin.organizations": "Organisationen",
+  "admin.orgName": "Name",
+  "admin.orgSlug": "Slug",
   "state.loading": "Lädt…",
   "state.error": "Etwas ist schiefgelaufen.",
   "state.retry": "Erneut versuchen",
@@ -1344,10 +1476,13 @@ const de: Record<MessageKey, string> = {
   "monitor.deleteMessage":
     "Dies löscht den Monitor und seinen Verlauf dauerhaft.",
   "monitor.checkConflict": "Eine Prüfung läuft bereits.",
-  "monitor.checkDisabled": "Dieser Monitor ist aus. Aktiviere ihn, um eine Prüfung zu starten.",
+  "monitor.checkDisabled":
+    "Dieser Monitor ist aus. Aktiviere ihn, um eine Prüfung zu starten.",
   "monitor.checkQueued": "Prüfung in der Warteschlange. Beobachte jede Region…",
-  "monitor.checkRateLimited": "Zu viele Prüfungen. Versuche es in {seconds}s erneut.",
-  "monitor.checkRateLimitedUpgrade": "Zu viele Prüfungen. Versuche es in {seconds}s erneut, oder wechsle für ein höheres Limit den Plan.",
+  "monitor.checkRateLimited":
+    "Zu viele Prüfungen. Versuche es in {seconds}s erneut.",
+  "monitor.checkRateLimitedUpgrade":
+    "Zu viele Prüfungen. Versuche es in {seconds}s erneut, oder wechsle für ein höheres Limit den Plan.",
   "monitor.statUptime": "Verfügbarkeit",
   "monitor.statAvgLatency": "Ø Latenz",
   "monitor.statP95Latency": "p95-Latenz",
@@ -1357,7 +1492,8 @@ const de: Record<MessageKey, string> = {
   "monitor.latencyTitle": "Latenz (letzte Prüfungen)",
   "monitor.resultsTitle": "Letzte Prüfungen",
   "monitor.regionsTitle": "Status nach Region",
-  "monitor.helpRegions": "Das letzte Prüfergebnis aus jeder Region, in der dieser Monitor läuft.",
+  "monitor.helpRegions":
+    "Das letzte Prüfergebnis aus jeder Region, in der dieser Monitor läuft.",
   "monitor.incidentsTitle": "Vorfälle",
   "monitor.certTitle": "TLS-Zertifikat",
   "monitor.certIssuedTo": "Ausgestellt für",
@@ -1390,15 +1526,20 @@ const de: Record<MessageKey, string> = {
   "monitor.lastFailureHeaders": "Antwort-Header",
   "monitor.lastFailureBody": "Antworttext",
   "monitor.lastFailureTruncated": "Bei 64 KB abgeschnitten",
-  "monitor.helpUptime": "Wie viele der letzten Prüfungen bestanden haben, in Prozent.",
-  "monitor.helpAvgLatency": "Durchschnittliche Zeit, die der Endpunkt zum Antworten brauchte, über die letzten Prüfungen.",
+  "monitor.helpUptime":
+    "Wie viele der letzten Prüfungen bestanden haben, in Prozent.",
+  "monitor.helpAvgLatency":
+    "Durchschnittliche Zeit, die der Endpunkt zum Antworten brauchte, über die letzten Prüfungen.",
   "monitor.helpP95Latency":
     "95 von 100 der letzten Prüfungen waren mindestens so schnell. Zeigt die langsamen, die ein einfacher Durchschnitt verbergen kann.",
-  "monitor.helpLastCheck": "Wann die letzte Prüfung lief und welche Region sie ausgeführt hat.",
-  "monitor.helpNextCheck": "Ungefähr wann die nächste Prüfung läuft, basierend auf der letzten plus dem Intervall.",
+  "monitor.helpLastCheck":
+    "Wann die letzte Prüfung lief und welche Region sie ausgeführt hat.",
+  "monitor.helpNextCheck":
+    "Ungefähr wann die nächste Prüfung läuft, basierend auf der letzten plus dem Intervall.",
   "monitor.helpUptimeBar":
     "Jeder Block ist eine Prüfung, die neueste rechts. Grün bestanden, rot fehlgeschlagen.",
-  "monitor.helpLatencyChart": "Wie sich die Antwortzeit über die letzten Prüfungen verändert hat.",
+  "monitor.helpLatencyChart":
+    "Wie sich die Antwortzeit über die letzten Prüfungen verändert hat.",
   "monitor.helpRecentChecks":
     "Die neuesten Prüfläufe, eine Zeile pro Lauf. Einen Lauf aufklappen, um jede Region zu sehen.",
   "monitor.helpIncidents":
@@ -1407,8 +1548,10 @@ const de: Record<MessageKey, string> = {
     "Was der Endpunkt beim letzten fehlgeschlagenen Check zurückgegeben hat, damit du siehst, was schiefging.",
   "monitor.helpColTime": "Wann dieser Check ausgeführt wurde.",
   "monitor.helpColRegion": "Welche Region diesen Check ausgeführt hat.",
-  "monitor.helpColRegions": "Wie viele Regionen diesen Check ausgeführt haben. Zeile aufklappen für jede Region.",
-  "monitor.helpColResult": "Ob der Check bestanden hat oder warum er fehlschlug.",
+  "monitor.helpColRegions":
+    "Wie viele Regionen diesen Check ausgeführt haben. Zeile aufklappen für jede Region.",
+  "monitor.helpColResult":
+    "Ob der Check bestanden hat oder warum er fehlschlug.",
   "monitor.helpColCode": "Der HTTP-Statuscode, den der Endpunkt zurückgab.",
   "monitor.helpColLatency": "Wie lange der Endpunkt zum Antworten brauchte.",
   "region.stateScheduled": "geplant",
@@ -1446,7 +1589,8 @@ const de: Record<MessageKey, string> = {
   "monitorForm.name": "Name",
   "monitorForm.url": "URL",
   "monitorForm.host": "Host",
-  "monitorForm.hostHint": "Der zu prüfende Host, z. B. example.com (Port ist standardmäßig 443).",
+  "monitorForm.hostHint":
+    "Der zu prüfende Host, z. B. example.com (Port ist standardmäßig 443).",
   "monitorForm.sslNotifyInfo":
     "Wir prüfen das TLS-Zertifikat und benachrichtigen dich 7, 3 und 1 Tag vor dem Ablauf und erneut, sobald es abgelaufen ist.",
   "monitorForm.method": "Methode",
@@ -1464,7 +1608,8 @@ const de: Record<MessageKey, string> = {
   "monitorForm.timeout": "Zeitüberschreitung (Sekunden)",
   "monitorForm.interval": "Prüfintervall (Sekunden)",
   "monitorForm.planMin": "Plan-Minimum",
-  "monitorForm.intervalLocked": "Häufigere Prüfungen sind in höheren Tarifen verfügbar",
+  "monitorForm.intervalLocked":
+    "Häufigere Prüfungen sind in höheren Tarifen verfügbar",
   "monitorForm.int30s": "30 Sekunden",
   "monitorForm.int1m": "1 Minute",
   "monitorForm.int2m": "2 Minuten",
@@ -1492,25 +1637,39 @@ const de: Record<MessageKey, string> = {
   "monitorForm.errUrl": "Gib eine gültige http(s)-URL ein",
   "monitorForm.errHost": "Gib einen Host ein, z. B. example.com",
   "monitorForm.capReached": "Du hast das Monitor-Limit deines Tarifs erreicht.",
-  "monitorForm.helpName": "Eine Bezeichnung, um diesen Monitor in Listen und Benachrichtigungen zu erkennen.",
-  "monitorForm.helpUrl": "Der zu prüfende Endpunkt. Muss mit http:// oder https:// beginnen.",
+  "monitorForm.helpName":
+    "Eine Bezeichnung, um diesen Monitor in Listen und Benachrichtigungen zu erkennen.",
+  "monitorForm.helpUrl":
+    "Der zu prüfende Endpunkt. Muss mit http:// oder https:// beginnen.",
   "monitorForm.helpMethod": "Die für die Prüfanfrage verwendete HTTP-Methode.",
-  "monitorForm.helpBody": "Anfrage-Body, der mit POST, PUT oder PATCH gesendet wird.",
-  "monitorForm.helpExpected": "Statuscodes, die als OK gelten. Nutze explizite Codes oder Platzhalter wie 2xx.",
-  "monitorForm.helpMaxLatency": "Prüfung als fehlgeschlagen werten, wenn die Antwort langsamer ist. Leer lassen für kein Limit.",
-  "monitorForm.helpBodyContains": "Prüfung als fehlgeschlagen werten, wenn der Antwort-Body diesen Text nicht enthält.",
-  "monitorForm.helpTimeout": "Wie lange auf eine Antwort gewartet wird, bevor die Prüfung abläuft (1-60s).",
+  "monitorForm.helpBody":
+    "Anfrage-Body, der mit POST, PUT oder PATCH gesendet wird.",
+  "monitorForm.helpExpected":
+    "Statuscodes, die als OK gelten. Nutze explizite Codes oder Platzhalter wie 2xx.",
+  "monitorForm.helpMaxLatency":
+    "Prüfung als fehlgeschlagen werten, wenn die Antwort langsamer ist. Leer lassen für kein Limit.",
+  "monitorForm.helpBodyContains":
+    "Prüfung als fehlgeschlagen werten, wenn der Antwort-Body diesen Text nicht enthält.",
+  "monitorForm.helpTimeout":
+    "Wie lange auf eine Antwort gewartet wird, bevor die Prüfung abläuft (1-60s).",
   "monitorForm.helpInterval": "Wie oft dieser Monitor eine Prüfung ausführt.",
-  "monitorForm.helpFailureThreshold": "Aufeinanderfolgende fehlgeschlagene Prüfungen, bevor ein Vorfall geöffnet wird.",
-  "monitorForm.helpRegions": "Standorte, die die Prüfung ausführen. Mehr Regionen bieten breitere Abdeckung.",
-  "monitorForm.helpDownPolicy": "Wie die Ergebnisse je Region zum Gesamturteil kombiniert werden.",
-  "monitorForm.helpHeaders": "Eigene Anfrage-Header. Sensible Werte als geheim markieren, damit sie verschlüsselt gespeichert werden.",
-  "monitorForm.helpChannels": "Wohin Benachrichtigungen gesendet werden, wenn ein Vorfall beginnt oder behoben wird.",
-  "monitorForm.helpEnabled": "Wenn aus, behält der Monitor seine Konfiguration, führt aber keine Prüfungen aus.",
+  "monitorForm.helpFailureThreshold":
+    "Aufeinanderfolgende fehlgeschlagene Prüfungen, bevor ein Vorfall geöffnet wird.",
+  "monitorForm.helpRegions":
+    "Standorte, die die Prüfung ausführen. Mehr Regionen bieten breitere Abdeckung.",
+  "monitorForm.helpDownPolicy":
+    "Wie die Ergebnisse je Region zum Gesamturteil kombiniert werden.",
+  "monitorForm.helpHeaders":
+    "Eigene Anfrage-Header. Sensible Werte als geheim markieren, damit sie verschlüsselt gespeichert werden.",
+  "monitorForm.helpChannels":
+    "Wohin Benachrichtigungen gesendet werden, wenn ein Vorfall beginnt oder behoben wird.",
+  "monitorForm.helpEnabled":
+    "Wenn aus, behält der Monitor seine Konfiguration, führt aber keine Prüfungen aus.",
   "channels.heading": "Benachrichtigungskanäle",
   "channels.new": "Neuer Kanal",
   "channels.empty": "Noch keine Kanäle",
-  "channels.emptyHint": "Füge einen Kanal hinzu, damit Vorfälle dein Team erreichen.",
+  "channels.emptyHint":
+    "Füge einen Kanal hinzu, damit Vorfälle dein Team erreichen.",
   "channels.colName": "Name",
   "channels.colType": "Typ",
   "channels.colEnabled": "Aktiv",
@@ -1521,7 +1680,8 @@ const de: Record<MessageKey, string> = {
   "channels.test": "Test senden",
   "channels.testing": "Senden…",
   "channels.deleteHeading": "Kanal löschen?",
-  "channels.deleteMessage": "Dies entfernt den Kanal endgültig. Monitore, die ihn nutzen, senden nicht mehr an ihn.",
+  "channels.deleteMessage":
+    "Dies entfernt den Kanal endgültig. Monitore, die ihn nutzen, senden nicht mehr an ihn.",
   "channels.deleted": "Kanal gelöscht",
   "channels.testSent": "Testbenachrichtigung gesendet",
   "channels.testFailed": "Testbenachrichtigung konnte nicht gesendet werden",
@@ -1529,11 +1689,13 @@ const de: Record<MessageKey, string> = {
   "channelForm.editHeading": "Kanal bearbeiten",
   "channelForm.upsellTypes": "{types} sind in einem höheren Tarif verfügbar.",
   "channelForm.name": "Name",
-  "channelForm.helpName": "Eine Bezeichnung, um diesen Kanal in Listen und an Monitoren zu erkennen.",
+  "channelForm.helpName":
+    "Eine Bezeichnung, um diesen Kanal in Listen und an Monitoren zu erkennen.",
   "channelForm.type": "Kanaltyp",
   "channelForm.pickType": "Kanaltyp wählen",
   "channelForm.enabled": "Aktiv",
-  "channelForm.helpEnabled": "Wenn aus, bleibt der Kanal erhalten, erhält aber keine Benachrichtigungen.",
+  "channelForm.helpEnabled":
+    "Wenn aus, bleibt der Kanal erhalten, erhält aber keine Benachrichtigungen.",
   "channelForm.sectionConfig": "Konfiguration",
   "channelForm.create": "Kanal erstellen",
   "channelForm.saveChanges": "Änderungen speichern",
@@ -1556,18 +1718,22 @@ const de: Record<MessageKey, string> = {
   "members.you": "Du",
   "members.remove": "Entfernen",
   "members.removeHeading": "Mitglied entfernen?",
-  "members.removeMessage": "Damit wird {name} aus der Organisation entfernt und verliert sofort den Zugriff.",
+  "members.removeMessage":
+    "Damit wird {name} aus der Organisation entfernt und verliert sofort den Zugriff.",
   "members.removed": "Mitglied entfernt",
   "members.roleChanged": "Rolle aktualisiert",
   "members.transfer": "Zum Eigentümer machen",
   "members.transferHeading": "Eigentum übertragen?",
-  "members.transferMessage": "Damit wird {name} zum Eigentümer. Du bleibst Administrator.",
+  "members.transferMessage":
+    "Damit wird {name} zum Eigentümer. Du bleibst Administrator.",
   "members.transferred": "Eigentum übertragen",
   "members.leave": "Organisation verlassen",
   "members.leaveHeading": "Organisation verlassen?",
-  "members.leaveMessage": "Du verlierst den Zugriff auf diese Organisation. Du kannst nur mit einer neuen Einladung zurückkehren.",
+  "members.leaveMessage":
+    "Du verlierst den Zugriff auf diese Organisation. Du kannst nur mit einer neuen Einladung zurückkehren.",
   "members.left": "Du hast die Organisation verlassen",
-  "members.leaveLastOwner": "Du bist der einzige Eigentümer. Übertrage das Eigentum an jemand anderen, bevor du gehst.",
+  "members.leaveLastOwner":
+    "Du bist der einzige Eigentümer. Übertrage das Eigentum an jemand anderen, bevor du gehst.",
   "members.empty": "Noch keine Mitglieder",
   "role.owner": "Eigentümer",
   "role.admin": "Administrator",
@@ -1588,7 +1754,8 @@ const de: Record<MessageKey, string> = {
   "invites.errEmail": "Gib eine gültige E-Mail ein",
   "invites.revoke": "Widerrufen",
   "invites.revokeHeading": "Einladung widerrufen?",
-  "invites.revokeMessage": "Damit wird die Einladung an {email} storniert und der Platz freigegeben.",
+  "invites.revokeMessage":
+    "Damit wird die Einladung an {email} storniert und der Platz freigegeben.",
   "invites.revoked": "Einladung widerrufen",
   "invites.resend": "Erneut senden",
   "invites.resending": "Wird erneut gesendet…",
@@ -1601,7 +1768,8 @@ const de: Record<MessageKey, string> = {
 
   "incidents.heading": "Vorfälle",
   "incidents.empty": "Keine Vorfälle",
-  "incidents.emptyHint": "Vorfälle werden automatisch geöffnet, wenn ein Monitor ausfällt.",
+  "incidents.emptyHint":
+    "Vorfälle werden automatisch geöffnet, wenn ein Monitor ausfällt.",
   "incidents.colMonitor": "Monitor",
   "incidents.colStarted": "Beginn",
   "incidents.colDuration": "Dauer",
@@ -1630,7 +1798,8 @@ const de: Record<MessageKey, string> = {
   "incident.noteAdded": "Notiz hinzugefügt",
   "incident.close": "Vorfall schließen",
   "incident.closeHeading": "Vorfall schließen?",
-  "incident.closeMessage": "Damit wird der Vorfall als Eingriff des Betreibers geschlossen. Es wird keine Wiederherstellungsbenachrichtigung gesendet.",
+  "incident.closeMessage":
+    "Damit wird der Vorfall als Eingriff des Betreibers geschlossen. Es wird keine Wiederherstellungsbenachrichtigung gesendet.",
   "incident.closed": "Vorfall geschlossen",
   "incident.alreadyClosed": "Dieser Vorfall ist bereits geschlossen.",
 
@@ -1645,13 +1814,15 @@ const de: Record<MessageKey, string> = {
   "accept.accepted": "Du bist {org} beigetreten",
   "accept.decline": "Jetzt nicht",
   "accept.errExpired": "Diese Einladung ist abgelaufen oder nicht mehr gültig.",
-  "accept.errMismatch": "Diese Einladung gilt für eine andere E-Mail. Melde dich mit der eingeladenen Adresse an.",
+  "accept.errMismatch":
+    "Diese Einladung gilt für eine andere E-Mail. Melde dich mit der eingeladenen Adresse an.",
   "accept.errNotFound": "Wir konnten diese Einladung nicht finden.",
 
   "statusPages.heading": "Statusseiten",
   "statusPages.new": "Neue Statusseite",
   "statusPages.empty": "Noch keine Statusseiten",
-  "statusPages.emptyHint": "Erstelle eine Statusseite, um die Verfügbarkeit mit deinen Kunden zu teilen.",
+  "statusPages.emptyHint":
+    "Erstelle eine Statusseite, um die Verfügbarkeit mit deinen Kunden zu teilen.",
   "statusPages.colName": "Name",
   "statusPages.colSlug": "Slug",
   "statusPages.colState": "Status",
@@ -1666,7 +1837,8 @@ const de: Record<MessageKey, string> = {
   "statusPages.edit": "Bearbeiten",
   "statusPages.delete": "Löschen",
   "statusPages.deleteHeading": "Statusseite löschen?",
-  "statusPages.deleteMessage": "Dies löscht die Statusseite dauerhaft. Ihre öffentliche URL ist nicht mehr erreichbar.",
+  "statusPages.deleteMessage":
+    "Dies löscht die Statusseite dauerhaft. Ihre öffentliche URL ist nicht mehr erreichbar.",
   "statusPages.deleted": "Statusseite gelöscht",
   "statusPages.draftNoUrl": "Nicht öffentlich, bis sie veröffentlicht ist",
 
@@ -1676,32 +1848,41 @@ const de: Record<MessageKey, string> = {
   "statusPageForm.sectionBranding": "Branding",
   "statusPageForm.sectionMonitors": "Angezeigte Monitore",
   "statusPageForm.name": "Name",
-  "statusPageForm.helpName": "Wird als Überschrift deiner öffentlichen Statusseite angezeigt.",
+  "statusPageForm.helpName":
+    "Wird als Überschrift deiner öffentlichen Statusseite angezeigt.",
   "statusPageForm.slug": "Slug",
-  "statusPageForm.helpSlug": "Die Adresse deiner öffentlichen Seite. Kleinbuchstaben, Zahlen und Bindestriche.",
+  "statusPageForm.helpSlug":
+    "Die Adresse deiner öffentlichen Seite. Kleinbuchstaben, Zahlen und Bindestriche.",
   "statusPageForm.logoUrl": "Logo-URL",
-  "statusPageForm.helpLogoUrl": "Eine https-Bild-URL oben auf der Seite. Leer lassen für keins.",
+  "statusPageForm.helpLogoUrl":
+    "Eine https-Bild-URL oben auf der Seite. Leer lassen für keins.",
   "statusPageForm.accentColor": "Akzentfarbe",
-  "statusPageForm.helpAccentColor": "Die Markenfarbe für Überschriften und das Banner.",
+  "statusPageForm.helpAccentColor":
+    "Die Markenfarbe für Überschriften und das Banner.",
   "statusPageForm.theme": "Design",
   "statusPageForm.themeLight": "Hell",
   "statusPageForm.themeDark": "Dunkel",
-  "statusPageForm.monitorsHint": "Wähle die anzuzeigenden Monitore und gib jedem einen freundlichen öffentlichen Namen.",
+  "statusPageForm.monitorsHint":
+    "Wähle die anzuzeigenden Monitore und gib jedem einen freundlichen öffentlichen Namen.",
   "statusPageForm.noMonitors": "Noch keine Monitore",
   "statusPageForm.displayName": "Anzeigename",
   "statusPageForm.moveUp": "Nach oben",
   "statusPageForm.moveDown": "Nach unten",
   "statusPageForm.published": "Veröffentlicht",
-  "statusPageForm.helpPublished": "Wenn an, ist die öffentliche URL erreichbar. Wenn aus, bleibt die Seite ein Entwurf.",
+  "statusPageForm.helpPublished":
+    "Wenn an, ist die öffentliche URL erreichbar. Wenn aus, bleibt die Seite ein Entwurf.",
   "statusPageForm.publicUrl": "Öffentliche URL",
   "statusPageForm.create": "Statusseite erstellen",
   "statusPageForm.saveChanges": "Änderungen speichern",
   "statusPageForm.created": "Statusseite erstellt",
   "statusPageForm.saved": "Statusseite gespeichert",
   "statusPageForm.errName": "Name ist erforderlich",
-  "statusPageForm.errSlug": "Gib einen gültigen Slug ein (Kleinbuchstaben, Zahlen, Bindestriche)",
-  "statusPageForm.errLogoUrl": "Gib eine gültige https-URL ein oder lass es leer",
-  "statusPageForm.capReached": "Du hast das Statusseiten-Limit deines Tarifs erreicht.",
+  "statusPageForm.errSlug":
+    "Gib einen gültigen Slug ein (Kleinbuchstaben, Zahlen, Bindestriche)",
+  "statusPageForm.errLogoUrl":
+    "Gib eine gültige https-URL ein oder lass es leer",
+  "statusPageForm.capReached":
+    "Du hast das Statusseiten-Limit deines Tarifs erreicht.",
   "statusPageForm.copyUrl": "URL kopieren",
   "statusPageForm.copied": "Kopiert",
 
@@ -1719,9 +1900,11 @@ const de: Record<MessageKey, string> = {
   "publicStatus.incidentOngoing": "Laufend",
   "publicStatus.incidentResolved": "Behoben",
   "publicStatus.notFoundTitle": "Statusseite nicht gefunden",
-  "publicStatus.notFoundBody": "Diese Statusseite existiert nicht oder ist nicht veröffentlicht.",
+  "publicStatus.notFoundBody":
+    "Diese Statusseite existiert nicht oder ist nicht veröffentlicht.",
   "publicStatus.errorTitle": "Status konnte nicht geladen werden",
-  "publicStatus.errorBody": "Beim Laden dieser Seite ist etwas schiefgelaufen. Bitte versuche es erneut.",
+  "publicStatus.errorBody":
+    "Beim Laden dieser Seite ist etwas schiefgelaufen. Bitte versuche es erneut.",
   "publicStatus.retry": "Erneut versuchen",
   "publicStatus.poweredBy": "Powered by Pulse Pager",
 
@@ -1731,7 +1914,8 @@ const de: Record<MessageKey, string> = {
   "plan.tierCustom": "Custom",
 
   "billing.heading": "Abrechnung & Nutzung",
-  "billing.noAccess": "Die Abrechnung verwalten Inhaber und Administratoren. Bitte einen Inhaber oder Administrator dieser Organisation, den Plan zu ändern.",
+  "billing.noAccess":
+    "Die Abrechnung verwalten Inhaber und Administratoren. Bitte einen Inhaber oder Administrator dieser Organisation, den Plan zu ändern.",
   "billing.currentPlan": "Aktueller Plan",
   "billing.currentPlanBadge": "Dein Plan",
   "billing.usage": "Nutzung",
@@ -1752,7 +1936,8 @@ const de: Record<MessageKey, string> = {
   "billing.included": "Enthalten",
   "billing.notIncluded": "Nicht enthalten",
   "billing.compare": "Pläne vergleichen",
-  "billing.compareHint": "Wähle einen Plan, der zu deinem Monitoring-Umfang passt.",
+  "billing.compareHint":
+    "Wähle einen Plan, der zu deinem Monitoring-Umfang passt.",
   "billing.colPlan": "Plan",
   "billing.colMonitors": "Monitore",
   "billing.colInterval": "Schnellstes Intervall",
@@ -1765,18 +1950,23 @@ const de: Record<MessageKey, string> = {
   "billing.currentTier": "Aktuell",
   "billing.upgrade": "Upgraden",
   "billing.upgradeHeading": "Upgrade bald verfügbar",
-  "billing.upgradeBody": "Self-Service-Checkout kommt bald. Kontaktiere uns vorerst, dann verschieben wir deine Organisation auf den {plan}-Plan.",
+  "billing.upgradeBody":
+    "Self-Service-Checkout kommt bald. Kontaktiere uns vorerst, dann verschieben wir deine Organisation auf den {plan}-Plan.",
   "billing.upgradeContact": "Kontaktiere uns",
   "billing.upgradeClose": "Schließen",
 
   "apiKeys.heading": "API-Schlüssel",
-  "apiKeys.noAccess": "API-Schlüssel werden von Eigentümern und Administratoren verwaltet. Bitte einen Eigentümer oder Administrator dieser Organisation, einen Schlüssel zu erstellen oder zu widerrufen.",
-  "apiKeys.upgrade": "API-Schlüssel sind in einem kostenpflichtigen Tarif verfügbar. Führe ein Upgrade durch, um die API zu erstellen und zu nutzen.",
-  "apiKeys.readOnlyNote": "In deinem Tarif sind API-Schlüssel schreibgeschützt. Führe ein Upgrade für vollen Lese- und Schreibzugriff durch.",
+  "apiKeys.noAccess":
+    "API-Schlüssel werden von Eigentümern und Administratoren verwaltet. Bitte einen Eigentümer oder Administrator dieser Organisation, einen Schlüssel zu erstellen oder zu widerrufen.",
+  "apiKeys.upgrade":
+    "API-Schlüssel sind in einem kostenpflichtigen Tarif verfügbar. Führe ein Upgrade durch, um die API zu erstellen und zu nutzen.",
+  "apiKeys.readOnlyNote":
+    "In deinem Tarif sind API-Schlüssel schreibgeschützt. Führe ein Upgrade für vollen Lese- und Schreibzugriff durch.",
   "apiKeys.docs": "API-Dokumentation",
   "apiKeys.new": "Neuer API-Schlüssel",
   "apiKeys.empty": "Noch keine API-Schlüssel",
-  "apiKeys.emptyHint": "Erstelle einen Schlüssel, um die Pulse Pager-API aus deinen eigenen Skripten und Diensten aufzurufen.",
+  "apiKeys.emptyHint":
+    "Erstelle einen Schlüssel, um die Pulse Pager-API aus deinen eigenen Skripten und Diensten aufzurufen.",
   "apiKeys.colName": "Name",
   "apiKeys.colPrefix": "Präfix",
   "apiKeys.colRole": "Rolle",
@@ -1791,14 +1981,17 @@ const de: Record<MessageKey, string> = {
   "apiKeys.created": "API-Schlüssel erstellt",
   "apiKeys.errName": "Name ist erforderlich",
   "apiKeys.secretHeading": "Kopiere deinen API-Schlüssel",
-  "apiKeys.secretWarning": "Dies ist das einzige Mal, dass der vollständige Schlüssel angezeigt wird. Kopiere ihn jetzt und bewahre ihn sicher auf. Du wirst ihn nicht wieder sehen.",
+  "apiKeys.secretWarning":
+    "Dies ist das einzige Mal, dass der vollständige Schlüssel angezeigt wird. Kopiere ihn jetzt und bewahre ihn sicher auf. Du wirst ihn nicht wieder sehen.",
   "apiKeys.copy": "Schlüssel kopieren",
   "apiKeys.copied": "Schlüssel kopiert",
-  "apiKeys.copyFailed": "Der Schlüssel konnte nicht kopiert werden. Kopiere ihn manuell.",
+  "apiKeys.copyFailed":
+    "Der Schlüssel konnte nicht kopiert werden. Kopiere ihn manuell.",
   "apiKeys.secretDone": "Fertig",
   "apiKeys.revoke": "Widerrufen",
   "apiKeys.revokeHeading": "API-Schlüssel widerrufen?",
-  "apiKeys.revokeMessage": "Dies widerruft den Schlüssel dauerhaft. Alles, was ihn nutzt, funktioniert sofort nicht mehr.",
+  "apiKeys.revokeMessage":
+    "Dies widerruft den Schlüssel dauerhaft. Alles, was ihn nutzt, funktioniert sofort nicht mehr.",
   "apiKeys.revoked": "API-Schlüssel widerrufen",
 };
 
@@ -1865,7 +2058,10 @@ export function t(key: MessageKey): string {
 
 // Substitute {name} placeholders in a template from a params bag. Values are
 // coerced to string; an unknown placeholder is left untouched.
-function interpolate(template: string, params?: Record<string, unknown>): string {
+function interpolate(
+  template: string,
+  params?: Record<string, unknown>,
+): string {
   if (!params) return template;
   return template.replace(/\{(\w+)\}/g, (whole, name: string) =>
     name in params ? String(params[name]) : whole,
@@ -1884,6 +2080,7 @@ export function tDynamic(
   params?: Record<string, unknown>,
 ): string {
   const table = messages[current] as Record<string, string | undefined>;
-  const template = table[code] ?? (en as Record<string, string | undefined>)[code] ?? message;
+  const template =
+    table[code] ?? (en as Record<string, string | undefined>)[code] ?? message;
   return interpolate(template, params);
 }

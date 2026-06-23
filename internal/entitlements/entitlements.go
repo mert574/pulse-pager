@@ -62,6 +62,18 @@ func ParsePlan(s string) Plan {
 	}
 }
 
+// IsKnownPlan reports whether s is one of the four real plan codes. Unlike
+// ParsePlan (which maps anything unknown to free), this rejects, so an operator
+// setting a plan by hand gets a 422 on a typo instead of a silent downgrade.
+func IsKnownPlan(s string) bool {
+	switch Plan(s) {
+	case PlanTier1, PlanTier2, PlanTier3, PlanTierCustom:
+		return true
+	default:
+		return false
+	}
+}
+
 // seatCaps is the per-plan seat capacity from PRD-001 5.2 (master 11 table):
 // Free 1, Hobby 3, Professional 10, Custom unlimited (pricing.html; Custom is
 // contract-negotiated, represented here as a very large cap).

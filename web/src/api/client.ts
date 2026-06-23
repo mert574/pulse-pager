@@ -13,6 +13,7 @@ import { navigate } from "../router.js";
 import { session } from "../state/session.js";
 import type {
   AdminMetrics,
+  AdminOrg,
   ApiErrorBody,
   ApiKey,
   ApiKeyCreated,
@@ -44,6 +45,7 @@ import type {
   OrgInput,
   OrgMembership,
   Page,
+  Plan,
   PlanCatalogEntry,
   ResultsRange,
   StatusPage,
@@ -59,7 +61,10 @@ export class ApiError extends Error {
   // Error schema does not model params, so we read them off the wire defensively.
   readonly params?: Record<string, unknown>;
 
-  constructor(status: number, body: ApiErrorBody & { params?: Record<string, unknown> }) {
+  constructor(
+    status: number,
+    body: ApiErrorBody & { params?: Record<string, unknown> },
+  ) {
     super(body.message);
     this.name = "ApiError";
     this.status = status;
@@ -77,7 +82,9 @@ const API_V1 = "/api/v1";
 // cookies are httpOnly and unreadable.
 function readCookie(name: string): string | null {
   const match = document.cookie.match(
-    new RegExp("(?:^|; )" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "=([^;]*)"),
+    new RegExp(
+      "(?:^|; )" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "=([^;]*)",
+    ),
   );
   return match ? decodeURIComponent(match[1]) : null;
 }
@@ -157,11 +164,10 @@ async function parseError(res: Response): Promise<ApiError> {
   let body: ApiErrorBody;
   try {
     const parsed = (await res.json()) as { error?: ApiErrorBody };
-    body =
-      parsed.error ?? {
-        code: "internal_error",
-        message: `Request failed with status ${res.status}`,
-      };
+    body = parsed.error ?? {
+      code: "internal_error",
+      message: `Request failed with status ${res.status}`,
+    };
   } catch {
     body = {
       code: "internal_error",
@@ -278,6 +284,17 @@ export const client = {
   getAdminMetrics(): Promise<AdminMetrics> {
     return request<AdminMetrics>(`${API_V1}/admin/metrics`);
   },
+  // Every org with its plan, for the admin plan editor. Same allowlist gate.
+  listAdminOrgs(): Promise<AdminOrg[]> {
+    return request<AdminOrg[]>(`${API_V1}/admin/orgs`);
+  },
+  // Set an org's plan by hand (operator override until Stripe lands).
+  setAdminOrgPlan(orgId: string, plan: Plan): Promise<AdminOrg> {
+    return request<AdminOrg>(`${API_V1}/admin/orgs/${orgId}/plan`, {
+      method: "PUT",
+      body: { plan },
+    });
+  },
 
   listMonitors(orgId: string): Promise<MonitorListItem[]> {
     return request<MonitorListItem[]>(org(orgId, "/monitors"));
@@ -291,7 +308,11 @@ export const client = {
       body: input,
     });
   },
-  updateMonitor(orgId: string, id: string, input: MonitorInput): Promise<Monitor> {
+  updateMonitor(
+    orgId: string,
+    id: string,
+    input: MonitorInput,
+  ): Promise<Monitor> {
     return request<Monitor>(org(orgId, `/monitors/${id}`), {
       method: "PUT",
       body: input,
@@ -313,7 +334,10 @@ export const client = {
   // The current per-region live states for the org's monitors, keyed by monitor
   // id. Pass a monitorId to scope it to one monitor; omit it for the whole list.
   // The list and detail views poll this every few seconds to show live progress.
-  getMonitorRegionStates(orgId: string, monitorId?: string): Promise<MonitorRegionStates> {
+  getMonitorRegionStates(
+    orgId: string,
+    monitorId?: string,
+  ): Promise<MonitorRegionStates> {
     return request<MonitorRegionStates>(org(orgId, "/monitor-region-states"), {
       query: { monitor_id: monitorId },
     });
@@ -341,9 +365,14 @@ export const client = {
   // The captured response of the most recent failed check, or null when none has
   // been captured (404). The headers and body are the monitored endpoint's own
   // response, i.e. attacker-controlled, so the view must render them as text only.
-  async lastFailure(orgId: string, id: string): Promise<FailureSnapshot | null> {
+  async lastFailure(
+    orgId: string,
+    id: string,
+  ): Promise<FailureSnapshot | null> {
     try {
-      return await request<FailureSnapshot>(org(orgId, `/monitors/${id}/last-failure`));
+      return await request<FailureSnapshot>(
+        org(orgId, `/monitors/${id}/last-failure`),
+      );
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) return null;
       throw err;
@@ -364,7 +393,11 @@ export const client = {
       body: input,
     });
   },
-  updateChannel(orgId: string, id: string, input: ChannelInput): Promise<Channel> {
+  updateChannel(
+    orgId: string,
+    id: string,
+    input: ChannelInput,
+  ): Promise<Channel> {
     return request<Channel>(org(orgId, `/channels/${id}`), {
       method: "PUT",
       body: input,
@@ -374,7 +407,9 @@ export const client = {
     return request<void>(org(orgId, `/channels/${id}`), { method: "DELETE" });
   },
   testChannel(orgId: string, id: string): Promise<void> {
-    return request<void>(org(orgId, `/channels/${id}/test`), { method: "POST" });
+    return request<void>(org(orgId, `/channels/${id}/test`), {
+      method: "POST",
+    });
   },
 
   // The org's incidents across all monitors, newest first (PRD-002 4). status
@@ -399,10 +434,13 @@ export const client = {
     id: string,
     note: string,
   ): Promise<IncidentAnnotation> {
-    return request<IncidentAnnotation>(org(orgId, `/incidents/${id}/annotations`), {
-      method: "POST",
-      body: { note } satisfies IncidentAnnotationInput,
-    });
+    return request<IncidentAnnotation>(
+      org(orgId, `/incidents/${id}/annotations`),
+      {
+        method: "POST",
+        body: { note } satisfies IncidentAnnotationInput,
+      },
+    );
   },
   // Manually close an open incident (owner/admin only). The server returns 409
   // when it is already closed, surfaced as an ApiError the view localizes.
@@ -432,19 +470,29 @@ export const client = {
   },
   // Update a page and its displayed monitors; display_monitors fully replaces the
   // displayed list.
-  updateStatusPage(orgId: string, id: string, input: StatusPageInput): Promise<StatusPage> {
+  updateStatusPage(
+    orgId: string,
+    id: string,
+    input: StatusPageInput,
+  ): Promise<StatusPage> {
     return request<StatusPage>(org(orgId, `/status-pages/${id}`), {
       method: "PUT",
       body: input,
     });
   },
   deleteStatusPage(orgId: string, id: string): Promise<void> {
-    return request<void>(org(orgId, `/status-pages/${id}`), { method: "DELETE" });
+    return request<void>(org(orgId, `/status-pages/${id}`), {
+      method: "DELETE",
+    });
   },
   // Publish or unpublish a page. Publishing makes the public URL resolve;
   // unpublishing returns it to draft. Returns the updated page so the list can
   // reflect the new state without a re-fetch.
-  publishStatusPage(orgId: string, id: string, published: boolean): Promise<StatusPage> {
+  publishStatusPage(
+    orgId: string,
+    id: string,
+    published: boolean,
+  ): Promise<StatusPage> {
     return request<StatusPage>(org(orgId, `/status-pages/${id}/publish`), {
       method: "PUT",
       body: { published },
@@ -460,7 +508,11 @@ export const client = {
   },
   // PATCH a member's role. The server rejects an admin trying to set owner, and
   // any role change it does not allow, with a 403/409 the view surfaces.
-  changeMemberRole(orgId: string, userId: string, role: MemberRoleUpdate["role"]): Promise<Member> {
+  changeMemberRole(
+    orgId: string,
+    userId: string,
+    role: MemberRoleUpdate["role"],
+  ): Promise<Member> {
     return request<Member>(org(orgId, `/members/${userId}`), {
       method: "PATCH",
       body: { role } satisfies MemberRoleUpdate,
@@ -468,7 +520,9 @@ export const client = {
   },
   // Remove another member from the org.
   removeMember(orgId: string, userId: string): Promise<void> {
-    return request<void>(org(orgId, `/members/${userId}`), { method: "DELETE" });
+    return request<void>(org(orgId, `/members/${userId}`), {
+      method: "DELETE",
+    });
   },
   // Leave the org yourself. The server returns 409 when the caller is the last
   // owner, surfaced as an ApiError the view turns into a localized message.
@@ -497,7 +551,9 @@ export const client = {
   },
   // Revoke a pending invitation, freeing its reserved seat.
   revokeInvitation(orgId: string, id: string): Promise<void> {
-    return request<void>(org(orgId, `/invitations/${id}`), { method: "DELETE" });
+    return request<void>(org(orgId, `/invitations/${id}`), {
+      method: "DELETE",
+    });
   },
   // Re-send the invitation email. Returns the (re-dated) invitation.
   resendInvitation(orgId: string, id: string): Promise<Invitation> {
@@ -516,7 +572,11 @@ export const client = {
   // Create a key at member or admin role (never owner; the server rejects it).
   // The response carries the full secret exactly once; the view shows it then
   // drops it, and the list never includes it.
-  createApiKey(orgId: string, name: string, role: ApiKeyInput["role"]): Promise<ApiKeyCreated> {
+  createApiKey(
+    orgId: string,
+    name: string,
+    role: ApiKeyInput["role"],
+  ): Promise<ApiKeyCreated> {
     return request<ApiKeyCreated>(org(orgId, "/api-keys"), {
       method: "POST",
       body: { name, role } satisfies ApiKeyInput,

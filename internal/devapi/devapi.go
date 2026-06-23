@@ -41,11 +41,12 @@ type monRow struct {
 
 // server implements apigen.StrictServerInterface with in-memory sample data.
 type server struct {
-	mu       sync.Mutex
-	monitors map[string]*monRow
-	channels map[string]*apigen.Channel
-	nextID   int
-	log      *slog.Logger
+	mu        sync.Mutex
+	monitors  map[string]*monRow
+	channels  map[string]*apigen.Channel
+	adminOrgs []apigen.AdminOrg
+	nextID    int
+	log       *slog.Logger
 }
 
 // Handler returns the dev API: the generated contract under /api/v1 (cookie-gated),
@@ -130,6 +131,33 @@ func (s *server) GetAdminMetrics(context.Context, apigen.GetAdminMetricsRequestO
 		},
 		Signups: signups,
 	}, nil
+}
+
+// ListAdminOrgs returns the in-memory sample orgs so the admin plan editor renders
+// in dev-auth mode. No store; UpdateAdminOrgPlan mutates this same slice.
+func (s *server) ListAdminOrgs(context.Context, apigen.ListAdminOrgsRequestObject) (apigen.ListAdminOrgsResponseObject, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]apigen.AdminOrg, len(s.adminOrgs))
+	copy(out, s.adminOrgs)
+	return apigen.ListAdminOrgs200JSONResponse(out), nil
+}
+
+// SetAdminOrgPlan changes a sample org's plan in-process so the dev UI reflects
+// the edit on reload. 404s an unknown id, 422s an unknown plan, matching the real api.
+func (s *server) SetAdminOrgPlan(_ context.Context, req apigen.SetAdminOrgPlanRequestObject) (apigen.SetAdminOrgPlanResponseObject, error) {
+	if req.Body == nil || !entitlements.IsKnownPlan(string(req.Body.Plan)) {
+		return apigen.SetAdminOrgPlan422JSONResponse{ValidationFailedJSONResponse: validationFailed("unknown plan")}, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.adminOrgs {
+		if s.adminOrgs[i].Id == req.OrgId {
+			s.adminOrgs[i].Plan = req.Body.Plan
+			return apigen.SetAdminOrgPlan200JSONResponse(s.adminOrgs[i]), nil
+		}
+	}
+	return apigen.SetAdminOrgPlan404JSONResponse{NotFoundJSONResponse: notFound("org not found")}, nil
 }
 
 // twoDigit zero-pads 1..31 for the sample dates.
@@ -912,6 +940,13 @@ func (s *server) seed() {
 	s.channels["chan_1"] = &apigen.Channel{
 		Id: "chan_1", OrgId: devOrgID, Name: "Eng Slack", Type: "slack", Enabled: true,
 		Config: map[string]any{"webhook_url_set": true},
+	}
+	// sample orgs for the admin panel's plan editor; static, mutated in-process.
+	s.adminOrgs = []apigen.AdminOrg{
+		{Id: devOrgID, Name: "Dev Workspace", Slug: "dev", Plan: devOrgPlan, CreatedAt: now.Add(-90 * 24 * time.Hour)},
+		{Id: "org_acme", Name: "Acme Inc", Slug: "acme", Plan: "tier2", CreatedAt: now.Add(-30 * 24 * time.Hour)},
+		{Id: "org_globex", Name: "Globex", Slug: "globex", Plan: "tier1", CreatedAt: now.Add(-7 * 24 * time.Hour)},
+		{Id: "org_initech", Name: "Initech", Slug: "initech", Plan: "tierCustom", CreatedAt: now.Add(-2 * 24 * time.Hour)},
 	}
 	s.nextID = 100
 }

@@ -213,6 +213,42 @@ func (p *Pool) UpdateOrganization(ctx context.Context, o *domain.Organization) e
 	return err
 }
 
+// AdminListOrganizations returns every active org for the operator admin panel,
+// newest first. Not org-scoped (it spans all orgs), so it runs on the bare pool;
+// the caller is already past the platform-admin allowlist.
+func (p *Pool) AdminListOrganizations(ctx context.Context) ([]*domain.Organization, error) {
+	rows, err := p.Query(ctx,
+		`SELECT `+orgColumns+` FROM organizations WHERE deleted_at IS NULL ORDER BY created_at DESC, id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*domain.Organization
+	for rows.Next() {
+		o, err := scanOrg(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+// SetOrganizationPlan writes the org's billing tier (operator-set until Stripe
+// lands, RFC-001 4.2). Returns pgx.ErrNoRows if no active org has that id, so the
+// caller can map it to a 404.
+func (p *Pool) SetOrganizationPlan(ctx context.Context, orgID int64, plan string) error {
+	tag, err := p.Exec(ctx,
+		`UPDATE organizations SET plan = $2 WHERE id = $1 AND deleted_at IS NULL`, orgID, plan)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 // SoftDeleteOrganization stamps deleted_at = now(), starting the 14-day grace
 // (RFC-015). The hard-delete cascade at grace end is a separate later work
 // package; this just hides the org and starts the clock. Idempotent: re-deleting

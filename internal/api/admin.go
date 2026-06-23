@@ -2,11 +2,17 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"strconv"
+
+	"github.com/jackc/pgx/v5"
 
 	"pulse/internal/apigen"
 	"pulse/internal/authn"
 	"pulse/internal/authz"
+	"pulse/internal/domain"
+	"pulse/internal/entitlements"
 )
 
 // adminAuth gates the admin routes. When Cloudflare Access is configured, it
@@ -84,4 +90,73 @@ func (s *Server) GetAdminMetrics(ctx context.Context, _ apigen.GetAdminMetricsRe
 		MonitorsByType:                  byType,
 		Signups:                         signups,
 	}, nil
+}
+
+// adminOrgDTO maps a store org to the admin-panel shape (id, name, slug, plan).
+func adminOrgDTO(o *domain.Organization) apigen.AdminOrg {
+	return apigen.AdminOrg{
+		Id:        strconv.FormatInt(o.ID, 10),
+		Name:      o.Name,
+		Slug:      o.Slug,
+		Plan:      apigen.Plan(o.Plan),
+		CreatedAt: o.CreatedAt,
+	}
+}
+
+// ListAdminOrgs returns every active org with its plan, so an admin can see and
+// change which plan an org is on. Same allowlist check as the metrics endpoint.
+func (s *Server) ListAdminOrgs(ctx context.Context, _ apigen.ListAdminOrgsRequestObject) (apigen.ListAdminOrgsResponseObject, error) {
+	p, ok := authn.FromContext(ctx)
+	if !ok || p.Kind != authz.ActorHuman {
+		return apigen.ListAdminOrgs401JSONResponse{UnauthorizedJSONResponse: unauthorized("sign in required")}, nil
+	}
+	if !s.isPlatformAdmin(p.Email) {
+		return apigen.ListAdminOrgs403JSONResponse{ForbiddenJSONResponse: forbidden("platform admin only")}, nil
+	}
+
+	orgs, err := s.store.AdminListOrganizations(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]apigen.AdminOrg, 0, len(orgs))
+	for _, o := range orgs {
+		out = append(out, adminOrgDTO(o))
+	}
+	return apigen.ListAdminOrgs200JSONResponse(out), nil
+}
+
+// SetAdminOrgPlan sets an org's billing tier by hand (operator override until
+// Stripe lands). Validates the plan against the known set so a bad value is a 422
+// rather than a silent fall-back to free, and 404s an org that does not exist.
+func (s *Server) SetAdminOrgPlan(ctx context.Context, req apigen.SetAdminOrgPlanRequestObject) (apigen.SetAdminOrgPlanResponseObject, error) {
+	p, ok := authn.FromContext(ctx)
+	if !ok || p.Kind != authz.ActorHuman {
+		return apigen.SetAdminOrgPlan401JSONResponse{UnauthorizedJSONResponse: unauthorized("sign in required")}, nil
+	}
+	if !s.isPlatformAdmin(p.Email) {
+		return apigen.SetAdminOrgPlan403JSONResponse{ForbiddenJSONResponse: forbidden("platform admin only")}, nil
+	}
+	if req.Body == nil {
+		return apigen.SetAdminOrgPlan422JSONResponse{ValidationFailedJSONResponse: validationFailed("plan is required")}, nil
+	}
+	orgID, err := strconv.ParseInt(req.OrgId, 10, 64)
+	if err != nil {
+		return apigen.SetAdminOrgPlan404JSONResponse{NotFoundJSONResponse: notFound("org not found")}, nil
+	}
+	plan := string(req.Body.Plan)
+	if !entitlements.IsKnownPlan(plan) {
+		return apigen.SetAdminOrgPlan422JSONResponse{ValidationFailedJSONResponse: validationFailed("unknown plan")}, nil
+	}
+
+	if err := s.store.SetOrganizationPlan(ctx, orgID, plan); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apigen.SetAdminOrgPlan404JSONResponse{NotFoundJSONResponse: notFound("org not found")}, nil
+		}
+		return nil, err
+	}
+	org, err := s.store.GetOrganization(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	return apigen.SetAdminOrgPlan200JSONResponse(adminOrgDTO(org)), nil
 }

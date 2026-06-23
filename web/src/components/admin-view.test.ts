@@ -1,7 +1,7 @@
 import { expect, waitUntil } from "@open-wc/testing";
 import "./admin-view.js";
 import type { AdminView } from "./admin-view.js";
-import type { AdminMetrics } from "../api/types.js";
+import type { AdminMetrics, AdminOrg } from "../api/types.js";
 
 const METRICS: AdminMetrics = {
   users: 42,
@@ -29,9 +29,32 @@ const METRICS: AdminMetrics = {
   ],
 };
 
+const ORGS: AdminOrg[] = [
+  {
+    id: "org_1",
+    name: "Acme Inc",
+    slug: "acme",
+    plan: "tier2",
+    created_at: "2026-05-01T00:00:00Z",
+  },
+  {
+    id: "org_2",
+    name: "Globex",
+    slug: "globex",
+    plan: "tier1",
+    created_at: "2026-06-10T00:00:00Z",
+  },
+];
+
 interface Call {
   url: string;
   method: string;
+}
+
+// Routes the two admin GETs the view makes on load: metrics and orgs.
+function adminLoad(c: Call): Response {
+  if (c.url.endsWith("/admin/orgs")) return json(200, ORGS);
+  return json(200, METRICS);
 }
 
 function installFetch(handler: (c: Call) => Response): {
@@ -74,7 +97,7 @@ async function mount(handler: (c: Call) => Response): Promise<{
 
 describe("admin-view", () => {
   it("loads and renders the platform totals", async () => {
-    const { el, calls, restore } = await mount(() => json(200, METRICS));
+    const { el, calls, restore } = await mount(adminLoad);
     try {
       await waitUntil(
         () => el.textContent?.includes("42") ?? false,
@@ -98,9 +121,45 @@ describe("admin-view", () => {
     }
   });
 
+  it("lists orgs and changes a plan via PUT", async () => {
+    const { el, calls, restore } = await mount((c) => {
+      if (c.method === "PUT") {
+        return json(200, { ...ORGS[1], plan: "tier3" });
+      }
+      return adminLoad(c);
+    });
+    try {
+      await waitUntil(
+        () => el.textContent?.includes("Acme Inc") ?? false,
+        "org rows render",
+      );
+      expect(calls.some((c) => c.url.endsWith("/admin/orgs"))).to.be.true;
+      expect(el.textContent).to.contain("Globex");
+
+      // change Globex (org_2) from Free to Professional via its select
+      const selects = el.querySelectorAll("select");
+      const globexSelect = selects[1] as HTMLSelectElement;
+      globexSelect.value = "tier3";
+      globexSelect.dispatchEvent(new Event("change"));
+
+      await waitUntil(
+        () =>
+          calls.some(
+            (c) =>
+              c.method === "PUT" && c.url.endsWith("/admin/orgs/org_2/plan"),
+          ),
+        "plan change PUTs the org plan",
+      );
+    } finally {
+      restore();
+    }
+  });
+
   it("shows a forbidden message on a 403", async () => {
     const { el, restore } = await mount(() =>
-      json(403, { error: { code: "forbidden", message: "platform admin only" } }),
+      json(403, {
+        error: { code: "forbidden", message: "platform admin only" },
+      }),
     );
     try {
       await waitUntil(

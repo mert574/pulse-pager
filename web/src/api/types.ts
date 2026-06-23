@@ -25,6 +25,7 @@ export type Me = Schemas["Me"];
 export type AdminMetrics = Schemas["AdminMetrics"];
 export type AdminPlanCount = Schemas["AdminPlanCount"];
 export type AdminSignupPoint = Schemas["AdminSignupPoint"];
+export type AdminOrg = Schemas["AdminOrg"];
 export type MeUpdate = Schemas["MeUpdate"];
 export type Identity = Schemas["Identity"];
 export type IdentityProviderName = Schemas["IdentityProviderName"];
