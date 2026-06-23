@@ -15,10 +15,31 @@ make build              # build all five services into bin/
 make test               # go unit tests (./...)
 make test-integration   # testcontainers suite (needs Docker, see below)
 make lint               # gofmt -l . and go vet ./...
-make schema             # drop + recreate all tables (also the dev reset; no migrations yet)
+make migrate            # apply pending migrations (forward-only, never drops data)
+make migrate-create name=add_widget   # scaffold a new goose migration
+make schema             # bootstrap an EMPTY db (baseline + migrations); refuses on a populated db
 make up / make down     # docker compose infra up / down (with volumes)
-make reset              # down -v then up (wipe data)
+make reset              # down -v then up (wipe the docker dev db)
 ```
+
+## Database changes go through migrations (mandatory)
+
+All schema changes are migrations. Never edit `internal/store/schema.sql` to change the
+schema, and never hand-run DDL against a real database. The workflow:
+
+1. `make migrate-create name=<snake_case>` scaffolds a goose SQL file in
+   `internal/store/migrations/` with `-- +goose Up` / `-- +goose Down` sections (wrap
+   functions/`DO`/dollar-quoted blocks in `-- +goose StatementBegin`/`StatementEnd`).
+2. Write the forward change in Up and its reverse in Down.
+3. `make migrate` applies pending migrations to `PULSE_POSTGRES_DSN`. It is forward-only
+   and never drops data; goose records applied versions in `goose_db_version`.
+
+`schema.sql` is the FROZEN baseline (the from-empty starting point) plus `migrations/`
+on top: `ApplySchema` (used by tests and `make schema` on a fresh db) applies the
+baseline then every migration. `make schema` is for standing up a brand-new empty
+database only and refuses to run against an initialized one (it would drop tables);
+`PULSE_FORCE_RESET=true make schema` is the explicit, destructive dev rebuild. There is
+no quick "drop everything" command for a real database by design.
 
 Run one Go test: `go test ./internal/api/ -run TestName -v`
 Run one integration test: `go test -tags integration -run TestName ./test/integration/`
@@ -60,7 +81,7 @@ The five binaries live in `cmd/{api,scheduler,worker,alerting,notifier}` (plus `
 
 Tenant isolation is app-level org scoping **plus** Postgres row-level security (RFC-001 6.1). Every tenant query goes through `store.Pool.WithOrg(ctx, orgID, fn)` (`internal/store/store.go`), which opens a transaction, sets `app.current_org` via `set_config(..., true)`, and runs `fn(tx)`. RLS policies key off that session var, so a missed app-level filter fails safe instead of leaking another org's rows. When adding tenant data access, use `WithOrg`; do not query tenant tables on the bare pool.
 
-`internal/store` owns the pgxpool, `schema.sql` + `ApplySchema`, and one file per entity. Secret columns (e.g. secret monitor headers) are encrypted at rest via a `secretCipher` wired with `SetCipher` (`internal/crypto`); nil cipher = stored as-is (dev/test).
+`internal/store` owns the pgxpool, the frozen baseline `schema.sql` + goose `migrations/` (`ApplySchema` for a fresh db, `MigrateUp` for a real one), and one file per entity. Secret columns (e.g. secret monitor headers) are encrypted at rest via a `secretCipher` wired with `SetCipher` (`internal/crypto`); nil cipher = stored as-is (dev/test).
 
 ### Event pipeline (pluggable bus: Kafka or Redis Streams)
 
@@ -92,7 +113,7 @@ The transport is pluggable behind a backend interface, selected by `PULSE_BUS`: 
 - Use the dedicated file tools (Read/Edit/Glob/Grep) over shell `cat`/`grep`/`sed`.
 - Match the existing comment style: comments explain *why* and cite the RFC/PRD, in plain language. No em-dashes.
 - `make lint` must be clean (`gofmt`, `go vet`) before committing. Only commit/push when explicitly asked.
-- Adding a tenant entity: add to `schema.sql` (with RLS policy), a `store/<entity>.go` accessor using `WithOrg`, the spec in `v1.yaml`, then `make gen`.
+- Adding a tenant entity: write a migration (`make migrate-create`) with the table + its RLS policy, a `store/<entity>.go` accessor using `WithOrg`, the spec in `v1.yaml`, then `make gen`. Do not edit `schema.sql`.
 
 ## Parallel work safety
 

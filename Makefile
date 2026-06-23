@@ -20,9 +20,24 @@ lint:
 	gofmt -l .
 	go vet ./...
 
+# Bootstrap a brand-new (empty) database with the baseline + migrations. Refuses to
+# run against an already-initialized database, so it can't wipe data. Day-to-day
+# schema changes go through `make migrate`, never by re-running this.
 .PHONY: schema
 schema:
 	go run ./cmd/schema
+
+# Apply pending migrations to PULSE_POSTGRES_DSN (forward-only, never drops data).
+# This is the normal way to change the schema of any real database.
+.PHONY: migrate
+migrate:
+	go run ./cmd/migrate
+
+# Create a new timestamped migration: make migrate-create name=add_widget_table
+.PHONY: migrate-create
+migrate-create:
+	@test -n "$(name)" || (echo "usage: make migrate-create name=<snake_case_name>" && exit 1)
+	go tool goose -dir internal/store/migrations create $(name) sql
 
 .PHONY: reset
 reset:
