@@ -98,13 +98,15 @@
   inset: 0;
   z-index: 1;
 }
-.drawer-side > app-nav {
-  display: block;
+/* app-nav is an AppElement, whose host carries an inline display:contents (set in
+   connectedCallback). A class cannot override that inline style, so the <app-nav>
+   host generates no box and a z-index on it does nothing. The stacking layer must
+   therefore be its first child, the <aside>: it is the grid item (hoisted by the
+   host's display:contents), so it takes the positioning, the z-index above the
+   overlay, and the full height. */
+.drawer-side > app-nav > aside {
   position: relative;
-  /* well above the overlay; mobile Safari needs a clear gap, not just +1 */
+  /* well above the overlay (z-index:1); mobile Safari needs a clear gap, not +1 */
   z-index: 50;
   align-self: stretch; /* full 100dvh height; width stays the aside's w-64 */
-}
-.drawer-side > app-nav > aside {
-  height: 100%;
 }
