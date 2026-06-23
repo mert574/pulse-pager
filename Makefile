@@ -52,6 +52,20 @@ up:
 down:
 	docker compose down -v
 
+# Run the real api against your local infra. The app does not read .env itself, so
+# this sources it (set -a auto-exports every var it defines) before go run. Needs
+# `make up` and a populated .env (PULSE_POSTGRES_DSN etc). Serves on :8081.
+.PHONY: run
+run:
+	@test -f .env || { echo ".env not found; copy .env.example to .env first"; exit 1; }
+	set -a; . ./.env; set +a; go run ./cmd/api
+
+# Run the self-contained dev stub (fake auth + sample data, no infra, no .env).
+# Serves on :8081 to match the web dev-server proxy (web/vite.config.ts). Dev only.
+.PHONY: dev
+dev:
+	PULSE_DEV_AUTH=true PULSE_API_ADDR=:8081 go run ./cmd/api
+
 .PHONY: tidy
 tidy:
 	go mod tidy

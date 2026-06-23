@@ -16,6 +16,7 @@ const ORG: OrgMembership = {
 const MONITOR: Monitor = {
   id: "mon_1",
   org_id: "o1",
+  type: "http",
   name: "Marketing site",
   url: "https://example.com",
   method: "GET",
@@ -303,6 +304,85 @@ describe("monitor-detail-view", () => {
     } finally {
       restore();
       (window as unknown as Record<string, unknown>).__xss = undefined;
+    }
+  });
+
+  it("renders the specialized ssl view: a cert card, no http sections", async () => {
+    const future = new Date(Date.now() + 20 * 86400 * 1000).toISOString();
+    const sslMonitor: Monitor = {
+      ...MONITOR,
+      type: "ssl",
+      url: "example.com",
+      cert: {
+        subject: "example.com",
+        issuer: "R3",
+        not_before: "2026-05-24T00:00:00Z",
+        not_after: future,
+        dns_names: ["example.com", "www.example.com"],
+        serial: "03:a1:b2",
+      },
+    };
+    const restore = installFetch((url) => {
+      const path = url.split("?")[0];
+      if (path.endsWith("/incidents")) return json(200, { items: [], next_cursor: null });
+      return json(200, sslMonitor);
+    });
+    try {
+      const el = await mount();
+      await waitUntil(
+        () => (el.textContent ?? "").includes("TLS certificate"),
+        "cert card rendered",
+      );
+      // the cert detail shows
+      expect(el.textContent).to.contain("example.com");
+      expect(el.textContent).to.contain("R3");
+      expect(el.textContent).to.contain("Issued by");
+      // the http-only sections are absent: no uptime/latency stats, no region card,
+      // no recent-checks table, no latency chart.
+      expect(el.textContent).to.not.contain("Status by region");
+      expect(el.textContent).to.not.contain("Recent checks");
+      expect(el.querySelector("latency-chart")).to.be.null;
+      expect(el.querySelector("table")).to.be.null;
+      // the shared header chrome still works (it is an ssl-monitor-detail under the hood)
+      expect(el.querySelector("ssl-monitor-detail")).to.not.be.null;
+      expect(el.querySelector("http-monitor-detail")).to.be.null;
+      // no open incident -> no check-now (a daily cert check is not worth re-running)
+      expect(el.textContent).to.not.contain("Check now");
+    } finally {
+      restore();
+    }
+  });
+
+  it("offers check-now on an ssl monitor only while an incident is open", async () => {
+    const sslMonitor: Monitor = { ...MONITOR, type: "ssl", url: "example.com" };
+    const restore = installFetch((url) => {
+      const path = url.split("?")[0];
+      if (path.endsWith("/incidents"))
+        return json(200, {
+          items: [
+            {
+              id: "inc_1",
+              monitor_id: "mon_1",
+              started_at: "2026-06-21T10:00:00Z",
+              ended_at: null,
+              cause_reason: "cert_expiring_soon",
+              duration_seconds: null,
+            },
+          ],
+          next_cursor: null,
+        });
+      return json(200, sslMonitor);
+    });
+    try {
+      const el = await mount();
+      await waitUntil(
+        () => (el.textContent ?? "").includes("TLS certificate"),
+        "cert card rendered",
+      );
+      // the open incident makes a manual recheck useful (confirm a renewed cert)
+      expect(el.textContent).to.contain("Check now");
+    } finally {
+      restore();
     }
   });
 });

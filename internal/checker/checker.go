@@ -7,6 +7,7 @@ package checker
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"io"
 	"net"
@@ -29,6 +30,9 @@ type Config struct {
 	BlockPrivateNetworks bool  // PULSE_BLOCK_PRIVATE_NETWORKS
 	BodyCapBytes         int64 // 64 * 1024
 	MaxErrorTextLen      int   // truncate ErrorText, e.g. 500
+	// RootCAs verifies ssl-monitor certificate chains. nil = the system roots
+	// (production). Tests set it to trust a self-signed cert (BACKLOG: SSL-expiry).
+	RootCAs *x509.CertPool
 }
 
 // Checker holds the shared http.Client. The client has no global Timeout: each
@@ -87,6 +91,16 @@ func New(cfg Config) *Checker {
 // does not include the feature (RFC-009). It does not change the healthy/unhealthy
 // decision; body_contains is still read and asserted regardless.
 func (c *Checker) Check(ctx context.Context, m *domain.Monitor, captureResponse bool) *domain.CheckResult {
+	// Dispatch on the monitor type. ssl checks a TLS cert's expiry (BACKLOG:
+	// SSL-expiry); everything else (http, and an empty type from older rows) runs
+	// the HTTP check.
+	if m.Type == domain.MonitorSSL {
+		return c.checkSSL(ctx, m)
+	}
+	return c.checkHTTP(ctx, m, captureResponse)
+}
+
+func (c *Checker) checkHTTP(ctx context.Context, m *domain.Monitor, captureResponse bool) *domain.CheckResult {
 	res := &domain.CheckResult{
 		MonitorID: m.ID,
 		Healthy:   false,

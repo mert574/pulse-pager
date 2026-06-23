@@ -5,11 +5,11 @@ import { AppElement } from "./base.js";
 import { appContext, type AppContext } from "../state/context.js";
 import { client, ApiError } from "../api/client.js";
 import { can } from "../state/can.js";
-import { t, tDynamic } from "../i18n.js";
+import { t, tDynamic, type MessageKey } from "../i18n.js";
 import { toast } from "../toast.js";
 import { toastCheckError } from "../check-now.js";
 import { formatDuration, formatLatency, secondsUntil } from "../format.js";
-import type { MonitorListItem, RegionState } from "../api/types.js";
+import type { MonitorListItem, MonitorType, RegionState } from "../api/types.js";
 
 import { icon } from "../icons.js";
 import "./status-badge.js";
@@ -21,6 +21,14 @@ import type { DataColumn } from "./data-table.js";
 
 // How often the live region-state poll runs while the tab is visible.
 const POLL_MS = 5000;
+
+// The list groups monitors by check type, in this order, each under its own
+// heading. A type with no monitors is skipped.
+const TYPE_ORDER: MonitorType[] = ["http", "ssl"];
+const TYPE_LABEL: Record<MonitorType, MessageKey> = {
+  http: "monitorForm.typeHttp",
+  ssl: "monitorForm.typeSsl",
+};
 
 // Monitors list, the org home (RFC-013 section 7.1). Fetches the active org's
 // monitors and renders the three required states: loading, empty (with the
@@ -168,6 +176,7 @@ export class MonitorsListView extends AppElement {
     try {
       const full = await client.getMonitor(orgId, m.id);
       await client.updateMonitor(orgId, m.id, {
+        type: full.type,
         name: full.name,
         url: full.url,
         method: full.method,
@@ -275,11 +284,28 @@ export class MonitorsListView extends AppElement {
       </div>`;
     }
 
-    return html`<data-table
-      .columns=${this.columns()}
-      .data=${this.monitors}
-      .pageSize=${15}
-    ></data-table>`;
+    // Group by check type so http and ssl monitors read as distinct sections, each
+    // with its own table (and its own sort/paging). Single-group lists still get a
+    // heading, which keeps the page consistent as more types land.
+    const groups = TYPE_ORDER.map((type) => ({
+      type,
+      rows: this.monitors!.filter((m) => m.type === type),
+    })).filter((g) => g.rows.length > 0);
+
+    return html`<div class="flex flex-col gap-6">
+      ${groups.map(
+        (g) => html`<section class="flex flex-col gap-2">
+          <h2 class="text-sm font-semibold text-base-content/60">
+            ${t(TYPE_LABEL[g.type])} (${g.rows.length})
+          </h2>
+          <data-table
+            .columns=${this.columns(g.type, g.rows)}
+            .data=${g.rows}
+            .pageSize=${15}
+          ></data-table>
+        </section>`,
+      )}
+    </div>`;
   }
 
   // The "Next check" cell: a relative countdown from next_check_at ("in 4m" /
@@ -306,84 +332,158 @@ export class MonitorsListView extends AppElement {
     </div>`;
   }
 
-  private columns(): DataColumn[] {
-    const base = this.base;
-    const canWrite = can(this.ctx?.role ?? null, "monitor.write");
-    const canCheck = can(this.ctx?.role ?? null, "monitor.test");
-    const cols: DataColumn[] = [
-      {
-        id: "name",
-        header: t("monitors.colName"),
-        accessor: (r) => (r as MonitorListItem).name,
-        sortable: true,
-        cell: (r) => {
-          const m = r as MonitorListItem;
-          return html`<a
-              class="link link-hover font-medium"
-              href=${`${base}/monitors/${m.id}`}
-              >${m.name}</a
-            >${m.incident_open
-              ? html`<span class="badge badge-error badge-sm ml-2"
-                  >${t("monitors.incident")}</span
-                >`
-              : ""}
-            <div class="text-base-content/50 text-xs">${m.url}</div>`;
-        },
+  // The last-check cell, shared by both types.
+  private lastCheckColumn(): DataColumn {
+    return {
+      id: "lastCheck",
+      header: t("monitors.colLastCheck"),
+      accessor: (r) => (r as MonitorListItem).last_check_at ?? "",
+      sortable: true,
+      class: "text-base-content/70",
+      cell: (r) => {
+        const v = (r as MonitorListItem).last_check_at;
+        return v
+          ? html`<relative-time .datetime=${v}></relative-time>`
+          : t("monitors.never");
       },
-      {
-        id: "status",
-        header: t("monitors.colStatus"),
-        accessor: (r) => (r as MonitorListItem).status,
-        sortable: true,
-        cell: (r) =>
-          html`<status-badge
-            .status=${(r as MonitorListItem).status}
-          ></status-badge>`,
-      },
-      {
-        id: "regions",
-        header: t("monitors.colRegions"),
-        cell: (r) => {
-          const states = this.regionStates.get((r as MonitorListItem).id);
-          if (!states || states.length === 0)
-            return html`<span class="text-base-content/40">—</span>`;
-          return html`<region-chips .states=${states}></region-chips>`;
-        },
-      },
-      {
-        id: "nextCheck",
-        header: t("monitors.colNextCheck"),
-        accessor: (r) => secondsUntil((r as MonitorListItem).next_check_at) ?? Infinity,
-        sortable: true,
-        class: "text-base-content/70 whitespace-nowrap",
-        cell: (r) => this.nextCheckCell(r as MonitorListItem),
-      },
-      {
-        id: "lastCheck",
-        header: t("monitors.colLastCheck"),
-        accessor: (r) => (r as MonitorListItem).last_check_at ?? "",
-        sortable: true,
-        class: "text-base-content/70",
-        cell: (r) => {
-          const v = (r as MonitorListItem).last_check_at;
-          return v
-            ? html`<relative-time .datetime=${v}></relative-time>`
-            : t("monitors.never");
-        },
-      },
-      {
-        id: "latency",
-        header: t("monitors.colLatency"),
-        accessor: (r) => (r as MonitorListItem).last_latency_ms ?? 0,
-        sortable: true,
-        class: "text-base-content/70",
-        cell: (r) => formatLatency((r as MonitorListItem).last_latency_ms) ?? "",
-      },
-    ];
+    };
+  }
 
-    // The enable toggle and check-now action are member+ only; viewers see a
-    // read-only list (the server re-checks both).
-    if (canWrite) {
+  // The cert-expiry cell for an ssl monitor: a days-to-expiry badge (warning inside
+  // a week, error once expired), sortable by the soonest expiry.
+  private expiryCell(m: MonitorListItem) {
+    if (!m.cert_expires_at) return html`<span class="text-base-content/40">—</span>`;
+    const days = Math.floor(
+      (new Date(m.cert_expires_at).getTime() - Date.now()) / (24 * 60 * 60 * 1000),
+    );
+    if (days < 0) {
+      return html`<span class="badge badge-error badge-soft badge-sm"
+        >${t("monitor.certExpired")}</span
+      >`;
+    }
+    const cls = days <= 7 ? "badge-warning" : "badge-success";
+    return html`<span class="badge ${cls} badge-soft badge-sm"
+      >${days} ${t("monitor.certDaysLeft")}</span
+    >`;
+  }
+
+  // The columns each check type shows in its own table. The shared identity/status
+  // columns lead and the member-only enable/actions trail; the type only decides the
+  // middle. Picked by lookup (not a type branch): http shows regions / next-check /
+  // latency, which mean nothing for a daily cert check, and ssl shows the cert expiry.
+  private readonly typeColumns: Record<MonitorType, () => DataColumn[]> = {
+    http: () => [
+      this.regionsColumn(),
+      this.nextCheckColumn(),
+      this.lastCheckColumn(),
+      this.latencyColumn(),
+    ],
+    ssl: () => [this.expiryColumn(), this.lastCheckColumn()],
+  };
+
+  // Whether a manual check-now is useful for a row. An http check is always worth
+  // re-running on demand; a daily ssl cert check is not, except to confirm a fix
+  // and clear an open incident. Picked by row type, not a branch.
+  private readonly checkNowVisible: Record<MonitorType, (m: MonitorListItem) => boolean> = {
+    http: () => true,
+    ssl: (m) => m.incident_open,
+  };
+
+  private columns(type: MonitorType, rows: MonitorListItem[]): DataColumn[] {
+    return [
+      this.nameColumn(),
+      this.statusColumn(),
+      ...this.typeColumns[type](),
+      ...this.actionColumns(rows),
+    ];
+  }
+
+  private nameColumn(): DataColumn {
+    const base = this.base;
+    return {
+      id: "name",
+      header: t("monitors.colName"),
+      accessor: (r) => (r as MonitorListItem).name,
+      sortable: true,
+      cell: (r) => {
+        const m = r as MonitorListItem;
+        return html`<a
+            class="link link-hover font-medium"
+            href=${`${base}/monitors/${m.id}`}
+            >${m.name}</a
+          >${m.incident_open
+            ? html`<span class="badge badge-error badge-sm ml-2"
+                >${t("monitors.incident")}</span
+              >`
+            : ""}
+          <div class="text-base-content/50 text-xs">${m.url}</div>`;
+      },
+    };
+  }
+
+  private statusColumn(): DataColumn {
+    return {
+      id: "status",
+      header: t("monitors.colStatus"),
+      accessor: (r) => (r as MonitorListItem).status,
+      sortable: true,
+      cell: (r) =>
+        html`<status-badge .status=${(r as MonitorListItem).status}></status-badge>`,
+    };
+  }
+
+  private regionsColumn(): DataColumn {
+    return {
+      id: "regions",
+      header: t("monitors.colRegions"),
+      cell: (r) => {
+        const states = this.regionStates.get((r as MonitorListItem).id);
+        if (!states || states.length === 0)
+          return html`<span class="text-base-content/40">—</span>`;
+        return html`<region-chips .states=${states}></region-chips>`;
+      },
+    };
+  }
+
+  private nextCheckColumn(): DataColumn {
+    return {
+      id: "nextCheck",
+      header: t("monitors.colNextCheck"),
+      accessor: (r) => secondsUntil((r as MonitorListItem).next_check_at) ?? Infinity,
+      sortable: true,
+      class: "text-base-content/70 whitespace-nowrap",
+      cell: (r) => this.nextCheckCell(r as MonitorListItem),
+    };
+  }
+
+  private latencyColumn(): DataColumn {
+    return {
+      id: "latency",
+      header: t("monitors.colLatency"),
+      accessor: (r) => (r as MonitorListItem).last_latency_ms ?? 0,
+      sortable: true,
+      class: "text-base-content/70",
+      cell: (r) => formatLatency((r as MonitorListItem).last_latency_ms) ?? "",
+    };
+  }
+
+  private expiryColumn(): DataColumn {
+    return {
+      id: "expiry",
+      header: t("monitors.colExpiry"),
+      accessor: (r) => (r as MonitorListItem).cert_expires_at ?? "9999",
+      sortable: true,
+      cell: (r) => this.expiryCell(r as MonitorListItem),
+    };
+  }
+
+  // The member-only enable toggle and check-now action; viewers get neither (the
+  // server re-checks both). The check-now column is dropped when no row in the table
+  // would show the button (e.g. an ssl group with no open incidents), so there is no
+  // empty Actions column.
+  private actionColumns(rows: MonitorListItem[]): DataColumn[] {
+    const cols: DataColumn[] = [];
+    if (can(this.ctx?.role ?? null, "monitor.write")) {
       cols.push({
         id: "enabled",
         header: t("monitors.colEnabled"),
@@ -402,13 +502,16 @@ export class MonitorsListView extends AppElement {
         },
       });
     }
-
-    if (canCheck) {
+    if (
+      can(this.ctx?.role ?? null, "monitor.test") &&
+      rows.some((m) => this.checkNowVisible[m.type](m))
+    ) {
       cols.push({
         id: "actions",
         header: t("monitors.colActions"),
         cell: (r) => {
           const m = r as MonitorListItem;
+          if (!this.checkNowVisible[m.type](m)) return "";
           const busy = this.busyId === m.id;
           return html`<button
             class="btn btn-xs btn-ghost gap-1"
@@ -423,7 +526,6 @@ export class MonitorsListView extends AppElement {
         },
       });
     }
-
     return cols;
   }
 }

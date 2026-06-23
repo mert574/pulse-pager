@@ -32,6 +32,8 @@ type Checker interface {
 // result row is NOT written here: alerting owns that upsert (ADR-0011).
 type ResultWriter interface {
 	UpsertMonitorLastFailure(ctx context.Context, orgID, monitorID int64, snap *domain.ResponseSnapshot, checkedAt time.Time) error
+	// UpsertMonitorCert overwrites the per-ssl-monitor cert detail (BACKLOG: SSL-expiry).
+	UpsertMonitorCert(ctx context.Context, orgID, monitorID int64, c *domain.CertInfo, checkedAt time.Time) error
 }
 
 // Consumer is the subset of the bus consumer the worker needs.
@@ -131,6 +133,14 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) error {
 	if result.Snapshot != nil {
 		if err := r.store.UpsertMonitorLastFailure(ctx, result.OrgID, result.MonitorID, result.Snapshot, result.CheckedAt); err != nil {
 			r.log.Warn("persist failure snapshot", "err", err, "monitor", result.MonitorID)
+		}
+	}
+
+	// Persist the latest cert detail on an ssl check (BACKLOG: SSL-expiry). Same as
+	// the snapshot: best-effort, off the authoritative event path.
+	if result.CertInfo != nil {
+		if err := r.store.UpsertMonitorCert(ctx, result.OrgID, result.MonitorID, result.CertInfo, result.CheckedAt); err != nil {
+			r.log.Warn("persist monitor cert", "err", err, "monitor", result.MonitorID)
 		}
 	}
 

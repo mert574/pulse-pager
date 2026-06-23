@@ -174,6 +174,42 @@ describe("monitor-form-view (create)", () => {
     }
   });
 
+  it("hides http-only sections in ssl mode and posts an ssl monitor", async () => {
+    const { calls, restore } = installFetch(route);
+    try {
+      const el = await mountForm();
+      // http defaults: method + scheduling (interval dropdown) are shown.
+      expect(el.querySelector("#method")).to.not.be.null;
+      expect(el.textContent).to.contain("Scheduling");
+
+      // switch to ssl
+      const typeSel = el.querySelector<HTMLSelectElement>("#type")!;
+      typeSel.value = "ssl";
+      typeSel.dispatchEvent(new Event("change", { bubbles: true }));
+      await el.updateComplete;
+
+      // method, assertions and scheduling sections are gone; the notify info shows.
+      expect(el.querySelector("#method")).to.be.null;
+      expect(el.textContent).to.not.contain("Scheduling");
+      expect(el.textContent).to.not.contain("Assertions");
+      expect(el.textContent).to.contain("Host");
+      expect(el.textContent?.toLowerCase()).to.contain("expire");
+
+      setInput(el, "#name", "example cert");
+      setInput(el, "#url", "example.com");
+      await el.updateComplete;
+      el.querySelector("form")!.dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      );
+      await waitUntil(() => calls.some((c) => c.method === "POST"), "POST fired");
+      const sent = JSON.parse(calls.find((c) => c.method === "POST")!.body ?? "{}");
+      expect(sent.type).to.equal("ssl");
+      expect(sent.url).to.equal("example.com");
+    } finally {
+      restore();
+    }
+  });
+
   it("shows a per-field error for a sub-floor interval", async () => {
     const { restore } = installFetch((c) => {
       if (c.url.endsWith("/channels")) return json(200, []);

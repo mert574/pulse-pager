@@ -29,6 +29,9 @@ const FAILURE_LABEL: Record<FailureReason, MessageKey> = {
   latency_exceeded: "failure.latency_exceeded",
   body_assertion_failed: "failure.body_assertion_failed",
   blocked_target: "failure.blocked_target",
+  cert_expired: "failure.cert_expired",
+  cert_expiring_soon: "failure.cert_expiring_soon",
+  cert_invalid: "failure.cert_invalid",
 };
 
 const CLOSE_REASON_LABEL: Record<

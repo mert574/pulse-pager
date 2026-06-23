@@ -40,6 +40,12 @@ type Decision struct {
 	IncidentStartedAt time.Time            // set on IncidentOpen (first fail of the run)
 	CauseReason       domain.FailureReason // set on IncidentOpen
 	IncidentEndedAt   time.Time            // set on IncidentClose
+
+	// NewSSLWarnedDays is ssl_warned_days to write (nil clears it). Renotify means
+	// the incident is unchanged but a notify should fire against the open incident
+	// (an ssl expiry threshold crossing, BACKLOG: SSL-expiry).
+	NewSSLWarnedDays *int
+	Renotify         bool
 }
 
 // AppliedDecision is what ApplyAlertDecision did. Applied is true only when the
@@ -76,13 +82,13 @@ func (p *Pool) UpsertCheckResult(ctx context.Context, r *domain.CheckResult) (in
 	err := p.WithOrg(ctx, r.OrgID, func(tx pgx.Tx) error {
 		return tx.QueryRow(ctx, `
 			INSERT INTO check_results (org_id, monitor_id, region, scheduled_at, checked_at, healthy,
-				failure_reason, status_code, latency_ms, error_text)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+				failure_reason, status_code, latency_ms, error_text, cert_expires_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 			ON CONFLICT (org_id, monitor_id, region, checked_at)
 				DO UPDATE SET org_id = EXCLUDED.org_id
 			RETURNING id`,
 			r.OrgID, r.MonitorID, r.Region, r.ScheduledAt, r.CheckedAt, r.Healthy,
-			failureReason, r.StatusCode, r.LatencyMs, r.ErrorText,
+			failureReason, r.StatusCode, r.LatencyMs, r.ErrorText, r.CertExpiresAt,
 		).Scan(&id)
 	})
 	if err != nil {
@@ -100,7 +106,7 @@ func (p *Pool) GetAlertState(ctx context.Context, orgID, monitorID int64) (*doma
 	var st *domain.AlertState
 	err := p.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
 		s, err := scanAlertState(tx.QueryRow(ctx, `
-			SELECT consecutive_fails, first_fail_at, last_applied_result_id
+			SELECT consecutive_fails, first_fail_at, last_applied_result_id, ssl_warned_days
 			FROM monitors WHERE id = $1 AND org_id = $2`, monitorID, orgID))
 		if err != nil {
 			return err
@@ -123,17 +129,19 @@ func (p *Pool) GetAlertState(ctx context.Context, orgID, monitorID int64) (*doma
 // incident, if any, is loaded separately so this stays a single monitor row scan.
 func scanAlertState(row pgx.Row) (*domain.AlertState, error) {
 	var (
-		st      domain.AlertState
-		lastID  *int64
-		firstAt *time.Time
-		consec  int
+		st         domain.AlertState
+		lastID     *int64
+		firstAt    *time.Time
+		consec     int
+		sslWarnedD *int
 	)
-	if err := row.Scan(&consec, &firstAt, &lastID); err != nil {
+	if err := row.Scan(&consec, &firstAt, &lastID, &sslWarnedD); err != nil {
 		return nil, err
 	}
 	st.ConsecutiveFails = consec
 	st.FirstFailAt = firstAt
 	st.LastAppliedResultID = lastID
+	st.SSLWarnedDays = sslWarnedD
 	return &st, nil
 }
 
@@ -162,7 +170,7 @@ func (p *Pool) ApplyAlertDecision(ctx context.Context, m *domain.Monitor, maxRes
 		// apply the same monitor concurrently. The watermark is the correctness
 		// backstop; the lock keeps the common case clean.
 		state, err := scanAlertState(tx.QueryRow(ctx, `
-			SELECT consecutive_fails, first_fail_at, last_applied_result_id
+			SELECT consecutive_fails, first_fail_at, last_applied_result_id, ssl_warned_days
 			FROM monitors WHERE id = $1 AND org_id = $2 FOR UPDATE`, m.ID, m.OrgID))
 		if err != nil {
 			return err
@@ -235,14 +243,22 @@ func (p *Pool) ApplyAlertDecision(ctx context.Context, m *domain.Monitor, maxRes
 			}
 		}
 
-		// Counters + watermark, guarded by the watermark so a stale replay updates
-		// zero rows even if it slipped past the early check above.
+		// An ssl renotify (a tighter expiry threshold crossed) changes no incident,
+		// but the caller must emit against the still-open incident, so surface it.
+		if d.Renotify && open != nil {
+			res.Incident = open
+			res.Applied = true
+		}
+
+		// Counters + watermark + ssl warned level, guarded by the watermark so a
+		// stale replay updates zero rows even if it slipped past the early check above.
 		_, err = tx.Exec(ctx, `
 			UPDATE monitors
-			SET consecutive_fails = $1, first_fail_at = $2, last_applied_result_id = $3
+			SET consecutive_fails = $1, first_fail_at = $2, last_applied_result_id = $3,
+				ssl_warned_days = $6
 			WHERE id = $4 AND org_id = $5
 				AND (last_applied_result_id IS NULL OR last_applied_result_id < $3)`,
-			d.NewConsecutive, d.NewFirstFailAt, maxResultID, m.ID, m.OrgID)
+			d.NewConsecutive, d.NewFirstFailAt, maxResultID, m.ID, m.OrgID, d.NewSSLWarnedDays)
 		return err
 	})
 	if err != nil {

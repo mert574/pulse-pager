@@ -21,10 +21,16 @@ import (
 // the only store call left is the last-failure snapshot.
 type countingStore struct {
 	snapshots int
+	certs     int
 }
 
 func (s *countingStore) UpsertMonitorLastFailure(context.Context, int64, int64, *domain.ResponseSnapshot, time.Time) error {
 	s.snapshots++
+	return nil
+}
+
+func (s *countingStore) UpsertMonitorCert(context.Context, int64, int64, *domain.CertInfo, time.Time) error {
+	s.certs++
 	return nil
 }
 

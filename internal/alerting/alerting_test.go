@@ -31,6 +31,7 @@ func nextState(prev domain.AlertState, d Decision) domain.AlertState {
 		ConsecutiveFails: d.NewConsecutive,
 		FirstFailAt:      d.NewFirstFailAt,
 		OpenIncident:     prev.OpenIncident,
+		SSLWarnedDays:    d.NewSSLWarnedDays, // the store rewrites this every apply
 	}
 	switch d.Action {
 	case ActionOpenIncident:
@@ -49,6 +50,94 @@ func notifyType(d Decision) NotifyEventType {
 		return ""
 	}
 	return d.Notify.Type
+}
+
+// sslFailed builds an unhealthy ssl result whose cert expires daysLeft*24h after
+// the check time (negative = already expired). The reason mirrors what the checker
+// would set; the engine decides escalation from CertExpiresAt + CheckedAt.
+func sslFailed(step int, daysLeft float64) *domain.CheckResult {
+	at := checkedAt(step)
+	exp := at.Add(time.Duration(daysLeft * float64(24*time.Hour)))
+	reason := domain.ReasonCertExpiringSoon
+	if daysLeft <= 0 {
+		reason = domain.ReasonCertExpired
+	}
+	return &domain.CheckResult{CheckedAt: at, Healthy: false, FailureReason: &reason, CertExpiresAt: &exp}
+}
+
+func warnDays(d Decision) int {
+	if d.Notify == nil || d.Notify.WarnDays == nil {
+		return -99
+	}
+	return *d.Notify.WarnDays
+}
+
+// TestSSLEscalation walks an ssl monitor's cert from far-out to expired and checks
+// that each tighter threshold (7 -> 3 -> 1 -> expired) re-notifies exactly once on
+// the same incident, that a step at an unchanged level is quiet, and that recovery
+// closes the incident and resets the warned level (BACKLOG: SSL-expiry).
+func TestSSLEscalation(t *testing.T) {
+	eng := New()
+	m := &domain.Monitor{Type: domain.MonitorSSL, FailureThreshold: 1}
+	st := domain.AlertState{}
+
+	step := func(n int, daysLeft float64) Decision {
+		d := eng.Apply(m, sslFailed(n, daysLeft), &st)
+		st = nextState(st, d)
+		return d
+	}
+
+	// 6 days left: crosses the widest (7) threshold, opens the incident and warns.
+	d := step(1, 6)
+	if d.Action != ActionOpenIncident || notifyType(d) != EventDown || warnDays(d) != 7 {
+		t.Fatalf("open: action=%v notify=%v warn=%d", d.Action, notifyType(d), warnDays(d))
+	}
+
+	// Still ~6 days: same level, incident already open, no re-notify.
+	d = step(2, 5.5)
+	if d.Action != ActionNone || d.Renotify || d.Notify != nil {
+		t.Fatalf("quiet step: action=%v renotify=%v notify=%v", d.Action, d.Renotify, d.Notify)
+	}
+
+	// 2 days: crosses 3, re-notify on the open incident.
+	d = step(3, 2)
+	if d.Action != ActionNone || !d.Renotify || warnDays(d) != 3 {
+		t.Fatalf("warn 3: action=%v renotify=%v warn=%d", d.Action, d.Renotify, warnDays(d))
+	}
+
+	// 0.5 days: crosses 1, re-notify.
+	d = step(4, 0.5)
+	if !d.Renotify || warnDays(d) != 1 {
+		t.Fatalf("warn 1: renotify=%v warn=%d", d.Renotify, warnDays(d))
+	}
+
+	// Expired: crosses 0, re-notify.
+	d = step(5, -1)
+	if !d.Renotify || warnDays(d) != 0 {
+		t.Fatalf("expired: renotify=%v warn=%d", d.Renotify, warnDays(d))
+	}
+
+	// Still expired: level unchanged (0), no further notify.
+	d = step(6, -2)
+	if d.Renotify || d.Notify != nil {
+		t.Fatalf("expired-quiet: renotify=%v notify=%v", d.Renotify, d.Notify)
+	}
+
+	// Cert renewed (60 days): healthy, closes the incident and clears the level.
+	d = eng.Apply(m, healthy(7), &st)
+	st = nextState(st, d)
+	if d.Action != ActionCloseIncident || notifyType(d) != EventRecovery {
+		t.Fatalf("recovery: action=%v notify=%v", d.Action, notifyType(d))
+	}
+	if st.SSLWarnedDays != nil {
+		t.Fatalf("warned level not reset after recovery: %v", *st.SSLWarnedDays)
+	}
+
+	// A fresh expiry after recovery opens a new incident and warns again at 7.
+	d = step(8, 6)
+	if d.Action != ActionOpenIncident || warnDays(d) != 7 {
+		t.Fatalf("reopen: action=%v warn=%d", d.Action, warnDays(d))
+	}
 }
 
 // TestSequenceT3 walks the full PRD 12.5 example table with T=3 and asserts the

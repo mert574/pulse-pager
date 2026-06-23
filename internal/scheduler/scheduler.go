@@ -120,6 +120,13 @@ func (d *Dispatcher) dispatch(ctx context.Context, m *domain.Monitor, scheduledA
 	if len(regions) == 0 {
 		regions = []string{region.Default}
 	}
+	// A TLS certificate is identical from every region, so an ssl monitor is always
+	// checked from a single region (BACKLOG: SSL-expiry). The api already stores one
+	// region for ssl; this is the authoritative guard so even a stray multi-region
+	// row never fans out into a wasted, confusing multi-region cert check.
+	if m.Type == domain.MonitorSSL && len(regions) > 1 {
+		regions = regions[:1]
+	}
 	key := strconv.FormatInt(m.ID, 10)
 	for _, region := range regions {
 		job := events.CheckJob{

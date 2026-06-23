@@ -13,7 +13,32 @@ type MonitorType string
 
 const (
 	MonitorHTTP MonitorType = "http"
+	// MonitorSSL checks a host's TLS certificate expiry (BACKLOG: SSL-expiry).
+	MonitorSSL MonitorType = "ssl"
 )
+
+// SSLWarnThresholds are the days-before-expiry at which an ssl monitor warns,
+// widest first. They are fixed product behavior, not per-monitor config: we
+// notify 7, 3, and 1 day before expiry, then again once the cert is expired.
+var SSLWarnThresholds = []int{7, 3, 1}
+
+// SSLWarnLevel returns the tightest crossed warning threshold for a cert that
+// expires at expiresAt as seen at now: the matching value from SSLWarnThresholds,
+// 0 when already expired, or -1 when expiry is still further out than the widest
+// threshold (no warning yet). It reads no clock; the caller passes now.
+func SSLWarnLevel(expiresAt, now time.Time) int {
+	if !now.Before(expiresAt) {
+		return 0 // at or past expiry
+	}
+	daysLeft := expiresAt.Sub(now).Hours() / 24
+	level := -1
+	for _, t := range SSLWarnThresholds {
+		if daysLeft <= float64(t) {
+			level = t // thresholds are widest first, so the last match is the tightest
+		}
+	}
+	return level
+}
 
 // DownPolicy reduces per-region results to one monitor verdict (PRD-007, master 6.7).
 type DownPolicy string
@@ -42,6 +67,10 @@ const (
 	ReasonLatencyExceeded FailureReason = "latency_exceeded"
 	ReasonBodyAssertion   FailureReason = "body_assertion_failed"
 	ReasonBlockedTarget   FailureReason = "blocked_target"
+	// ssl monitor reasons (BACKLOG: SSL-expiry).
+	ReasonCertExpired      FailureReason = "cert_expired"
+	ReasonCertExpiringSoon FailureReason = "cert_expiring_soon"
+	ReasonCertInvalid      FailureReason = "cert_invalid"
 )
 
 type Header struct {
@@ -112,10 +141,29 @@ type CheckResult struct {
 	StatusCode    *int           // nil on connection error / timeout / blocked
 	LatencyMs     *int           // nil when no latency (conn error, blocked)
 	ErrorText     *string        // short, truncated
+	// CertExpiresAt is the leaf cert's NotAfter on an ssl check (BACKLOG: SSL-expiry).
+	// nil for http checks or when the handshake never produced a cert. It rides the
+	// check.results event and is persisted on the result row for the expiry history.
+	CertExpiresAt *time.Time `json:"cert_expires_at,omitempty"`
 	// Snapshot is the captured response on a response-level failure (PRD-002 3.8).
 	// In-memory only (json:"-"): it never rides the check.results event or the
 	// result row; the worker persists it to the per-monitor last-failure record.
 	Snapshot *ResponseSnapshot `json:"-"`
+	// CertInfo is the full leaf-cert detail on an ssl check. In-memory only
+	// (json:"-"), like Snapshot: the worker persists it to the per-monitor
+	// monitor_cert record for the certificate card; it never rides the event.
+	CertInfo *CertInfo `json:"-"`
+}
+
+// CertInfo is the latest TLS leaf certificate detail for an ssl monitor, shown on
+// the monitor detail as a certificate card (BACKLOG: SSL-expiry).
+type CertInfo struct {
+	Subject   string    // leaf common name (issued to)
+	Issuer    string    // issuer common name (issued by / CA)
+	NotBefore time.Time // valid from
+	NotAfter  time.Time // valid to
+	DNSNames  []string  // subject alternative names
+	Serial    string    // serial number, decimal string
 }
 
 // ResponseSnapshot is the response captured from the last failed check, for
@@ -168,6 +216,11 @@ type AlertState struct {
 	// monitor. nil = never applied. The pure Apply does not read it; the alerting
 	// service uses it to drop a redelivered or stale result.
 	LastAppliedResultID *int64
+	// SSLWarnedDays is the tightest ssl expiry threshold already notified for this
+	// monitor (a value from SSLWarnThresholds, or 0 for expired). nil = none warned
+	// yet. It lets the alerting engine re-notify only when a tighter threshold is
+	// crossed (7 -> 3 -> 1 -> expired) without opening a new incident each time.
+	SSLWarnedDays *int
 }
 
 // --- status pages (PRD-004) ---

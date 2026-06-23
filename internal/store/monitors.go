@@ -224,6 +224,9 @@ type MonitorListRow struct {
 	LastLatencyMs *int
 	LastHealthy   *bool
 	IncidentOpen  bool
+	// CertExpiresAt is the latest TLS cert expiry for an ssl monitor (nil for http
+	// or a never-checked ssl monitor), so the list can show the expiry column.
+	CertExpiresAt *time.Time
 }
 
 // ListMonitors returns the org's monitors with the derived list-view bits: the most
@@ -236,7 +239,8 @@ func (p *Pool) ListMonitors(ctx context.Context, orgID int64) ([]MonitorListRow,
 		rows, err := tx.Query(ctx, `
 			SELECT `+prefixColumns("m", monitorColumns)+`,
 				last.checked_at, last.latency_ms, last.healthy,
-				EXISTS (SELECT 1 FROM incidents i WHERE i.monitor_id = m.id AND i.ended_at IS NULL) AS incident_open
+				EXISTS (SELECT 1 FROM incidents i WHERE i.monitor_id = m.id AND i.ended_at IS NULL) AS incident_open,
+				mc.not_after
 			FROM monitors m
 			LEFT JOIN LATERAL (
 				SELECT checked_at, latency_ms, healthy
@@ -245,6 +249,7 @@ func (p *Pool) ListMonitors(ctx context.Context, orgID int64) ([]MonitorListRow,
 				ORDER BY r.checked_at DESC
 				LIMIT 1
 			) last ON true
+			LEFT JOIN monitor_cert mc ON mc.monitor_id = m.id
 			WHERE m.org_id = $1
 			ORDER BY m.id`, orgID)
 		if err != nil {
@@ -282,6 +287,7 @@ func (p *Pool) scanMonitorListRow(rows pgx.Rows) (MonitorListRow, error) {
 		&m.FailureThreshold, &m.Regions, &downPolicy, &rawHeaders, &m.ChannelIDs,
 		&m.CreatedAt, &m.UpdatedAt,
 		&row.LastCheckedAt, &row.LastLatencyMs, &row.LastHealthy, &row.IncidentOpen,
+		&row.CertExpiresAt,
 	); err != nil {
 		return MonitorListRow{}, err
 	}
@@ -372,7 +378,7 @@ func (p *Pool) ListResults(ctx context.Context, orgID, monitorID int64, since ti
 	err := p.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, `
 			SELECT id, org_id, monitor_id, region, scheduled_at, checked_at, healthy,
-				failure_reason, status_code, latency_ms, error_text
+				failure_reason, status_code, latency_ms, error_text, cert_expires_at
 			FROM check_results
 			WHERE monitor_id = $1 AND org_id = $2 AND checked_at >= $3
 				AND ($4::timestamptz IS NULL OR checked_at < $4)
@@ -390,7 +396,7 @@ func (p *Pool) ListResults(ctx context.Context, orgID, monitorID int64, since ti
 				reason *string
 			)
 			if err := rows.Scan(&r.ID, &r.OrgID, &r.MonitorID, &r.Region, &r.ScheduledAt, &r.CheckedAt,
-				&r.Healthy, &reason, &r.StatusCode, &r.LatencyMs, &r.ErrorText); err != nil {
+				&r.Healthy, &reason, &r.StatusCode, &r.LatencyMs, &r.ErrorText, &r.CertExpiresAt); err != nil {
 				return err
 			}
 			if reason != nil {
@@ -552,11 +558,11 @@ func (p *Pool) InsertCheckResult(ctx context.Context, r *domain.CheckResult) err
 	return p.WithOrg(ctx, r.OrgID, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `
 			INSERT INTO check_results (org_id, monitor_id, region, scheduled_at, checked_at, healthy,
-				failure_reason, status_code, latency_ms, error_text)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+				failure_reason, status_code, latency_ms, error_text, cert_expires_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 			ON CONFLICT (org_id, monitor_id, region, checked_at) DO NOTHING`,
 			r.OrgID, r.MonitorID, r.Region, r.ScheduledAt, r.CheckedAt, r.Healthy,
-			failureReason, r.StatusCode, r.LatencyMs, r.ErrorText,
+			failureReason, r.StatusCode, r.LatencyMs, r.ErrorText, r.CertExpiresAt,
 		)
 		return err
 	})
@@ -586,4 +592,53 @@ func (p *Pool) UpsertMonitorLastFailure(ctx context.Context, orgID, monitorID in
 		)
 		return err
 	})
+}
+
+// UpsertMonitorCert overwrites the per-ssl-monitor certificate detail (BACKLOG:
+// SSL-expiry). One row per monitor, replaced on each ssl check. Org-scoped via
+// WithOrg (see InsertCheckResult).
+func (p *Pool) UpsertMonitorCert(ctx context.Context, orgID, monitorID int64, c *domain.CertInfo, checkedAt time.Time) error {
+	return p.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `
+			INSERT INTO monitor_cert (monitor_id, org_id, subject, issuer, not_before, not_after, dns_names, serial, checked_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+			ON CONFLICT (monitor_id) DO UPDATE SET
+				org_id     = EXCLUDED.org_id,
+				subject    = EXCLUDED.subject,
+				issuer     = EXCLUDED.issuer,
+				not_before = EXCLUDED.not_before,
+				not_after  = EXCLUDED.not_after,
+				dns_names  = EXCLUDED.dns_names,
+				serial     = EXCLUDED.serial,
+				checked_at = EXCLUDED.checked_at`,
+			monitorID, orgID, c.Subject, c.Issuer, c.NotBefore, c.NotAfter, c.DNSNames, c.Serial, checkedAt,
+		)
+		return err
+	})
+}
+
+// GetMonitorCert returns the latest certificate detail for an ssl monitor, or nil
+// when none has been recorded yet (a never-checked or non-ssl monitor). Org-scoped
+// via WithOrg.
+func (p *Pool) GetMonitorCert(ctx context.Context, orgID, monitorID int64) (*domain.CertInfo, error) {
+	var ci *domain.CertInfo
+	err := p.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
+		var c domain.CertInfo
+		err := tx.QueryRow(ctx, `
+			SELECT subject, issuer, not_before, not_after, dns_names, serial
+			FROM monitor_cert WHERE monitor_id = $1 AND org_id = $2`, monitorID, orgID,
+		).Scan(&c.Subject, &c.Issuer, &c.NotBefore, &c.NotAfter, &c.DNSNames, &c.Serial)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return nil
+			}
+			return err
+		}
+		ci = &c
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ci, nil
 }

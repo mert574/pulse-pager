@@ -14,12 +14,18 @@ import type {
   Method,
   MonitorHeader,
   MonitorInput,
+  MonitorType,
 } from "../api/types.js";
 
 import "./form-field.js";
 import "./upsell-banner.js";
 
 const METHODS: Method[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"];
+const TYPES: MonitorType[] = ["http", "ssl"];
+const TYPE_LABEL: Record<MonitorType, MessageKey> = {
+  http: "monitorForm.typeHttp",
+  ssl: "monitorForm.typeSsl",
+};
 const BODY_METHODS: Method[] = ["POST", "PUT", "PATCH"];
 const HARD_MIN_INTERVAL = 30;
 
@@ -66,6 +72,7 @@ const FIELD_HELP: Partial<Record<keyof MonitorInput, MessageKey>> = {
 
 function defaultForm(): MonitorInput {
   return {
+    type: "http",
     name: "",
     url: "",
     method: "GET",
@@ -154,6 +161,7 @@ export class MonitorFormView extends AppElement {
       if (monitor) {
         // copy only the input fields from the loaded monitor
         this.form = {
+          type: monitor.type,
           name: monitor.name,
           url: monitor.url,
           method: monitor.method,
@@ -281,8 +289,13 @@ export class MonitorFormView extends AppElement {
   private validate(): Record<string, string> {
     const errs: Record<string, string> = {};
     if (!this.form.name.trim()) errs.name = t("monitorForm.errName");
-    if (!/^https?:\/\/.+/i.test(this.form.url.trim()))
+    const url = this.form.url.trim();
+    if (this.form.type === "ssl") {
+      // a host (with or without scheme/port); reject empty or whitespace
+      if (!url || /\s/.test(url)) errs.url = t("monitorForm.errHost");
+    } else if (!/^https?:\/\/.+/i.test(url)) {
       errs.url = t("monitorForm.errUrl");
+    }
     return errs;
   }
 
@@ -377,8 +390,11 @@ export class MonitorFormView extends AppElement {
               .upgradeHref=${`${this.base}/billing`}
             ></upsell-banner>`
           : ""}
-        ${this.requestCard(f)} ${this.assertionsCard(f)}
-        ${this.schedulingCard(f)} ${this.notifyCard(f)}
+        ${this.requestCard(f)}
+        ${f.type === "ssl"
+          ? ""
+          : html`${this.assertionsCard(f)} ${this.schedulingCard(f)}`}
+        ${this.notifyCard(f)}
 
         <div class="flex items-center gap-2">
           <button class="btn btn-primary" type="submit" ?disabled=${this.submitting}>
@@ -406,10 +422,30 @@ export class MonitorFormView extends AppElement {
     </div>`;
   }
 
+  // The check-type picker. Switching to ssl hides the http-only request and
+  // assertion fields; the cert thresholds are fixed, so the form just explains them.
+  private typeField(f: MonitorInput) {
+    return this.field(
+      "type",
+      "monitorForm.type",
+      html`<select
+        id="type"
+        class="select w-full"
+        .value=${f.type}
+        @change=${(e: Event) =>
+          this.patch("type", (e.target as HTMLSelectElement).value as MonitorType)}
+      >
+        ${TYPES.map((tpe) => html`<option value=${tpe}>${t(TYPE_LABEL[tpe])}</option>`)}
+      </select>`,
+    );
+  }
+
   private requestCard(f: MonitorInput) {
+    const isSSL = f.type === "ssl";
     return this.card(
       "monitorForm.sectionRequest",
       html`
+        ${this.typeField(f)}
         ${this.field(
           "name",
           "monitorForm.name",
@@ -423,46 +459,53 @@ export class MonitorFormView extends AppElement {
         )}
         ${this.field(
           "url",
-          "monitorForm.url",
+          isSSL ? "monitorForm.host" : "monitorForm.url",
           html`<input
             id="url"
-            type="url"
+            type=${isSSL ? "text" : "url"}
             class="input w-full"
-            placeholder="https://example.com"
+            placeholder=${isSSL ? "example.com" : "https://example.com"}
             .value=${f.url}
             @input=${(e: Event) => this.patch("url", (e.target as HTMLInputElement).value)}
           />`,
+          isSSL ? t("monitorForm.hostHint") : "",
         )}
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          ${this.field(
-            "method",
-            "monitorForm.method",
-            html`<select
-              id="method"
-              class="select w-full"
-              .value=${f.method}
-              @change=${(e: Event) =>
-                this.patch("method", (e.target as HTMLSelectElement).value as Method)}
-            >
-              ${METHODS.map((m) => html`<option value=${m}>${m}</option>`)}
-            </select>`,
-          )}
-        </div>
-        ${BODY_METHODS.includes(f.method)
-          ? this.field(
-              "body",
-              "monitorForm.body",
-              html`<textarea
-                id="body"
-                class="textarea w-full font-mono"
-                rows="4"
-                .value=${f.body}
-                @input=${(e: Event) =>
-                  this.patch("body", (e.target as HTMLTextAreaElement).value)}
-              ></textarea>`,
-            )
-          : ""}
-        ${this.headersEditor(f)}
+        ${isSSL
+          ? html`<div role="note" class="alert alert-info alert-soft text-sm">
+              <span>${t("monitorForm.sslNotifyInfo")}</span>
+            </div>`
+          : html`
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                ${this.field(
+                  "method",
+                  "monitorForm.method",
+                  html`<select
+                    id="method"
+                    class="select w-full"
+                    .value=${f.method}
+                    @change=${(e: Event) =>
+                      this.patch("method", (e.target as HTMLSelectElement).value as Method)}
+                  >
+                    ${METHODS.map((m) => html`<option value=${m}>${m}</option>`)}
+                  </select>`,
+                )}
+              </div>
+              ${BODY_METHODS.includes(f.method)
+                ? this.field(
+                    "body",
+                    "monitorForm.body",
+                    html`<textarea
+                      id="body"
+                      class="textarea w-full font-mono"
+                      rows="4"
+                      .value=${f.body}
+                      @input=${(e: Event) =>
+                        this.patch("body", (e.target as HTMLTextAreaElement).value)}
+                    ></textarea>`,
+                  )
+                : ""}
+              ${this.headersEditor(f)}
+            `}
       `,
     );
   }

@@ -130,6 +130,7 @@ func (c *capturePublisher) count() int {
 type monitorDTO struct {
 	Id                  string `json:"id"`
 	OrgId               string `json:"org_id"`
+	Type                string `json:"type"`
 	Name                string `json:"name"`
 	Url                 string `json:"url"`
 	Method              string `json:"method"`
@@ -340,6 +341,34 @@ func TestAPIMonitors(t *testing.T) {
 		}
 		if found.Status != "pending" {
 			t.Fatalf("status = %q, want pending", found.Status)
+		}
+	})
+
+	// --- ssl monitor: type persists and scheduling is fixed on the backend ---
+	t.Run("create_ssl_monitor", func(t *testing.T) {
+		// The body sends http-shaped scheduling values; the backend ignores them for
+		// ssl and forces its own (daily interval, single region, threshold 1).
+		body := `{
+			"type":"ssl","name":"cert","url":"example.com","method":"GET","headers":[],"body":"",
+			"expected_status_codes":"200","timeout_seconds":5,"interval_seconds":60,
+			"enabled":true,"failure_threshold":3,"notification_channel_ids":[],
+			"regions":["eu-central"],"down_policy":"quorum"
+		}`
+		resp := post(ownerClient, "/api/v1/orgs/"+orgID+"/monitors", body)
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("create ssl: want 201, got %d (%s)", resp.StatusCode, readBody(resp))
+		}
+		var m monitorDTO
+		decode(t, resp, &m)
+		if m.Type != "ssl" {
+			t.Fatalf("type = %q, want ssl", m.Type)
+		}
+		if m.IntervalSeconds != 86400 {
+			t.Fatalf("interval = %d, want 86400 (fixed daily)", m.IntervalSeconds)
+		}
+		if m.Url != "example.com" {
+			t.Fatalf("url = %q, want example.com", m.Url)
 		}
 	})
 

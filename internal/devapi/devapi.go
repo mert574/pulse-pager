@@ -434,8 +434,9 @@ func (s *server) ListMonitors(_ context.Context, _ apigen.ListMonitorsRequestObj
 	defer s.mu.Unlock()
 	items := make([]apigen.MonitorListItem, 0, len(s.monitors))
 	for _, row := range s.monitors {
-		items = append(items, apigen.MonitorListItem{
+		item := apigen.MonitorListItem{
 			Id:            row.m.Id,
+			Type:          row.m.Type,
 			Name:          row.m.Name,
 			Url:           row.m.Url,
 			Enabled:       row.m.Enabled,
@@ -443,7 +444,11 @@ func (s *server) ListMonitors(_ context.Context, _ apigen.ListMonitorsRequestObj
 			LastCheckAt:   row.lastCheckAt,
 			LastLatencyMs: row.lastLatency,
 			IncidentOpen:  row.incidentOpen,
-		})
+		}
+		if row.m.Cert != nil {
+			item.CertExpiresAt = &row.m.Cert.NotAfter
+		}
+		items = append(items, item)
 	}
 	return apigen.ListMonitors200JSONResponse(items), nil
 }
@@ -896,6 +901,10 @@ func (s *server) seed() {
 		m:      baseMonitor("mon_3", "Staging", "https://staging.example.com", 300, false, []string{"eu-central"}),
 		status: "disabled",
 	}
+	s.monitors["mon_4"] = &monRow{
+		m:      sslMonitor("mon_4", "example.com cert", "example.com", 5),
+		status: "up",
+	}
 	s.channels["chan_1"] = &apigen.Channel{
 		Id: "chan_1", OrgId: devOrgID, Name: "Eng Slack", Type: "slack", Enabled: true,
 		Config: map[string]any{"webhook_url_set": true},
@@ -906,12 +915,30 @@ func (s *server) seed() {
 func baseMonitor(id, name, url string, interval int, enabled bool, regions []string) apigen.Monitor {
 	now := time.Now().UTC()
 	return apigen.Monitor{
-		Id: id, OrgId: devOrgID, Name: name, Url: url, Method: "GET",
+		Id: id, OrgId: devOrgID, Type: "http", Name: name, Url: url, Method: "GET",
 		Headers: []apigen.MonitorHeader{}, ExpectedStatusCodes: "200",
 		TimeoutSeconds: 10, IntervalSeconds: interval, Enabled: enabled, FailureThreshold: 1,
 		NotificationChannelIds: []string{}, Regions: regions, DownPolicy: "quorum",
 		CreatedAt: now, UpdatedAt: now,
 	}
+}
+
+// sslMonitor builds a sample ssl monitor with a cert detail so the dev SPA can
+// render the certificate card (BACKLOG: SSL-expiry).
+func sslMonitor(id, name, host string, daysLeft int) apigen.Monitor {
+	m := baseMonitor(id, name, host, 86400, true, []string{"eu-central"})
+	m.Type = "ssl"
+	now := time.Now().UTC()
+	notAfter := now.AddDate(0, 0, daysLeft)
+	m.Cert = &apigen.CertInfo{
+		Subject:   host,
+		Issuer:    "R3",
+		NotBefore: now.AddDate(0, 0, -30),
+		NotAfter:  notAfter,
+		DnsNames:  []string{host, "www." + host},
+		Serial:    "03:a1:b2:c3:d4",
+	}
+	return m
 }
 
 func monitorFromInput(id string, in apigen.MonitorInput) apigen.Monitor {
@@ -928,8 +955,11 @@ func monitorFromInput(id string, in apigen.MonitorInput) apigen.Monitor {
 		in.DownPolicy = "quorum"
 	}
 	now := time.Now().UTC()
+	if in.Type == "" {
+		in.Type = "http"
+	}
 	return apigen.Monitor{
-		Id: id, OrgId: devOrgID, Name: in.Name, Url: in.Url, Method: in.Method,
+		Id: id, OrgId: devOrgID, Type: in.Type, Name: in.Name, Url: in.Url, Method: in.Method,
 		Headers: in.Headers, Body: in.Body, ExpectedStatusCodes: in.ExpectedStatusCodes,
 		TimeoutSeconds: in.TimeoutSeconds, IntervalSeconds: in.IntervalSeconds, Enabled: in.Enabled,
 		MaxLatencyMs: in.MaxLatencyMs, BodyContains: in.BodyContains, FailureThreshold: in.FailureThreshold,

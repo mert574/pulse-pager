@@ -856,10 +856,15 @@ export interface components {
         CoverageStatus: "up" | "down" | "disabled" | "pending" | "coverage-degraded";
         /** @enum {string} */
         Method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+        /**
+         * @description The kind of check. http probes a URL; ssl checks a host's TLS certificate expiry and warns at fixed thresholds (BACKLOG: SSL-expiry).
+         * @enum {string}
+         */
+        MonitorType: "http" | "ssl";
         /** @enum {string} */
         ChannelType: "slack" | "discord" | "webhook" | "smtp" | "pagerduty" | "opsgenie" | "telegram" | "teams" | "twilio";
         /** @enum {string} */
-        FailureReason: "connection_error" | "timeout" | "status_mismatch" | "latency_exceeded" | "body_assertion_failed" | "blocked_target";
+        FailureReason: "connection_error" | "timeout" | "status_mismatch" | "latency_exceeded" | "body_assertion_failed" | "blocked_target" | "cert_expired" | "cert_expiring_soon" | "cert_invalid";
         /** @enum {string} */
         CloseReason: "recovered" | "disabled" | "manual";
         /** @enum {string} */
@@ -1090,6 +1095,8 @@ export interface components {
         Monitor: {
             id: string;
             org_id: string;
+            type: components["schemas"]["MonitorType"];
+            cert?: components["schemas"]["CertInfo"] | null;
             name: string;
             url: string;
             method: components["schemas"]["Method"];
@@ -1112,6 +1119,7 @@ export interface components {
         };
         MonitorListItem: {
             id: string;
+            type: components["schemas"]["MonitorType"];
             name: string;
             url: string;
             enabled: boolean;
@@ -1123,8 +1131,11 @@ export interface components {
             interval_seconds: number;
             last_latency_ms: number | null;
             incident_open: boolean;
+            /** Format: date-time */
+            cert_expires_at?: string | null;
         };
         MonitorInput: {
+            type: components["schemas"]["MonitorType"];
             name: string;
             url: string;
             method: components["schemas"]["Method"];
@@ -1222,6 +1233,19 @@ export interface components {
             status_code: number | null;
             latency_ms: number | null;
             error: string | null;
+            /** Format: date-time */
+            cert_expires_at?: string | null;
+        };
+        /** @description Latest TLS leaf certificate detail for an ssl monitor (BACKLOG: SSL-expiry), shown as the certificate card on the monitor detail. */
+        CertInfo: {
+            subject: string;
+            issuer: string;
+            /** Format: date-time */
+            not_before: string;
+            /** Format: date-time */
+            not_after: string;
+            dns_names: string[];
+            serial: string;
         };
         Incident: {
             id: string;

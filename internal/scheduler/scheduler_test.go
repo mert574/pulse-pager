@@ -141,3 +141,35 @@ func TestDispatcherMarksRegionsScheduled(t *testing.T) {
 		t.Fatalf("want both regions marked scheduled, got %v", got)
 	}
 }
+
+// An ssl monitor checks a cert, which is identical from every region, so it must
+// dispatch a single job even if its row carries several regions (BACKLOG: SSL-expiry).
+func TestDispatcherSSLIsAlwaysSingleRegion(t *testing.T) {
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	m := &domain.Monitor{
+		ID: 10, OrgID: 1, Type: domain.MonitorSSL, IntervalSeconds: 86400,
+		Regions: []string{"eu-central", "us-west", "us-east"},
+	}
+	prod := &fakeProducer{}
+	d := New(&fakeLister{items: []store.EnabledMonitor{{Monitor: m, LastCheckedAt: nil}}},
+		prod, nil, discardLog(), time.Second)
+
+	d.dispatchDue(context.Background(), now)
+
+	if prod.count() != 1 {
+		t.Fatalf("ssl monitor dispatched %d jobs, want 1 (single region)", prod.count())
+	}
+
+	// An http monitor with the same regions still fans out to all three.
+	httpMon := &domain.Monitor{
+		ID: 11, OrgID: 1, Type: domain.MonitorHTTP, IntervalSeconds: 60,
+		Regions: []string{"eu-central", "us-west", "us-east"},
+	}
+	prod2 := &fakeProducer{}
+	d2 := New(&fakeLister{items: []store.EnabledMonitor{{Monitor: httpMon, LastCheckedAt: nil}}},
+		prod2, nil, discardLog(), time.Second)
+	d2.dispatchDue(context.Background(), now)
+	if prod2.count() != 3 {
+		t.Fatalf("http monitor dispatched %d jobs, want 3", prod2.count())
+	}
+}

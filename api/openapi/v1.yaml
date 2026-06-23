@@ -1172,12 +1172,18 @@ components:
     Method:
       type: string
       enum: [GET, POST, PUT, PATCH, DELETE, HEAD]
+    MonitorType:
+      type: string
+      description: >
+        The kind of check. http probes a URL; ssl checks a host's TLS certificate
+        expiry and warns at fixed thresholds (BACKLOG: SSL-expiry).
+      enum: [http, ssl]
     ChannelType:
       type: string
       enum: [slack, discord, webhook, smtp, pagerduty, opsgenie, telegram, teams, twilio]
     FailureReason:
       type: string
-      enum: [connection_error, timeout, status_mismatch, latency_exceeded, body_assertion_failed, blocked_target]
+      enum: [connection_error, timeout, status_mismatch, latency_exceeded, body_assertion_failed, blocked_target, cert_expired, cert_expiring_soon, cert_invalid]
     CloseReason:
       type: string
       enum: [recovered, disabled, manual]
@@ -1521,12 +1527,19 @@ components:
     Monitor:
       type: object
       required:
-        [id, org_id, name, url, method, headers, body, expected_status_codes,
+        [id, org_id, type, name, url, method, headers, body, expected_status_codes,
          timeout_seconds, interval_seconds, enabled, max_latency_ms, body_contains,
          failure_threshold, notification_channel_ids, regions, down_policy, created_at, updated_at]
       properties:
         id: { type: string }
         org_id: { type: string }
+        type: { $ref: "#/components/schemas/MonitorType" }
+        # Latest TLS certificate detail for an ssl monitor (BACKLOG: SSL-expiry).
+        # Only set on getMonitor for an ssl monitor that has been checked; null
+        # otherwise and never set for http monitors or in list responses.
+        cert:
+          allOf: [{ $ref: "#/components/schemas/CertInfo" }]
+          nullable: true
         name: { type: string }
         url: { type: string }
         method: { $ref: "#/components/schemas/Method" }
@@ -1552,9 +1565,10 @@ components:
         updated_at: { type: string, format: date-time }
     MonitorListItem:
       type: object
-      required: [id, name, url, enabled, status, last_check_at, next_check_at, interval_seconds, last_latency_ms, incident_open]
+      required: [id, type, name, url, enabled, status, last_check_at, next_check_at, interval_seconds, last_latency_ms, incident_open]
       properties:
         id: { type: string }
+        type: { $ref: "#/components/schemas/MonitorType" }
         name: { type: string }
         url: { type: string }
         enabled: { type: boolean }
@@ -1571,13 +1585,17 @@ components:
         interval_seconds: { type: integer }
         last_latency_ms: { type: integer, nullable: true }
         incident_open: { type: boolean }
+        # The latest TLS cert expiry for an ssl monitor (BACKLOG: SSL-expiry); null
+        # for http monitors or an ssl monitor not yet checked.
+        cert_expires_at: { type: string, format: date-time, nullable: true }
     MonitorInput:
       type: object
       required:
-        [name, url, method, headers, body, expected_status_codes, timeout_seconds,
+        [type, name, url, method, headers, body, expected_status_codes, timeout_seconds,
          interval_seconds, enabled, max_latency_ms, body_contains, failure_threshold,
          notification_channel_ids, regions, down_policy]
       properties:
+        type: { $ref: "#/components/schemas/MonitorType" }
         name: { type: string }
         url: { type: string }
         method: { $ref: "#/components/schemas/Method" }
@@ -1721,6 +1739,24 @@ components:
         status_code: { type: integer, nullable: true }
         latency_ms: { type: integer, nullable: true }
         error: { type: string, nullable: true }
+        # The leaf cert's expiry on an ssl check (BACKLOG: SSL-expiry); null for http.
+        cert_expires_at: { type: string, format: date-time, nullable: true }
+
+    CertInfo:
+      type: object
+      description: >
+        Latest TLS leaf certificate detail for an ssl monitor (BACKLOG: SSL-expiry),
+        shown as the certificate card on the monitor detail.
+      required: [subject, issuer, not_before, not_after, dns_names, serial]
+      properties:
+        subject: { type: string }
+        issuer: { type: string }
+        not_before: { type: string, format: date-time }
+        not_after: { type: string, format: date-time }
+        dns_names:
+          type: array
+          items: { type: string }
+        serial: { type: string }
 
     Incident:
       type: object

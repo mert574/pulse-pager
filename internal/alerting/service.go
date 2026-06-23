@@ -159,7 +159,7 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) error {
 	// 6. Emit the notify event after commit, only when the incident action actually
 	// happened. The dedup id makes the re-emit on redelivery a no-op for the notifier.
 	if decision.Notify != nil && applied.Applied && applied.Incident != nil {
-		r.emit(ctx, m, applied.Incident, verdict, decision.Notify.Type)
+		r.emit(ctx, m, applied.Incident, verdict, decision.Notify.Type, decision.Notify.WarnDays)
 	}
 
 	r.log.Info("result applied",
@@ -186,13 +186,13 @@ func (r *Runner) reduceToVerdict(res *domain.CheckResult, resultID int64) (*doma
 // persisted (the incident id and timestamps are only known then). emit failure is
 // non-fatal: the incident is committed and a later redelivery re-emits with the same
 // dedup id, so the notification is not lost (RFC-006 section 5.4).
-func (r *Runner) emit(ctx context.Context, m *domain.Monitor, inc *domain.Incident, verdict *domain.CheckResult, kind NotifyEventType) {
+func (r *Runner) emit(ctx context.Context, m *domain.Monitor, inc *domain.Incident, verdict *domain.CheckResult, kind NotifyEventType, warnDays *int) {
 	ev := events.NotifyEvent{
 		OrgID:             m.OrgID,
 		MonitorID:         m.ID,
 		IncidentID:        inc.ID,
 		EventType:         string(kind),
-		DedupKey:          dedupKey(inc.ID, string(kind)),
+		DedupKey:          dedupKey(inc.ID, string(kind), warnDays),
 		MonitorName:       m.Name,
 		MonitorURL:        m.URL,
 		MonitorMethod:     string(m.Method),
@@ -221,12 +221,18 @@ func (r *Runner) emit(ctx context.Context, m *domain.Monitor, inc *domain.Incide
 	}
 }
 
-// dedupKey is hex(sha256(incident_id ":" event_type)), stable per (incident, kind)
-// so a redelivery-driven re-emit carries the same key and the notifier suppresses it
-// (RFC-006 section 7.1). An incident has exactly one down and one recovery, so at
-// most two distinct keys ever.
-func dedupKey(incidentID int64, eventType string) string {
-	sum := sha256.Sum256([]byte(strconv.FormatInt(incidentID, 10) + ":" + eventType))
+// dedupKey is hex(sha256(incident_id ":" event_type[":" warnDays])), stable per
+// (incident, kind) so a redelivery-driven re-emit carries the same key and the
+// notifier suppresses it (RFC-006 section 7.1). An http incident has exactly one
+// down and one recovery, so at most two distinct keys. For an ssl monitor the
+// warnDays suffix makes each expiry threshold (7/3/1/expired) its own key, so each
+// of the escalating warnings is delivered once on the same incident.
+func dedupKey(incidentID int64, eventType string, warnDays *int) string {
+	s := strconv.FormatInt(incidentID, 10) + ":" + eventType
+	if warnDays != nil {
+		s += ":" + strconv.Itoa(*warnDays)
+	}
+	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -239,6 +245,8 @@ func toStoreDecision(d Decision) store.Decision {
 		IncidentStartedAt: d.IncidentStartedAt,
 		CauseReason:       d.CauseReason,
 		IncidentEndedAt:   d.IncidentEndedAt,
+		NewSSLWarnedDays:  d.NewSSLWarnedDays,
+		Renotify:          d.Renotify,
 	}
 	switch d.Action {
 	case ActionOpenIncident:

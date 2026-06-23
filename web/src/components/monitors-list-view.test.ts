@@ -22,6 +22,7 @@ const ORG: OrgMembership = {
 const MONITORS: MonitorListItem[] = [
   {
     id: "mon_1",
+    type: "http",
     name: "Marketing site",
     url: "https://example.com",
     enabled: true,
@@ -34,6 +35,7 @@ const MONITORS: MonitorListItem[] = [
   },
   {
     id: "mon_2",
+    type: "ssl",
     name: "Prod API",
     url: "https://api.example.com",
     enabled: true,
@@ -117,6 +119,44 @@ describe("monitors-list-view", () => {
     }
   });
 
+  it("groups monitors by check type under section headings", async () => {
+    const restore = installFetch(() => jsonResponse(200, MONITORS));
+    try {
+      const el = await mount({});
+      await waitUntil(() => el.querySelector("table") !== null, "tables render");
+      // one section (and one table) per non-empty type, in TYPE_ORDER.
+      const headings = Array.from(el.querySelectorAll("section h2")).map((h) =>
+        h.textContent?.trim(),
+      );
+      expect(headings.length).to.equal(2);
+      expect(headings[0]).to.contain("HTTP");
+      expect(headings[1]).to.contain("SSL");
+      expect(el.querySelectorAll("data-table").length).to.equal(2);
+    } finally {
+      restore();
+    }
+  });
+
+  it("offers check-now per row: always for http, only with an incident for ssl", async () => {
+    const rows: MonitorListItem[] = [
+      { ...MONITORS[0], id: "http_1", type: "http", incident_open: false },
+      { ...MONITORS[0], id: "ssl_ok", type: "ssl", incident_open: false },
+      { ...MONITORS[0], id: "ssl_inc", type: "ssl", incident_open: true },
+    ];
+    const restore = installFetch(() => jsonResponse(200, rows));
+    try {
+      const el = await mount({});
+      await waitUntil(() => el.querySelector("table") !== null, "tables render");
+      const checkNow = Array.from(el.querySelectorAll("button")).filter((b) =>
+        b.textContent?.includes("Check now"),
+      );
+      // http row + the ssl row with an open incident, but not the healthy ssl row
+      expect(checkNow.length).to.equal(2);
+    } finally {
+      restore();
+    }
+  });
+
   it("shows the empty state when there are no monitors", async () => {
     const restore = installFetch(() => jsonResponse(200, []));
     try {
@@ -170,6 +210,26 @@ describe("monitors-list-view", () => {
       expect(btn).to.not.be.null;
       expect((btn as HTMLButtonElement).disabled).to.be.true;
       expect(el.querySelector("upsell-banner")).to.not.be.null;
+    } finally {
+      restore();
+    }
+  });
+
+  it("drops the Actions column when no row would show check-now", async () => {
+    // an ssl-only list with no open incidents -> no check-now anywhere -> no Actions
+    // column (the enable toggle column stays).
+    const rows: MonitorListItem[] = [
+      { ...MONITORS[0], id: "ssl_ok", type: "ssl", incident_open: false },
+    ];
+    const restore = installFetch(() => jsonResponse(200, rows));
+    try {
+      const el = await mount({});
+      await waitUntil(() => el.querySelector("table") !== null, "table renders");
+      const headers = Array.from(el.querySelectorAll("th")).map((h) =>
+        h.textContent?.trim(),
+      );
+      expect(headers).to.not.include("Actions");
+      expect(headers).to.include("Enabled");
     } finally {
       restore();
     }

@@ -50,6 +50,11 @@ const (
 // because the incident id and timestamps are only known then.
 type NotifyEvent struct {
 	Type NotifyEventType
+	// WarnDays is the ssl expiry threshold this notification is for (a value from
+	// domain.SSLWarnThresholds, or 0 for expired). nil for http down/recovery. It
+	// makes the dedup key distinct per threshold so each of the 7/3/1/expired
+	// warnings is delivered once on the same incident (BACKLOG: SSL-expiry).
+	WarnDays *int
 }
 
 // Decision is the result of Apply. The caller persists NewConsecutive and
@@ -66,6 +71,15 @@ type Decision struct {
 
 	IncidentEndedAt time.Time          // set when Action == ActionCloseIncident
 	CloseReason     domain.CloseReason // set when closing (recovered)
+
+	// Renotify is set for an ssl monitor that is already down when a tighter expiry
+	// threshold is crossed: the incident does not change, but Notify fires against
+	// the open incident (BACKLOG: SSL-expiry).
+	Renotify bool
+	// NewSSLWarnedDays is the value to persist for ssl_warned_days. It carries the
+	// stored level forward unchanged on most checks, advances to the tighter level
+	// on an open or a renotify, and is nil to clear it on recovery. nil for http.
+	NewSSLWarnedDays *int
 
 	Notify *NotifyEvent // nil for ActionNone or when no event fires
 }
@@ -98,7 +112,9 @@ func (e *Engine) applyHealthy(res *domain.CheckResult, state *domain.AlertState)
 
 // applyUnhealthy increments the consecutive count and tracks the first-fail
 // time. It opens an incident when the count reaches the threshold and no
-// incident is open yet, and stays quiet when already down.
+// incident is open yet, and stays quiet when already down. For an ssl monitor it
+// also re-notifies on an already-open incident as each tighter expiry threshold
+// is crossed (BACKLOG: SSL-expiry).
 func (e *Engine) applyUnhealthy(m *domain.Monitor, res *domain.CheckResult, state *domain.AlertState) Decision {
 	newConsecutive := state.ConsecutiveFails + 1
 
@@ -118,8 +134,24 @@ func (e *Engine) applyUnhealthy(m *domain.Monitor, res *domain.CheckResult, stat
 		NewFirstFailAt: firstFailAt,
 	}
 
-	// Already down: stay down, no re-notify. Still persist the counters above.
+	isSSL := m.Type == domain.MonitorSSL
+	level := 0
+	if isSSL {
+		level = sslLevel(res)
+		// Default: carry the stored warned level forward so we do not lose it (the
+		// store rewrites ssl_warned_days every apply).
+		d.NewSSLWarnedDays = state.SSLWarnedDays
+	}
+
+	// Already down: stay down. For ssl, re-notify when a tighter threshold is
+	// crossed than the one we last warned about. Still persist the counters above.
 	if state.OpenIncident != nil {
+		if isSSL && (state.SSLWarnedDays == nil || level < *state.SSLWarnedDays) {
+			lv := level
+			d.NewSSLWarnedDays = &lv
+			d.Renotify = true
+			d.Notify = &NotifyEvent{Type: EventDown, WarnDays: &lv}
+		}
 		return d
 	}
 
@@ -143,6 +175,23 @@ func (e *Engine) applyUnhealthy(m *domain.Monitor, res *domain.CheckResult, stat
 	if res.FailureReason != nil {
 		d.CauseReason = *res.FailureReason
 	}
-	d.Notify = &NotifyEvent{Type: EventDown}
+	if isSSL {
+		lv := level
+		d.NewSSLWarnedDays = &lv
+		d.Notify = &NotifyEvent{Type: EventDown, WarnDays: &lv}
+	} else {
+		d.Notify = &NotifyEvent{Type: EventDown}
+	}
 	return d
+}
+
+// sslLevel is the expiry warning level for an ssl result: the tightest crossed
+// threshold from the cert expiry, or -1 when the failure is not expiry-driven
+// (a connection error or a still-valid-but-invalid cert with no expiry). The -1
+// sentinel keeps a non-expiry ssl outage to a single notification, like http.
+func sslLevel(res *domain.CheckResult) int {
+	if res.CertExpiresAt == nil {
+		return -1
+	}
+	return domain.SSLWarnLevel(*res.CertExpiresAt, res.CheckedAt)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -37,6 +38,12 @@ const (
 	maxBodyBytes        = 1 << 20 // ~1 MB (PRD-002 2.3)
 	maxHeaders          = 50
 	defaultResultsLimit = 100
+
+	// Fixed scheduling for ssl monitors (BACKLOG: SSL-expiry). A cert changes
+	// slowly, so we check once a day with a short connect timeout; these are not
+	// user-set, the same way the 7/3/1-day notify thresholds are fixed.
+	sslIntervalSeconds = 86400
+	sslTimeoutSeconds  = 10
 )
 
 // MonitorPublisher publishes the monitor.changed signal so the scheduler picks up a
@@ -98,7 +105,19 @@ func (s *Server) GetMonitor(ctx context.Context, req apigen.GetMonitorRequestObj
 		}
 		return nil, err
 	}
-	return apigen.GetMonitor200JSONResponse(monitorDTO(m)), nil
+	dto := monitorDTO(m)
+	// Attach the latest cert detail for an ssl monitor so the detail page can render
+	// the certificate card (BACKLOG: SSL-expiry). Off the alerting hot path: this
+	// read only happens on the detail view.
+	if m.Type == domain.MonitorSSL {
+		if cert, err := s.store.GetMonitorCert(ctx, p.OrgID, id); err != nil {
+			return nil, err
+		} else if cert != nil {
+			c := certInfoDTO(cert)
+			dto.Cert = &c
+		}
+	}
+	return apigen.GetMonitor200JSONResponse(dto), nil
 }
 
 // CreateMonitor validates and creates a monitor (PRD-002, PRD-006). It gates on the
@@ -512,6 +531,16 @@ func (s *Server) canMonitor(p authn.Principal, action monitorAction) authz.Decis
 func monitorFromInput(orgID, id int64, in apigen.MonitorInput, limits entitlements.MonitorLimits) (*domain.Monitor, map[string]string) {
 	errs := map[string]string{}
 
+	// Default an empty type to http so older clients keep working; validate it.
+	typ := domain.MonitorType(in.Type)
+	if in.Type == "" {
+		typ = domain.MonitorHTTP
+	}
+	if typ != domain.MonitorHTTP && typ != domain.MonitorSSL {
+		errs["type"] = "type must be one of http, ssl"
+	}
+	isSSL := typ == domain.MonitorSSL
+
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
 		errs["name"] = "name is required"
@@ -519,77 +548,106 @@ func monitorFromInput(orgID, id int64, in apigen.MonitorInput, limits entitlemen
 		errs["name"] = fmt.Sprintf("name must be at most %d characters", maxMonitorNameLen)
 	}
 
-	if !validURL(in.Url) {
+	// An ssl monitor checks a TLS cert, so the target is a host (an https URL or a
+	// bare host[:port]); the http-only request fields (method/body/assertions) do
+	// not apply and are forced to harmless defaults below.
+	if isSSL {
+		if !validSSLTarget(in.Url) {
+			errs["url"] = "url must be a host (https URL or host[:port])"
+		}
+	} else if !validURL(in.Url) {
 		errs["url"] = "url must be an absolute http or https URL with a host"
 	}
 
 	method := domain.Method(in.Method)
-	if in.Method == "" {
+	if in.Method == "" || isSSL {
 		method = "GET"
 	}
-	if !validMethod(method) {
-		errs["method"] = "method must be one of GET, POST, PUT, PATCH, DELETE, HEAD"
+	expected := in.ExpectedStatusCodes
+	if expected == "" || isSSL {
+		expected = "200"
 	}
-
-	if in.Body != "" {
-		if !bodyAllowed(method) {
-			errs["body"] = "body is only allowed for POST, PUT, or PATCH"
-		} else if len(in.Body) > maxBodyBytes {
-			errs["body"] = "body is too large"
+	if !isSSL {
+		if !validMethod(method) {
+			errs["method"] = "method must be one of GET, POST, PUT, PATCH, DELETE, HEAD"
+		}
+		if in.Body != "" {
+			if !bodyAllowed(method) {
+				errs["body"] = "body is only allowed for POST, PUT, or PATCH"
+			} else if len(in.Body) > maxBodyBytes {
+				errs["body"] = "body is too large"
+			}
+		}
+		if !validExpectedStatusCodes(expected) {
+			errs["expected_status_codes"] = "expected_status_codes must be codes (100..599) and/or 2xx/3xx/4xx/5xx"
 		}
 	}
 
-	expected := in.ExpectedStatusCodes
-	if expected == "" {
-		expected = "200"
-	}
-	if !validExpectedStatusCodes(expected) {
-		errs["expected_status_codes"] = "expected_status_codes must be codes (100..599) and/or 2xx/3xx/4xx/5xx"
-	}
-
-	if in.TimeoutSeconds < 1 || in.TimeoutSeconds > 60 {
-		errs["timeout_seconds"] = "timeout_seconds must be between 1 and 60"
-	}
-
-	// interval: hard floor 30, >= timeout, and >= the plan's tier floor (PRD-006).
-	floor := limits.EffectiveIntervalFloor()
-	switch {
-	case in.IntervalSeconds < entitlements.HardIntervalFloorSeconds:
-		errs["interval_seconds"] = fmt.Sprintf("interval_seconds must be at least %d", entitlements.HardIntervalFloorSeconds)
-	case in.TimeoutSeconds >= 1 && in.TimeoutSeconds <= 60 && in.IntervalSeconds < in.TimeoutSeconds:
-		errs["interval_seconds"] = "interval_seconds must be greater than or equal to timeout_seconds"
-	case in.IntervalSeconds < floor:
-		errs["interval_seconds"] = belowFloorMessage(floor)
-	}
-
-	if in.MaxLatencyMs != nil && *in.MaxLatencyMs <= 0 {
-		errs["max_latency_ms"] = "max_latency_ms must be a positive integer"
-	}
-
-	if in.BodyContains != nil && len(*in.BodyContains) > maxBodyContainsLen {
-		errs["body_contains"] = fmt.Sprintf("body_contains must be at most %d characters", maxBodyContainsLen)
-	}
-
-	if in.FailureThreshold < 1 {
-		errs["failure_threshold"] = "failure_threshold must be at least 1"
-	}
-
-	headers, headerErr := validateHeaders(in.Headers)
-	if headerErr != "" {
-		errs["headers"] = headerErr
-	}
-
+	// Scheduling, regions, and the http-only request/assertion fields are all
+	// user-set for http. For ssl they are fixed product behavior (like the notify
+	// thresholds): a cert changes slowly, so we check once a day from one region and
+	// open on the first failing check. We override them and skip their validation.
+	timeoutSeconds := in.TimeoutSeconds
+	intervalSeconds := in.IntervalSeconds
+	failureThreshold := in.FailureThreshold
 	dp := domain.DownPolicy(in.DownPolicy)
 	if in.DownPolicy == "" {
 		dp = domain.DownPolicyQuorum
 	}
-	if !validDownPolicy(dp) {
-		errs["down_policy"] = "down_policy must be one of any, quorum, all"
-	}
+	body := in.Body
+	bodyContains := in.BodyContains
+	maxLatency := in.MaxLatencyMs
+	var headers []domain.Header
+	var regions []string
 
-	regions, regionErr := validateRegions(in.Regions, limits)
-	if regionErr != "" {
-		errs["regions"] = regionErr
+	if isSSL {
+		timeoutSeconds = sslTimeoutSeconds
+		intervalSeconds = sslIntervalSeconds // daily
+		failureThreshold = 1                 // deterministic: open on the first failing check
+		dp = domain.DownPolicyAny            // single region, so any == quorum == all
+		regions = []string{region.Default}
+		body = ""
+		bodyContains = nil
+		maxLatency = nil
+	} else {
+		if in.TimeoutSeconds < 1 || in.TimeoutSeconds > 60 {
+			errs["timeout_seconds"] = "timeout_seconds must be between 1 and 60"
+		}
+
+		// interval: hard floor 30, >= timeout, and >= the plan's tier floor (PRD-006).
+		floor := limits.EffectiveIntervalFloor()
+		switch {
+		case in.IntervalSeconds < entitlements.HardIntervalFloorSeconds:
+			errs["interval_seconds"] = fmt.Sprintf("interval_seconds must be at least %d", entitlements.HardIntervalFloorSeconds)
+		case in.TimeoutSeconds >= 1 && in.TimeoutSeconds <= 60 && in.IntervalSeconds < in.TimeoutSeconds:
+			errs["interval_seconds"] = "interval_seconds must be greater than or equal to timeout_seconds"
+		case in.IntervalSeconds < floor:
+			errs["interval_seconds"] = belowFloorMessage(floor)
+		}
+
+		if in.MaxLatencyMs != nil && *in.MaxLatencyMs <= 0 {
+			errs["max_latency_ms"] = "max_latency_ms must be a positive integer"
+		}
+		if in.BodyContains != nil && len(*in.BodyContains) > maxBodyContainsLen {
+			errs["body_contains"] = fmt.Sprintf("body_contains must be at most %d characters", maxBodyContainsLen)
+		}
+		if in.FailureThreshold < 1 {
+			errs["failure_threshold"] = "failure_threshold must be at least 1"
+		}
+		hs, headerErr := validateHeaders(in.Headers)
+		if headerErr != "" {
+			errs["headers"] = headerErr
+		}
+		headers = hs
+
+		if !validDownPolicy(dp) {
+			errs["down_policy"] = "down_policy must be one of any, quorum, all"
+		}
+		rs, regionErr := validateRegions(in.Regions, limits)
+		if regionErr != "" {
+			errs["regions"] = regionErr
+		}
+		regions = rs
 	}
 
 	channelIDs, channelErr := parseChannelIDs(in.NotificationChannelIds)
@@ -600,19 +658,19 @@ func monitorFromInput(orgID, id int64, in apigen.MonitorInput, limits entitlemen
 	m := &domain.Monitor{
 		ID:                  id,
 		OrgID:               orgID,
-		Type:                domain.MonitorHTTP,
+		Type:                typ,
 		Name:                name,
 		URL:                 in.Url,
 		Method:              method,
 		Headers:             headers,
-		Body:                in.Body,
+		Body:                body,
 		ExpectedStatusCodes: expected,
-		TimeoutSeconds:      in.TimeoutSeconds,
-		IntervalSeconds:     in.IntervalSeconds,
+		TimeoutSeconds:      timeoutSeconds,
+		IntervalSeconds:     intervalSeconds,
 		Enabled:             in.Enabled,
-		MaxLatencyMs:        in.MaxLatencyMs,
-		BodyContains:        in.BodyContains,
-		FailureThreshold:    in.FailureThreshold,
+		MaxLatencyMs:        maxLatency,
+		BodyContains:        bodyContains,
+		FailureThreshold:    failureThreshold,
 		Regions:             regions,
 		DownPolicy:          dp,
 		ChannelIDs:          channelIDs,
@@ -631,6 +689,27 @@ func validURL(raw string) bool {
 		return false
 	}
 	return u.Host != ""
+}
+
+// validSSLTarget accepts an ssl monitor's target: either an absolute https/http
+// URL with a host, or a bare host[:port] (BACKLOG: SSL-expiry). The checker
+// defaults the port to 443.
+func validSSLTarget(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	if u, err := url.Parse(raw); err == nil && u.IsAbs() {
+		return u.Host != ""
+	}
+	// Bare host or host:port. Reject anything with a scheme-like or path part.
+	if strings.ContainsAny(raw, "/ ") {
+		return false
+	}
+	if host, _, err := net.SplitHostPort(raw); err == nil {
+		return host != ""
+	}
+	return true // bare hostname, no port
 }
 
 func validMethod(m domain.Method) bool {
@@ -782,6 +861,7 @@ func monitorDTO(m *domain.Monitor) apigen.Monitor {
 	return apigen.Monitor{
 		Id:                     strconv.FormatInt(m.ID, 10),
 		OrgId:                  strconv.FormatInt(m.OrgID, 10),
+		Type:                   apigen.MonitorType(m.Type),
 		Name:                   m.Name,
 		Url:                    m.URL,
 		Method:                 apigen.Method(m.Method),
@@ -817,6 +897,7 @@ func monitorListItemDTO(row store.MonitorListRow, intervalFloor int) apigen.Moni
 	}
 	return apigen.MonitorListItem{
 		Id:              strconv.FormatInt(m.ID, 10),
+		Type:            apigen.MonitorType(m.Type),
 		Name:            m.Name,
 		Url:             m.URL,
 		Enabled:         m.Enabled,
@@ -826,6 +907,7 @@ func monitorListItemDTO(row store.MonitorListRow, intervalFloor int) apigen.Moni
 		IntervalSeconds: eff,
 		LastLatencyMs:   row.LastLatencyMs,
 		IncidentOpen:    row.IncidentOpen,
+		CertExpiresAt:   row.CertExpiresAt,
 	}
 }
 
@@ -859,7 +941,20 @@ func checkResultDTO(r *domain.CheckResult) apigen.CheckResult {
 		fr := apigen.FailureReason(*r.FailureReason)
 		dto.FailureReason = &fr
 	}
+	dto.CertExpiresAt = r.CertExpiresAt
 	return dto
+}
+
+// certInfoDTO maps the latest cert detail to the API CertInfo shape.
+func certInfoDTO(c *domain.CertInfo) apigen.CertInfo {
+	return apigen.CertInfo{
+		Subject:   c.Subject,
+		Issuer:    c.Issuer,
+		NotBefore: c.NotBefore,
+		NotAfter:  c.NotAfter,
+		DnsNames:  c.DNSNames,
+		Serial:    c.Serial,
+	}
 }
 
 // incidentDTO maps a domain.Incident to the API Incident shape, computing the
