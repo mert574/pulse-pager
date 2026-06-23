@@ -51,7 +51,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Unlink a social identity from the signed-in user. */
+        /**
+         * Unlink a social identity from the signed-in user.
+         * @description On success returns 204 with no body.
+         */
         delete: operations["unlinkMyIdentity"];
         options?: never;
         head?: never;
@@ -104,7 +107,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke all of the user's sessions. */
+        /**
+         * Revoke all of the user's sessions.
+         * @description On success returns 204 with no body.
+         */
         post: operations["logoutAll"];
         delete?: never;
         options?: never;
@@ -143,7 +149,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Leave the org. The last owner must transfer ownership first. */
+        /**
+         * Leave the org. The last owner must transfer ownership first.
+         * @description On success returns 204 with no body.
+         */
         delete: operations["leaveOrg"];
         options?: never;
         head?: never;
@@ -163,7 +172,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove a member from the org. */
+        /**
+         * Remove a member from the org.
+         * @description On success returns 204 with no body.
+         */
         delete: operations["removeMember"];
         options?: never;
         head?: never;
@@ -182,7 +194,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Hand ownership to another member (owner only). The new owner must already be a member. The acting owner may step down to admin or stay an owner. */
+        /**
+         * Hand ownership to another member (owner only). The new owner must already be a member. The acting owner may step down to admin or stay an owner.
+         * @description On success returns 204 with no body.
+         */
         post: operations["transferOwnership"];
         delete?: never;
         options?: never;
@@ -223,7 +238,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Revoke a pending invitation, freeing its reserved seat. */
+        /**
+         * Revoke a pending invitation, freeing its reserved seat.
+         * @description On success returns 204 with no body.
+         */
         delete: operations["revokeInvitation"];
         options?: never;
         head?: never;
@@ -321,7 +339,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Revoke an API key. The key fails auth immediately after. */
+        /**
+         * Revoke an API key. The key fails auth immediately after.
+         * @description On success returns 204 with no body.
+         */
         delete: operations["revokeAPIKey"];
         options?: never;
         head?: never;
@@ -363,7 +384,10 @@ export interface paths {
         /** Update an outbound webhook's url, enabled flag, and subscribed events. */
         put: operations["updateWebhook"];
         post?: never;
-        /** Delete an outbound webhook. Pulse Pager stops delivering to it immediately. */
+        /**
+         * Delete an outbound webhook. Pulse Pager stops delivering to it immediately.
+         * @description On success returns 204 with no body.
+         */
         delete: operations["deleteWebhook"];
         options?: never;
         head?: never;
@@ -463,6 +487,7 @@ export interface paths {
         get: operations["getMonitor"];
         put: operations["updateMonitor"];
         post?: never;
+        /** @description On success returns 204 with no body. */
         delete: operations["deleteMonitor"];
         options?: never;
         head?: never;
@@ -616,6 +641,7 @@ export interface paths {
         get?: never;
         put: operations["updateChannel"];
         post?: never;
+        /** @description On success returns 204 with no body. */
         delete: operations["deleteChannel"];
         options?: never;
         head?: never;
@@ -634,6 +660,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Sends a one-off test message to the channel. On success returns 204 with no body; the outcome is the status alone (204 delivered, 422 provider error). */
         post: operations["testChannel"];
         delete?: never;
         options?: never;
@@ -753,6 +780,7 @@ export interface paths {
         /** Update a status page and its displayed monitors (member+). */
         put: operations["updateStatusPage"];
         post?: never;
+        /** @description On success returns 204 with no body. */
         delete: operations["deleteStatusPage"];
         options?: never;
         head?: never;

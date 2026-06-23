@@ -75,6 +75,7 @@ paths:
       operationId: unlinkMyIdentity
       tags: [account]
       summary: Unlink a social identity from the signed-in user.
+      description: On success returns 204 with no body.
       responses:
         "204": { description: no content }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -134,6 +135,7 @@ paths:
       operationId: logoutAll
       tags: [account]
       summary: Revoke all of the user's sessions.
+      description: On success returns 204 with no body.
       responses:
         "204": { description: no content }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -163,6 +165,7 @@ paths:
       operationId: leaveOrg
       tags: [members]
       summary: Leave the org. The last owner must transfer ownership first.
+      description: On success returns 204 with no body.
       responses:
         "204": { description: no content }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -197,6 +200,7 @@ paths:
       operationId: removeMember
       tags: [members]
       summary: Remove a member from the org.
+      description: On success returns 204 with no body.
       responses:
         "204": { description: no content }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -213,6 +217,7 @@ paths:
       summary: >
         Hand ownership to another member (owner only). The new owner must already
         be a member. The acting owner may step down to admin or stay an owner.
+      description: On success returns 204 with no body.
       requestBody:
         required: true
         content:
@@ -275,6 +280,7 @@ paths:
       operationId: revokeInvitation
       tags: [members]
       summary: Revoke a pending invitation, freeing its reserved seat.
+      description: On success returns 204 with no body.
       responses:
         "204": { description: no content }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -387,6 +393,7 @@ paths:
       operationId: revokeAPIKey
       tags: [api-keys]
       summary: Revoke an API key. The key fails auth immediately after.
+      description: On success returns 204 with no body.
       responses:
         "204": { description: no content }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -471,6 +478,7 @@ paths:
       operationId: deleteWebhook
       tags: [webhooks]
       summary: Delete an outbound webhook. Pulse Pager stops delivering to it immediately.
+      description: On success returns 204 with no body.
       responses:
         "204": { description: no content }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -617,6 +625,7 @@ paths:
     delete:
       operationId: deleteMonitor
       tags: [monitors]
+      description: On success returns 204 with no body.
       responses:
         "204": { description: no content }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -812,6 +821,7 @@ paths:
     delete:
       operationId: deleteChannel
       tags: [channels]
+      description: On success returns 204 with no body.
       responses:
         "204": { description: no content }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -824,6 +834,9 @@ paths:
     post:
       operationId: testChannel
       tags: [channels]
+      description: >
+        Sends a one-off test message to the channel. On success returns 204 with no
+        body; the outcome is the status alone (204 delivered, 422 provider error).
       responses:
         "204": { description: no content }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -998,6 +1011,7 @@ paths:
     delete:
       operationId: deleteStatusPage
       tags: [status-pages]
+      description: On success returns 204 with no body.
       responses:
         "204": { description: no content }
         "401": { $ref: "#/components/responses/Unauthorized" }
