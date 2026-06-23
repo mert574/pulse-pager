@@ -396,20 +396,17 @@ export class ChannelFormView extends AppElement {
     </button>`;
   }
 
-  // Show the upsell for any unavailable type that carries a reason. The reason is
-  // localized through tDynamic with the API message as the fallback.
+  // One upsell covering every plan-gated type, not a banner per type (a long list
+  // of identical "available on a higher plan" cards reads as noise, especially on
+  // mobile). It names the blocked types and links to billing once.
   private unavailableNotice() {
     const blocked = this.catalog.filter((e) => !e.available && e.unavailable_reason);
     if (blocked.length === 0) return "";
-    return html`<div class="flex flex-col gap-2">
-      ${blocked.map((e) => {
-        const reason = e.unavailable_reason!;
-        return html`<upsell-banner
-          .message=${`${e.display_name}: ${tDynamic(reason.code, reason.message, reason.params)}`}
-          .upgradeHref=${`${this.base}/billing`}
-        ></upsell-banner>`;
-      })}
-    </div>`;
+    const types = blocked.map((e) => e.display_name).join(", ");
+    return html`<upsell-banner
+      .message=${tDynamic("channelForm.upsellTypes", `${types} are available on a higher plan.`, { types })}
+      .upgradeHref=${`${this.base}/billing`}
+    ></upsell-banner>`;
   }
 
   private configCard() {

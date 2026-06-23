@@ -15,12 +15,12 @@ const ORG: OrgMembership = {
   name: "Org One",
   slug: "org-one",
   role: "owner",
-  plan: "team",
+  plan: "tier3",
 };
 
 // Team org: monitors near cap (9/10), seats well under, status pages under.
 const ENT: Entitlements = {
-  plan: "team",
+  plan: "tier3",
   monitors_used: 9,
   monitors_cap: 10,
   seats_used: 2,
@@ -32,6 +32,7 @@ const ENT: Entitlements = {
   regions_allowed: ["us-east", "us-west"],
   regions_per_monitor_cap: 2,
   custom_domain_allowed: true,
+  api_access_allowed: true,
   api_write_allowed: true,
   failure_snapshot: true,
 };
@@ -47,6 +48,7 @@ function plan(p: PlanCatalogEntry["plan"], over: Partial<PlanCatalogEntry>): Pla
     regions_allowed: ["us-east"],
     regions_per_monitor_cap: 1,
     custom_domain_allowed: false,
+    api_access_allowed: false,
     api_write_allowed: false,
     api_rate_per_min: 60,
     channel_types: ["email"],
@@ -55,10 +57,10 @@ function plan(p: PlanCatalogEntry["plan"], over: Partial<PlanCatalogEntry>): Pla
 }
 
 const PLANS: PlanCatalogEntry[] = [
-  plan("free", { monitors_cap: 3, min_interval_seconds: 300, seats_cap: 1, status_pages_cap: 1, retention_days: 7, api_rate_per_min: 30, channel_types: ["email"] }),
-  plan("starter", { monitors_cap: 5, min_interval_seconds: 120, seats_cap: 3, status_pages_cap: 2, retention_days: 30, api_rate_per_min: 60, channel_types: ["email", "slack"] }),
-  plan("team", { monitors_cap: 10, min_interval_seconds: 60, seats_cap: 10, status_pages_cap: 5, retention_days: 90, api_rate_per_min: 120, channel_types: ["email", "slack", "webhook"] }),
-  plan("business", { monitors_cap: 50, min_interval_seconds: 30, seats_cap: 50, status_pages_cap: 20, retention_days: 365, api_rate_per_min: 600, channel_types: ["email", "slack", "webhook", "pagerduty"] }),
+  plan("tier1", { monitors_cap: 3, min_interval_seconds: 300, seats_cap: 1, status_pages_cap: 1, retention_days: 7, api_rate_per_min: 30, channel_types: ["email"] }),
+  plan("tier2", { monitors_cap: 5, min_interval_seconds: 120, seats_cap: 3, status_pages_cap: 2, retention_days: 30, api_rate_per_min: 60, channel_types: ["email", "slack"] }),
+  plan("tier3", { monitors_cap: 10, min_interval_seconds: 60, seats_cap: 10, status_pages_cap: 5, retention_days: 90, api_rate_per_min: 120, channel_types: ["email", "slack", "webhook"] }),
+  plan("tierCustom", { monitors_cap: 50, min_interval_seconds: 30, seats_cap: 50, status_pages_cap: 20, retention_days: 365, api_rate_per_min: 600, channel_types: ["email", "slack", "webhook", "pagerduty"] }),
 ];
 
 interface Call {
@@ -126,8 +128,8 @@ describe("billing-view", () => {
         () => el.querySelector("[data-meter]") !== null,
         "meters render",
       );
-      // current plan badge
-      expect(el.textContent).to.contain("Team");
+      // current plan badge (team plan renders as its display name "Professional")
+      expect(el.textContent).to.contain("Professional");
       // three meters, one per metered dimension
       expect(el.querySelectorAll("[data-meter]").length).to.equal(3);
       // monitors bar reflects used/cap
@@ -159,10 +161,10 @@ describe("billing-view", () => {
       // a row per tier from /plans
       expect(el.querySelectorAll("tbody tr").length).to.equal(4);
       // the current (team) row is marked current; lower/other rows are not
-      const teamRow = el.querySelector<HTMLElement>('tr[data-plan="team"]')!;
+      const teamRow = el.querySelector<HTMLElement>('tr[data-plan="tier3"]')!;
       expect(teamRow.dataset.current).to.equal("true");
       expect(teamRow.textContent).to.contain("Current");
-      const freeRow = el.querySelector<HTMLElement>('tr[data-plan="free"]')!;
+      const freeRow = el.querySelector<HTMLElement>('tr[data-plan="tier1"]')!;
       expect(freeRow.dataset.current).to.equal("false");
     } finally {
       restore();
@@ -174,10 +176,10 @@ describe("billing-view", () => {
     try {
       await waitUntil(() => el.querySelector("table") !== null);
       // upgrade only on the higher tier (business), not on free/starter/team
-      expect(el.querySelector('[data-upgrade="free"]')).to.be.null;
-      expect(el.querySelector('[data-upgrade="team"]')).to.be.null;
+      expect(el.querySelector('[data-upgrade="tier1"]')).to.be.null;
+      expect(el.querySelector('[data-upgrade="tier3"]')).to.be.null;
       const upgrade = el.querySelector<HTMLButtonElement>(
-        '[data-upgrade="business"]',
+        '[data-upgrade="tierCustom"]',
       )!;
       expect(upgrade).to.not.be.null;
       upgrade.click();

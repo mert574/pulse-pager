@@ -16,7 +16,7 @@ export class UpsellBanner extends AppElement {
       <div role="status" class="alert alert-warning">
         <span>${this.message || t("upsell.limit")}</span>
         ${this.upgradeHref
-          ? html`<a class="btn btn-sm" href=${this.upgradeHref}
+          ? html`<a class="btn btn-sm whitespace-nowrap" href=${this.upgradeHref}
               >${t("upsell.upgrade")}</a
             >`
           : ""}

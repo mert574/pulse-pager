@@ -11,7 +11,7 @@ const ORG: OrgMembership = {
   name: "Org One",
   slug: "org-one",
   role: "owner",
-  plan: "team",
+  plan: "tier3",
 };
 
 // Mount app-nav under a context provider with an active org, at the given path.

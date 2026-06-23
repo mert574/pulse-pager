@@ -10,7 +10,7 @@ const ORG: OrgMembership = {
   name: "Org One",
   slug: "org-one",
   role: "owner",
-  plan: "team",
+  plan: "tier3",
 };
 
 const KEYS: ApiKey[] = [
@@ -79,7 +79,25 @@ async function mount(opts: {
     me: { user_id: "u", email: "e", name: "n", avatar_url: null, orgs: [ORG] },
     activeOrg: { ...ORG, role: opts.role ?? "owner" },
     role: opts.role ?? "owner",
-    entitlements: null,
+    // a paid plan with full API access so the management UI renders; the gating
+    // (free = upgrade, hobby = read-only) is covered by the entitlement getters.
+    entitlements: {
+      plan: "tier3",
+      monitors_used: 0,
+      monitors_cap: 100,
+      seats_used: 1,
+      seats_cap: 10,
+      status_pages_used: 0,
+      status_pages_cap: 3,
+      min_interval_seconds: 60,
+      retention_days: 90,
+      regions_allowed: ["eu-central"],
+      regions_per_monitor_cap: 4,
+      custom_domain_allowed: true,
+      api_access_allowed: true,
+      api_write_allowed: true,
+      failure_snapshot: true,
+    },
     refreshMe: async () => {},
   };
   new ContextProvider(host, { context: appContext, initialValue: ctx });

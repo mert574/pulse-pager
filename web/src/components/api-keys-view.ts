@@ -68,8 +68,18 @@ export class ApiKeysView extends AppElement {
     return can(this.ctx?.role ?? null, "apikey.manage");
   }
 
+  // The plan's API entitlement comes straight from the server (no plan-name reading
+  // in the FE, which would duplicate and drift from the backend matrix). Null until
+  // the entitlements call resolves; render shows a loading state until then.
+  private get planAllowsApi(): boolean {
+    return this.ctx?.entitlements?.api_access_allowed ?? false;
+  }
+  private get apiWriteAllowed(): boolean {
+    return this.ctx?.entitlements?.api_write_allowed ?? false;
+  }
+
   override updated(): void {
-    if (!this.hasAccess) return;
+    if (!this.hasAccess || !this.ctx?.entitlements?.api_access_allowed) return;
     const orgId = this.orgId;
     if (orgId && orgId !== this.loadedOrgId) void this.load(orgId);
   }
@@ -201,6 +211,32 @@ export class ApiKeysView extends AppElement {
       </div>`;
     }
 
+    // Entitlements not resolved yet: show a skeleton rather than flash the upgrade
+    // prompt before we know the plan's API access.
+    if (!this.ctx?.entitlements) {
+      return html`<div class="skeleton h-24 w-full" aria-busy="true"></div>`;
+    }
+
+    // Plan gate: the Free tier has no API access, so it gets the upgrade prompt in
+    // place of the key-management UI (server rejects key creation too).
+    if (!this.planAllowsApi) {
+      return html`
+        <div class="flex flex-col gap-3">
+          <h1 class="text-2xl font-bold">${t("apiKeys.heading")}</h1>
+          <div role="status" class="alert alert-warning">
+            <span>${t("apiKeys.upgrade")}</span>
+            ${this.orgId
+              ? html`<a
+                  class="btn btn-sm whitespace-nowrap"
+                  href=${`/orgs/${this.orgId}/billing`}
+                  >${t("upsell.upgrade")}</a
+                >`
+              : ""}
+          </div>
+        </div>
+      `;
+    }
+
     return html`
       <div class="flex flex-col gap-4">
         <div class="flex items-center justify-between">
@@ -217,6 +253,11 @@ export class ApiKeysView extends AppElement {
         >
           ${icon("externalLink", "size-4")}${t("apiKeys.docs")}
         </a>
+        ${this.apiWriteAllowed
+          ? ""
+          : html`<div role="status" class="alert alert-info">
+              <span>${t("apiKeys.readOnlyNote")}</span>
+            </div>`}
         ${this.body()}
         ${this.createDialog()} ${this.secretPanel()}
         <confirm-dialog

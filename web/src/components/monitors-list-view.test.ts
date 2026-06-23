@@ -16,7 +16,7 @@ const ORG: OrgMembership = {
   name: "Org One",
   slug: "org-one",
   role: "owner",
-  plan: "team",
+  plan: "tier3",
 };
 
 const MONITORS: MonitorListItem[] = [
@@ -48,7 +48,7 @@ const MONITORS: MonitorListItem[] = [
 
 function entitlements(used: number, cap: number): Entitlements {
   return {
-    plan: "team",
+    plan: "tier3",
     monitors_used: used,
     monitors_cap: cap,
     seats_used: 1,

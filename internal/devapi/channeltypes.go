@@ -13,10 +13,10 @@ import (
 // the tier a channel type needs". It mirrors PRD-006 section 3 (free < starter <
 // team < business).
 var planRank = map[apigen.Plan]int{
-	apigen.Free:     0,
-	apigen.Starter:  1,
-	apigen.Team:     2,
-	apigen.Business: 3,
+	apigen.Tier1:      0,
+	apigen.Tier2:      1,
+	apigen.Tier3:      2,
+	apigen.TierCustom: 3,
 }
 
 // channelMinPlan is the lowest plan tier that includes each channel type. It
@@ -28,15 +28,15 @@ var planRank = map[apigen.Plan]int{
 // PRD-006 owns sits here, not in the registry. When RFC-009 codifies the
 // entitlement set's channel_types_allowed, this is the one place to swap for it.
 var channelMinPlan = map[domain.ChannelType]apigen.Plan{
-	domain.ChannelSlack:     apigen.Free,
-	domain.ChannelDiscord:   apigen.Free,
-	domain.ChannelWebhook:   apigen.Free,
-	domain.ChannelSMTP:      apigen.Free,
-	domain.ChannelPagerDuty: apigen.Team,
-	domain.ChannelOpsgenie:  apigen.Team,
-	domain.ChannelTelegram:  apigen.Business,
-	domain.ChannelTeams:     apigen.Business,
-	domain.ChannelTwilio:    apigen.Business,
+	domain.ChannelSlack:     apigen.Tier1,
+	domain.ChannelDiscord:   apigen.Tier1,
+	domain.ChannelWebhook:   apigen.Tier1,
+	domain.ChannelSMTP:      apigen.Tier1,
+	domain.ChannelPagerDuty: apigen.Tier3,
+	domain.ChannelOpsgenie:  apigen.Tier3,
+	domain.ChannelTelegram:  apigen.TierCustom,
+	domain.ChannelTeams:     apigen.TierCustom,
+	domain.ChannelTwilio:    apigen.TierCustom,
 }
 
 // allowedChannelTypes returns the set of channel types the given plan includes,
@@ -155,13 +155,13 @@ func localized(l notify.LocalizedString) apigen.LocalizedString {
 // id the frontend keys on.
 func titlePlan(p apigen.Plan) string {
 	switch p {
-	case apigen.Free:
+	case apigen.Tier1:
 		return "Free"
-	case apigen.Starter:
+	case apigen.Tier2:
 		return "Starter"
-	case apigen.Team:
+	case apigen.Tier3:
 		return "Team"
-	case apigen.Business:
+	case apigen.TierCustom:
 		return "Business"
 	default:
 		return string(p)

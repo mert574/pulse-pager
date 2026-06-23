@@ -151,22 +151,24 @@ export class MonitorDetailView extends AppElement {
     }
   }
 
-  // Start the poll when the tab is visible and we have a monitor to scope it to,
-  // stop it otherwise. Called on connect, on visibility change, and after load.
+  // Kick the live region-state poll. It runs only while a check is actually in
+  // flight (a region in scheduled/running) and the tab is visible: once every
+  // region settles to done/failed there is nothing to refetch until the next
+  // check, so the poll stops instead of hitting the endpoint every few seconds
+  // forever. A check-now or reopening the tab kicks it off again. Called on
+  // visibility change, after load, and after check-now.
   private syncPoll(): void {
-    const shouldRun =
-      !!this.orgId && !!this.monitorId && document.visibilityState === "visible";
-    if (shouldRun && this.pollTimer === null) {
-      void this.pollRegionStates();
-      this.pollTimer = window.setInterval(() => void this.pollRegionStates(), POLL_MS);
-    } else if (!shouldRun && this.pollTimer !== null) {
+    if (document.visibilityState !== "visible" || !this.orgId || !this.monitorId) {
       this.stopPoll();
+      return;
     }
+    // One fetch now; it self-schedules the next tick only while a check is live.
+    void this.pollRegionStates();
   }
 
   private stopPoll(): void {
     if (this.pollTimer !== null) {
-      window.clearInterval(this.pollTimer);
+      window.clearTimeout(this.pollTimer);
       this.pollTimer = null;
     }
   }
@@ -181,6 +183,19 @@ export class MonitorDetailView extends AppElement {
       // a failed poll is non-fatal; the chips keep their last value and the next
       // tick tries again. We do not toast or surface poll errors.
     }
+    this.scheduleNextPoll();
+  }
+
+  // Schedule the next tick only while a check is in flight and the tab is visible,
+  // so a settled monitor stops polling instead of refetching unchanged state.
+  private scheduleNextPoll(): void {
+    this.stopPoll();
+    const live = this.regionStates.some(
+      (s) => s.state === "scheduled" || s.state === "running",
+    );
+    if (live && document.visibilityState === "visible" && this.orgId && this.monitorId) {
+      this.pollTimer = window.setTimeout(() => void this.pollRegionStates(), POLL_MS);
+    }
   }
 
   // The server accepts with 202 and returns every region in "scheduled"; we drop
@@ -193,8 +208,11 @@ export class MonitorDetailView extends AppElement {
     this.checking = true;
     try {
       const accepted = await client.checkNow(orgId, this.monitorId);
+      // Show the scheduled chips right away, then let the poll confirm on its next
+      // tick. Schedule (don't fetch now), so the optimistic chips aren't wiped by a
+      // poll that races ahead of the server reflecting the scheduled state.
       this.regionStates = accepted.regions;
-      this.syncPoll();
+      this.scheduleNextPoll();
       toast(t("monitor.checkQueued"), "info");
     } catch (err) {
       toastCheckError(err);
@@ -599,12 +617,12 @@ export class MonitorDetailView extends AppElement {
   // the run's regions are down. The per-region reasons show in the expanded detail.
   private runResultBadge(run: CheckRun) {
     if (run.healthy) {
-      return html`<span class="badge badge-success badge-soft badge-sm"
+      return html`<span class="badge badge-success badge-soft badge-sm whitespace-nowrap"
         >${t("monitor.resultHealthy")}</span
       >`;
     }
     const failed = run.regions.filter((r) => !r.healthy).length;
-    return html`<span class="badge badge-error badge-soft badge-sm"
+    return html`<span class="badge badge-error badge-soft badge-sm whitespace-nowrap"
       >${failed}/${run.regions.length} ${t("monitor.runDown")}</span
     >`;
   }
@@ -648,10 +666,10 @@ export class MonitorDetailView extends AppElement {
 
   private resultBadge(c: CheckResult) {
     return c.healthy
-      ? html`<span class="badge badge-success badge-soft badge-sm"
+      ? html`<span class="badge badge-success badge-soft badge-sm whitespace-nowrap"
           >${t("monitor.resultHealthy")}</span
         >`
-      : html`<span class="badge badge-error badge-soft badge-sm"
+      : html`<span class="badge badge-error badge-soft badge-sm whitespace-nowrap"
           >${c.failure_reason
             ? t(FAILURE_LABEL[c.failure_reason])
             : t("monitor.resultFailed")}</span

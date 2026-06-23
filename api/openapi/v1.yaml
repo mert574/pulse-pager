@@ -544,6 +544,25 @@ paths:
                 items: { $ref: "#/components/schemas/PlanCatalogEntry" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /admin/metrics:
+    get:
+      operationId: getAdminMetrics
+      tags: [admin]
+      summary: Platform-wide totals (platform admins only).
+      description: >
+        Cross-org counts for the operator admin panel: total users, orgs,
+        monitors, and channels, orgs grouped by plan, and a 30-day signup trend.
+        Gated by the PULSE_PLATFORM_ADMINS email allowlist; a signed-in
+        non-admin gets a 403. Not org-scoped.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminMetrics" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /orgs/{orgId}/monitors:
     parameters:
       - $ref: "#/components/parameters/OrgId"
@@ -1170,7 +1189,10 @@ components:
       enum: [google, github]
     Plan:
       type: string
-      enum: [free, starter, team, business]
+      description: >
+        Internal plan code. Marketing-name-agnostic so display names (Free / Hobby /
+        Professional / Custom) can change without the code drifting. tier1 is free.
+      enum: [tier1, tier2, tier3, tierCustom]
     DownPolicy:
       type: string
       enum: [any, quorum, all]
@@ -1204,7 +1226,7 @@ components:
         plan: { $ref: "#/components/schemas/Plan" }
     Me:
       type: object
-      required: [user_id, email, name, avatar_url, locale, timezone, orgs]
+      required: [user_id, email, name, avatar_url, locale, timezone, orgs, is_platform_admin]
       properties:
         user_id: { type: string }
         email: { type: string }
@@ -1215,6 +1237,68 @@ components:
         orgs:
           type: array
           items: { $ref: "#/components/schemas/OrgMembership" }
+        is_platform_admin:
+          type: boolean
+          description: >
+            True when this user's email is in the PULSE_PLATFORM_ADMINS allowlist.
+            The FE uses it to show the platform admin link; the server still
+            re-checks on every /admin call (the flag is a hint, not the gate).
+    AdminMetrics:
+      type: object
+      description: Platform-wide totals for the admin panel (cross-org, admin only).
+      required:
+        [
+          users,
+          orgs,
+          monitors_total,
+          monitors_enabled,
+          monitors_disabled,
+          channels,
+          orgs_with_monitor,
+          median_time_to_first_monitor_seconds,
+          active_orgs_7d,
+          orgs_by_plan,
+          signups,
+        ]
+      properties:
+        users: { type: integer, description: total registered users }
+        orgs: { type: integer, description: total organizations }
+        monitors_total: { type: integer }
+        monitors_enabled: { type: integer }
+        monitors_disabled: { type: integer }
+        channels: { type: integer, description: total notification channels }
+        orgs_with_monitor:
+          type: integer
+          description: orgs that have created at least one monitor (activation)
+        median_time_to_first_monitor_seconds:
+          type: integer
+          nullable: true
+          description: >
+            median seconds from org signup to its first monitor; null when no org
+            has created a monitor yet
+        active_orgs_7d:
+          type: integer
+          description: orgs with an enabled monitor checked in the last 7 days
+        orgs_by_plan:
+          type: array
+          items: { $ref: "#/components/schemas/AdminPlanCount" }
+        signups:
+          type: array
+          description: daily new users and orgs for the last 30 days, oldest first
+          items: { $ref: "#/components/schemas/AdminSignupPoint" }
+    AdminPlanCount:
+      type: object
+      required: [plan, count]
+      properties:
+        plan: { $ref: "#/components/schemas/Plan" }
+        count: { type: integer }
+    AdminSignupPoint:
+      type: object
+      required: [date, users, orgs]
+      properties:
+        date: { type: string, description: "the UTC day, YYYY-MM-DD" }
+        users: { type: integer }
+        orgs: { type: integer }
     MeUpdate:
       type: object
       description: >
@@ -1378,7 +1462,7 @@ components:
       required:
         [plan, monitors_used, monitors_cap, seats_used, seats_cap, status_pages_used,
          status_pages_cap, min_interval_seconds, retention_days, regions_allowed,
-         regions_per_monitor_cap, custom_domain_allowed, api_write_allowed, failure_snapshot]
+         regions_per_monitor_cap, custom_domain_allowed, api_access_allowed, api_write_allowed, failure_snapshot]
       properties:
         plan: { $ref: "#/components/schemas/Plan" }
         monitors_used: { type: integer }
@@ -1394,6 +1478,7 @@ components:
           items: { type: string }
         regions_per_monitor_cap: { type: integer }
         custom_domain_allowed: { type: boolean }
+        api_access_allowed: { type: boolean, description: "plan gets API keys at all (Free does not)" }
         api_write_allowed: { type: boolean }
         failure_snapshot: { type: boolean }
 
@@ -1406,7 +1491,7 @@ components:
       required:
         [plan, monitors_cap, min_interval_seconds, seats_cap, status_pages_cap,
          retention_days, regions_allowed, regions_per_monitor_cap,
-         custom_domain_allowed, api_write_allowed, api_rate_per_min, channel_types]
+         custom_domain_allowed, api_access_allowed, api_write_allowed, api_rate_per_min, channel_types]
       properties:
         plan: { $ref: "#/components/schemas/Plan" }
         monitors_cap: { type: integer }
@@ -1419,6 +1504,7 @@ components:
           items: { type: string }
         regions_per_monitor_cap: { type: integer }
         custom_domain_allowed: { type: boolean }
+        api_access_allowed: { type: boolean }
         api_write_allowed: { type: boolean }
         api_rate_per_min: { type: integer }
         channel_types:

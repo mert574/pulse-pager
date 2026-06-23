@@ -75,7 +75,7 @@ func (p *Pool) CreateOrgWithOwner(ctx context.Context, name, slug string, ownerI
 	}
 	const maxTries = 5
 	for attempt := 0; attempt < maxTries; attempt++ {
-		org := &domain.Organization{Name: name, Slug: slug, Plan: "free", DefaultLocale: "en", DefaultTimezone: "UTC"}
+		org := &domain.Organization{Name: name, Slug: slug, Plan: "tier1", DefaultLocale: "en", DefaultTimezone: "UTC"}
 		err := pgx.BeginFunc(ctx, p, func(tx pgx.Tx) error {
 			if err := tx.QueryRow(ctx, `
 				INSERT INTO organizations (name, slug, default_locale, default_timezone)

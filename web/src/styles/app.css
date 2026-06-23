@@ -83,3 +83,27 @@
 [data-theme="coffee"] .brand-name {
   color: #e7dac2;
 }
+
+/* Mobile nav drawer. daisyUI lays .drawer-side out as a 1-cell grid expecting the
+   overlay and the sidebar to overlap in that cell. Our sidebar is wrapped in a
+   custom element (app-nav), which breaks that placement: the overlay takes grid row
+   1 and the sidebar lands in a second row, so they stack instead of overlapping
+   (confirmed in Safari Web Inspector). Rather than fight the grid placement through
+   the wrapper, treat the overlay as an absolute backdrop filling the (position:fixed)
+   drawer-side, and let the sidebar be the single full-height layer above it. This is
+   the normal drawer structure and keeps daisyUI's slide-in (it still transforms the
+   app-nav box). */
+.drawer-side > .drawer-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.drawer-side > app-nav {
+  display: block;
+  position: relative;
+  z-index: 1;
+  align-self: stretch; /* full 100dvh height; width stays the aside's w-64 */
+}
+.drawer-side > app-nav > aside {
+  height: 100%;
+}

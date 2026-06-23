@@ -12,6 +12,7 @@
 import { navigate } from "../router.js";
 import { session } from "../state/session.js";
 import type {
+  AdminMetrics,
   ApiErrorBody,
   ApiKey,
   ApiKeyCreated,
@@ -270,6 +271,12 @@ export const client = {
   // comparison/upgrade table without hardcoding the tiers.
   listPlans(): Promise<PlanCatalogEntry[]> {
     return request<PlanCatalogEntry[]>(`${API_V1}/plans`);
+  },
+
+  // Platform-wide totals for the operator admin panel (not org-scoped). The
+  // server gates on the PULSE_PLATFORM_ADMINS allowlist and 403s a non-admin.
+  getAdminMetrics(): Promise<AdminMetrics> {
+    return request<AdminMetrics>(`${API_V1}/admin/metrics`);
   },
 
   listMonitors(orgId: string): Promise<MonitorListItem[]> {

@@ -18,7 +18,7 @@ const ME: Me = {
   locale: "en",
   timezone: "UTC",
   orgs: [
-    { org_id: "o1", name: "Org One", slug: "org-one", role: "owner", plan: "team" },
+    { org_id: "o1", name: "Org One", slug: "org-one", role: "owner", plan: "tier3" },
   ],
 };
 

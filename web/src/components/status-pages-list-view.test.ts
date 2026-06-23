@@ -10,7 +10,7 @@ const ORG: OrgMembership = {
   name: "Org One",
   slug: "org-one",
   role: "owner",
-  plan: "team",
+  plan: "tier3",
 };
 
 function page(id: string, name: string, published: boolean): StatusPage {

@@ -36,35 +36,40 @@ func (AllOn) For(int64) Set {
 // the real per-org cap drops in behind SeatResolver with no handler change.
 type Plan string
 
+// Plan codes are deliberately marketing-name-agnostic (tier1..3 plus tierCustom) so
+// the public display names (Free / Hobby / Professional / Custom on pricing.html)
+// can change without the stored code drifting. tier1 is the free tier; tierCustom
+// is the contract-negotiated tier.
 const (
-	PlanFree     Plan = "free"
-	PlanStarter  Plan = "starter"
-	PlanTeam     Plan = "team"
-	PlanBusiness Plan = "business"
+	PlanTier1      Plan = "tier1"
+	PlanTier2      Plan = "tier2"
+	PlanTier3      Plan = "tier3"
+	PlanTierCustom Plan = "tierCustom"
 )
 
 // ParsePlan turns a stored plan string into a known Plan, falling back to Free for an
 // empty or unrecognized value so a bad row can never grant more than the free tier.
 func ParsePlan(s string) Plan {
 	switch Plan(s) {
-	case PlanStarter:
-		return PlanStarter
-	case PlanTeam:
-		return PlanTeam
-	case PlanBusiness:
-		return PlanBusiness
+	case PlanTier2:
+		return PlanTier2
+	case PlanTier3:
+		return PlanTier3
+	case PlanTierCustom:
+		return PlanTierCustom
 	default:
-		return PlanFree
+		return PlanTier1
 	}
 }
 
 // seatCaps is the per-plan seat capacity from PRD-001 5.2 (master 11 table):
-// Free 1, Starter 3, Team 10, Business 25 (per-seat add-on is PRD-006's job).
+// Free 1, Hobby 3, Professional 10, Custom unlimited (pricing.html; Custom is
+// contract-negotiated, represented here as a very large cap).
 var seatCaps = map[Plan]int{
-	PlanFree:     1,
-	PlanStarter:  3,
-	PlanTeam:     10,
-	PlanBusiness: 25,
+	PlanTier1:      1,
+	PlanTier2:      3,
+	PlanTier3:      10,
+	PlanTierCustom: 1_000_000, // Custom: "unlimited" seats (contract-negotiated)
 }
 
 // SeatResolver returns the seat cap for an org. PRD-006 will back this with the
@@ -84,7 +89,7 @@ func (DefaultSeats) SeatCap(_ int64, plan Plan) int {
 	if cap, ok := seatCaps[plan]; ok {
 		return cap
 	}
-	return seatCaps[PlanFree]
+	return seatCaps[PlanTier1]
 }
 
 // FixedSeats is a seat resolver that returns the same cap for every org and plan.
@@ -123,16 +128,16 @@ type MonitorLimits struct {
 	RegionsPerMonitorCap int      // max regions one monitor may run from
 }
 
-// monitorLimits is the per-plan monitor matrix (PRD-006 appendix A). Free and
-// Business are the locked anchors; Starter and Team scale between them. The
-// default region is the only one on Free; higher tiers add us-west/us-east/etc.
-// Region codes come from internal/region so this catalog can't drift from the
-// worker region or the dispatch default.
+// monitorLimits is the per-plan monitor matrix, matching pricing.html: Free
+// 10 monitors / 15-min floor / single region, Hobby 25 / 5-min / single region,
+// Professional 50 / 1-min / up to 4 regions, Custom high cap / 30s floor / all
+// regions (contract-negotiated). Region codes come from internal/region so this
+// catalog can't drift from the worker region or the dispatch default.
 var monitorLimits = map[Plan]MonitorLimits{
-	PlanFree:     {MonitorsCap: 2, MinIntervalSeconds: 7200, RegionsAllowed: []string{region.EUCentral}, RegionsPerMonitorCap: 1},
-	PlanStarter:  {MonitorsCap: 25, MinIntervalSeconds: 300, RegionsAllowed: []string{region.EUCentral, region.USEast}, RegionsPerMonitorCap: 2},
-	PlanTeam:     {MonitorsCap: 100, MinIntervalSeconds: 60, RegionsAllowed: []string{region.EUCentral, region.USEast, region.USWest}, RegionsPerMonitorCap: 3},
-	PlanBusiness: {MonitorsCap: 500, MinIntervalSeconds: 60, RegionsAllowed: []string{region.EUCentral, region.USEast, region.USWest, region.SAEast}, RegionsPerMonitorCap: 4},
+	PlanTier1:      {MonitorsCap: 10, MinIntervalSeconds: 900, RegionsAllowed: []string{region.EUCentral}, RegionsPerMonitorCap: 1},
+	PlanTier2:      {MonitorsCap: 25, MinIntervalSeconds: 300, RegionsAllowed: []string{region.EUCentral}, RegionsPerMonitorCap: 1},
+	PlanTier3:      {MonitorsCap: 50, MinIntervalSeconds: 60, RegionsAllowed: []string{region.EUCentral, region.USEast, region.USWest, region.SAEast}, RegionsPerMonitorCap: 4},
+	PlanTierCustom: {MonitorsCap: 1000, MinIntervalSeconds: 30, RegionsAllowed: []string{region.EUCentral, region.USEast, region.USWest, region.SAEast}, RegionsPerMonitorCap: 4},
 }
 
 // MonitorResolver returns the monitor limits for an org. PRD-006 will back this with
@@ -153,7 +158,7 @@ func (DefaultMonitors) MonitorLimits(_ int64, plan Plan) MonitorLimits {
 	if l, ok := monitorLimits[plan]; ok {
 		return l
 	}
-	return monitorLimits[PlanFree]
+	return monitorLimits[PlanTier1]
 }
 
 // FixedMonitors is a monitor resolver that returns the same limits for every org and
@@ -187,13 +192,13 @@ func (l MonitorLimits) AllowsRegion(region string) bool {
 // --- status pages (PRD-004 2.3, master 11 plan table) ---
 
 // statusPageCaps is the per-plan status-page count cap (PRD-004 2.3, master 11):
-// Free 1, Starter 1, Team 3, Business 10. Creating a page past the cap is rejected
+// Free 1, Hobby 3, Professional 10, Custom unlimited. Creating a page past the cap is rejected
 // on write with the upsell (PRD-004 2.3, PRD-006).
 var statusPageCaps = map[Plan]int{
-	PlanFree:     1,
-	PlanStarter:  1,
-	PlanTeam:     3,
-	PlanBusiness: 10,
+	PlanTier1:      1,
+	PlanTier2:      3,
+	PlanTier3:      10,
+	PlanTierCustom: 1000, // Custom: effectively unlimited (contract-negotiated)
 }
 
 // StatusPageResolver returns the status-page count cap for an org. PRD-006 will back
@@ -214,7 +219,7 @@ func (DefaultStatusPages) StatusPageCap(_ int64, plan Plan) int {
 	if cap, ok := statusPageCaps[plan]; ok {
 		return cap
 	}
-	return statusPageCaps[PlanFree]
+	return statusPageCaps[PlanTier1]
 }
 
 // FixedStatusPages is a status-page resolver that returns the same cap for every org
@@ -231,39 +236,49 @@ func (f FixedStatusPages) StatusPageCap(int64, Plan) int { return f.Cap }
 // master 12: Free 7, Starter 30, Team 90, Business 180). The cleanup job ages out
 // results beyond this; the billing/usage screen shows it (PRD-006 7.1).
 var retentionDays = map[Plan]int{
-	PlanFree:     7,
-	PlanStarter:  30,
-	PlanTeam:     90,
-	PlanBusiness: 180,
+	PlanTier1:      7,
+	PlanTier2:      30,
+	PlanTier3:      90,
+	PlanTierCustom: 180,
 }
 
 // customDomainAllowed is whether a plan may put a status page on a custom domain
 // (PRD-006 3: Free/Starter no, Team/Business yes).
 var customDomainAllowed = map[Plan]bool{
-	PlanFree:     false,
-	PlanStarter:  false,
-	PlanTeam:     true,
-	PlanBusiness: true,
+	PlanTier1:      false,
+	PlanTier2:      false,
+	PlanTier3:      true,
+	PlanTierCustom: true,
 }
 
-// apiWriteAllowed is whether the plan's API access can write (PRD-006 3: Free is
-// read-only, paid tiers get full access). The Free key can read but a write call
-// is rejected with an upsell (PRD-006 5.1).
+// apiAccessAllowed is whether the plan gets API keys at all (pricing.html: Free has
+// no API access; Hobby/Pro/Custom do). Free is offered the upgrade instead of the
+// key-management UI, and key creation is rejected server-side.
+var apiAccessAllowed = map[Plan]bool{
+	PlanTier1:      false,
+	PlanTier2:      true,
+	PlanTier3:      true,
+	PlanTierCustom: true,
+}
+
+// apiWriteAllowed is whether the plan's API keys can write (pricing.html: Hobby is
+// read-only; Professional and Custom get full read+write). A read-only key's write
+// call is rejected with an upsell. Free has no keys at all (see apiAccessAllowed).
 var apiWriteAllowed = map[Plan]bool{
-	PlanFree:     false,
-	PlanStarter:  true,
-	PlanTeam:     true,
-	PlanBusiness: true,
+	PlanTier1:      false,
+	PlanTier2:      false,
+	PlanTier3:      true,
+	PlanTierCustom: true,
 }
 
 // apiRatePerMin is the per-key request rate ceiling per plan (PRD-006 3: 30/120/
 // 300/600 req/min). Illustrative GTM-tunable defaults built against the master's
 // "read-only-low / standard / higher / highest" tiers (master 9).
 var apiRatePerMin = map[Plan]int{
-	PlanFree:     30,
-	PlanStarter:  120,
-	PlanTeam:     300,
-	PlanBusiness: 600,
+	PlanTier1:      30,
+	PlanTier2:      120,
+	PlanTier3:      300,
+	PlanTierCustom: 600,
 }
 
 // channelTypesAllowed is the notification channel types a plan may use (PRD-006 3).
@@ -275,10 +290,10 @@ var channelTypesAllowed = map[Plan][]string{
 	// The four basics (chat, generic webhook, email) on every plan; the integrations
 	// unlock up the ladder. Starter adds Telegram, Team adds the on-call/incident tools
 	// plus Microsoft Teams, Business adds Twilio SMS/voice and so includes them all.
-	PlanFree:     {"slack", "discord", "webhook", "smtp"},
-	PlanStarter:  {"slack", "discord", "webhook", "smtp", "telegram"},
-	PlanTeam:     {"slack", "discord", "webhook", "smtp", "telegram", "pagerduty", "opsgenie", "teams"},
-	PlanBusiness: {"slack", "discord", "webhook", "smtp", "telegram", "pagerduty", "opsgenie", "teams", "twilio"},
+	PlanTier1:      {"slack", "discord", "webhook", "smtp"},
+	PlanTier2:      {"slack", "discord", "webhook", "smtp", "telegram"},
+	PlanTier3:      {"slack", "discord", "webhook", "smtp", "telegram", "pagerduty", "opsgenie", "teams"},
+	PlanTierCustom: {"slack", "discord", "webhook", "smtp", "telegram", "pagerduty", "opsgenie", "teams", "twilio"},
 }
 
 // ChannelTypesAllowed returns the notification channel types a plan may use (the
@@ -289,7 +304,7 @@ func ChannelTypesAllowed(plan Plan) []string {
 	if t, ok := channelTypesAllowed[plan]; ok {
 		return t
 	}
-	return channelTypesAllowed[PlanFree]
+	return channelTypesAllowed[PlanTier1]
 }
 
 // CheckNowLimits is the two-layer rate limit on manual "check now" for a single
@@ -309,10 +324,10 @@ type CheckNowLimits struct {
 }
 
 var checkNowLimits = map[Plan]CheckNowLimits{
-	PlanFree:     {CooldownSeconds: 60, MaxPerWindow: 10, WindowSeconds: 1800},
-	PlanStarter:  {CooldownSeconds: 30, MaxPerWindow: 30, WindowSeconds: 1800},
-	PlanTeam:     {CooldownSeconds: 20, MaxPerWindow: 60, WindowSeconds: 1800},
-	PlanBusiness: {CooldownSeconds: 10, MaxPerWindow: 200, WindowSeconds: 1800},
+	PlanTier1:      {CooldownSeconds: 60, MaxPerWindow: 10, WindowSeconds: 1800},
+	PlanTier2:      {CooldownSeconds: 30, MaxPerWindow: 30, WindowSeconds: 1800},
+	PlanTier3:      {CooldownSeconds: 20, MaxPerWindow: 60, WindowSeconds: 1800},
+	PlanTierCustom: {CooldownSeconds: 10, MaxPerWindow: 200, WindowSeconds: 1800},
 }
 
 // CheckNowLimitsFor returns the per-monitor manual-check limits for a plan, falling
@@ -321,7 +336,7 @@ func CheckNowLimitsFor(plan Plan) CheckNowLimits {
 	if l, ok := checkNowLimits[plan]; ok {
 		return l
 	}
-	return checkNowLimits[PlanFree]
+	return checkNowLimits[PlanTier1]
 }
 
 // Retention returns the raw-results retention window in days for a plan, falling
@@ -330,13 +345,16 @@ func Retention(plan Plan) int {
 	if d, ok := retentionDays[plan]; ok {
 		return d
 	}
-	return retentionDays[PlanFree]
+	return retentionDays[PlanTier1]
 }
 
 // CustomDomainAllowed reports whether a plan may use a custom-domain status page.
 func CustomDomainAllowed(plan Plan) bool { return customDomainAllowed[plan] }
 
-// APIWriteAllowed reports whether a plan's API access can write.
+// APIAccessAllowed reports whether a plan gets API keys at all (Free does not).
+func APIAccessAllowed(plan Plan) bool { return apiAccessAllowed[plan] }
+
+// APIWriteAllowed reports whether a plan's API keys can write (read-only otherwise).
 func APIWriteAllowed(plan Plan) bool { return apiWriteAllowed[plan] }
 
 // APIRatePerMin returns the per-key request-rate ceiling for a plan, falling back
@@ -345,7 +363,7 @@ func APIRatePerMin(plan Plan) int {
 	if r, ok := apiRatePerMin[plan]; ok {
 		return r
 	}
-	return apiRatePerMin[PlanFree]
+	return apiRatePerMin[PlanTier1]
 }
 
 // FailureSnapshotAllowed reports whether a plan may store the last failed check's
@@ -365,6 +383,7 @@ type PlanEntry struct {
 	RegionsAllowed       []string
 	RegionsPerMonitorCap int
 	CustomDomainAllowed  bool
+	APIAccessAllowed     bool
 	APIWriteAllowed      bool
 	APIRatePerMin        int
 	ChannelTypes         []string
@@ -372,7 +391,7 @@ type PlanEntry struct {
 
 // catalogOrder is the tier order the catalog returns, cheapest to richest, so the
 // FE renders the comparison table left to right without sorting.
-var catalogOrder = []Plan{PlanFree, PlanStarter, PlanTeam, PlanBusiness}
+var catalogOrder = []Plan{PlanTier1, PlanTier2, PlanTier3, PlanTierCustom}
 
 // Catalog returns the public plan tiers and their limits (PRD-006 3), sourced from
 // the per-plan maps in this package so the FE renders the upgrade table without
@@ -392,6 +411,7 @@ func Catalog() []PlanEntry {
 			RegionsAllowed:       ml.RegionsAllowed,
 			RegionsPerMonitorCap: ml.RegionsPerMonitorCap,
 			CustomDomainAllowed:  customDomainAllowed[p],
+			APIAccessAllowed:     apiAccessAllowed[p],
 			APIWriteAllowed:      apiWriteAllowed[p],
 			APIRatePerMin:        apiRatePerMin[p],
 			ChannelTypes:         channelTypesAllowed[p],

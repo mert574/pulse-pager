@@ -11,8 +11,8 @@ import type { OrgMembership } from "../api/types.js";
 // "create" item navigates to /orgs/new.
 
 const ORGS: OrgMembership[] = [
-  { org_id: "o1", name: "Org One", slug: "org-one", role: "owner", plan: "team" },
-  { org_id: "o2", name: "Org Two", slug: "org-two", role: "member", plan: "free" },
+  { org_id: "o1", name: "Org One", slug: "org-one", role: "owner", plan: "tier3" },
+  { org_id: "o2", name: "Org Two", slug: "org-two", role: "member", plan: "tier1" },
 ];
 
 async function mount(activeId: string): Promise<OrgSwitcher> {
@@ -59,7 +59,7 @@ describe("org-switcher", () => {
     const ownerItem = items(el).find((a) => a.textContent?.includes("Org One"))!;
     const text = ownerItem.textContent ?? "";
     expect(text).to.contain("Owner");
-    expect(text).to.contain("Team");
+    expect(text).to.contain("Professional");
     expect(text).to.contain("o1");
   });
 

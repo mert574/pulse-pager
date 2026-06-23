@@ -81,6 +81,14 @@ func Build(ctx context.Context, d Deps) (*Server, http.Handler, error) {
 		changed = &busMonitorPublisher{prod: d.Producer}
 	}
 
+	// Cloudflare Access verifier for the admin origin: built only when both the team
+	// domain and the application AUD are set. Nil otherwise, so the admin endpoint
+	// uses the normal session + allowlist (local/dev).
+	var cfAccess *authn.CFAccessVerifier
+	if ic.CFAccessTeamDomain != "" && ic.CFAccessAUD != "" {
+		cfAccess = authn.NewCFAccessVerifier(ic.CFAccessTeamDomain, ic.CFAccessAUD)
+	}
+
 	// The Authenticator writes 401/403 using the localizable envelope so an auth
 	// failure reads the same as a handler-level failure.
 	auth := authn.NewAuthenticator(jwt, keyVerifier, d.Store, d.Redis,
@@ -122,6 +130,12 @@ func Build(ctx context.Context, d Deps) (*Server, http.Handler, error) {
 		// Mailer: real SMTP when configured, else a dev mailer that logs the accept
 		// link so the invite flow still completes (PRD-001 6.1).
 		Mailer: buildMailer(ic, d.Log),
+		// PlatformAdmins: the email allowlist for the operator admin panel
+		// (PULSE_PLATFORM_ADMINS). Empty means the panel is closed.
+		PlatformAdmins: ic.PlatformAdmins,
+		// CFAccess: verifies the Cloudflare Access token on the admin endpoint when
+		// both the team domain and AUD are configured; nil otherwise (local/dev).
+		CFAccess: cfAccess,
 	})
 
 	handler := chain(srv.Router(), d.Log, newHTTPMetrics(d.Reg))

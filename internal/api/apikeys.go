@@ -15,6 +15,7 @@ import (
 	"pulse/internal/authz"
 	"pulse/internal/crypto"
 	"pulse/internal/domain"
+	"pulse/internal/entitlements"
 )
 
 // This file implements the API-key management slice (PRD-005 2, RFC-003 5): create,
@@ -61,6 +62,12 @@ func (s *Server) CreateAPIKey(ctx context.Context, req apigen.CreateAPIKeyReques
 	}
 	if d := authz.Can(p.Actor(), authz.ActionManageAPIKeys, authz.Resource{OrgID: p.OrgID}); !d.Allowed {
 		return apigen.CreateAPIKey403JSONResponse{ForbiddenJSONResponse: forbidden(d.Reason)}, nil
+	}
+	// Plan gate: the Free tier has no API access (pricing.html), so it cannot create
+	// keys. Paid tiers can; the read-only vs full distinction is enforced per request
+	// via APIWriteAllowed, not here.
+	if !entitlements.APIAccessAllowed(s.orgPlan(ctx, p.OrgID)) {
+		return apigen.CreateAPIKey403JSONResponse{ForbiddenJSONResponse: forbidden("api keys are not available on your plan; upgrade to use the API")}, nil
 	}
 	if req.Body == nil {
 		return apigen.CreateAPIKey422JSONResponse{ValidationFailedJSONResponse: validationFailed("body required")}, nil

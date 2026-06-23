@@ -456,6 +456,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Platform-wide totals (platform admins only).
+         * @description Cross-org counts for the operator admin panel: total users, orgs, monitors, and channels, orgs grouped by plan, and a 30-day signup trend. Gated by the PULSE_PLATFORM_ADMINS email allowlist; a signed-in non-admin gets a 403. Not org-scoped.
+         */
+        get: operations["getAdminMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orgs/{orgId}/monitors": {
         parameters: {
             query?: never;
@@ -846,8 +866,11 @@ export interface components {
         Role: "owner" | "admin" | "member" | "viewer";
         /** @enum {string} */
         IdentityProviderName: "google" | "github";
-        /** @enum {string} */
-        Plan: "free" | "starter" | "team" | "business";
+        /**
+         * @description Internal plan code. Marketing-name-agnostic so display names (Free / Hobby / Professional / Custom) can change without the code drifting. tier1 is free.
+         * @enum {string}
+         */
+        Plan: "tier1" | "tier2" | "tier3" | "tierCustom";
         /** @enum {string} */
         DownPolicy: "any" | "quorum" | "all";
         /** @enum {string} */
@@ -877,6 +900,39 @@ export interface components {
             locale: string;
             timezone: string;
             orgs: components["schemas"]["OrgMembership"][];
+            /** @description True when this user's email is in the PULSE_PLATFORM_ADMINS allowlist. The FE uses it to show the platform admin link; the server still re-checks on every /admin call (the flag is a hint, not the gate). */
+            is_platform_admin: boolean;
+        };
+        /** @description Platform-wide totals for the admin panel (cross-org, admin only). */
+        AdminMetrics: {
+            /** @description total registered users */
+            users: number;
+            /** @description total organizations */
+            orgs: number;
+            monitors_total: number;
+            monitors_enabled: number;
+            monitors_disabled: number;
+            /** @description total notification channels */
+            channels: number;
+            /** @description orgs that have created at least one monitor (activation) */
+            orgs_with_monitor: number;
+            /** @description median seconds from org signup to its first monitor; null when no org has created a monitor yet */
+            median_time_to_first_monitor_seconds: number | null;
+            /** @description orgs with an enabled monitor checked in the last 7 days */
+            active_orgs_7d: number;
+            orgs_by_plan: components["schemas"]["AdminPlanCount"][];
+            /** @description daily new users and orgs for the last 30 days, oldest first */
+            signups: components["schemas"]["AdminSignupPoint"][];
+        };
+        AdminPlanCount: {
+            plan: components["schemas"]["Plan"];
+            count: number;
+        };
+        AdminSignupPoint: {
+            /** @description the UTC day, YYYY-MM-DD */
+            date: string;
+            users: number;
+            orgs: number;
         };
         /** @description Editable profile fields. All optional; an omitted field is left unchanged. */
         MeUpdate: {
@@ -1005,6 +1061,8 @@ export interface components {
             regions_allowed: string[];
             regions_per_monitor_cap: number;
             custom_domain_allowed: boolean;
+            /** @description plan gets API keys at all (Free does not) */
+            api_access_allowed: boolean;
             api_write_allowed: boolean;
             failure_snapshot: boolean;
         };
@@ -1019,6 +1077,7 @@ export interface components {
             regions_allowed: string[];
             regions_per_monitor_cap: number;
             custom_domain_allowed: boolean;
+            api_access_allowed: boolean;
             api_write_allowed: boolean;
             api_rate_per_min: number;
             channel_types: string[];
@@ -2141,6 +2200,28 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    getAdminMetrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminMetrics"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listMonitors: {

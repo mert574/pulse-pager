@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -95,6 +96,17 @@ type Server struct {
 	// locally without OAuth creds. Dev-only; never true in production. When false the
 	// route is not registered at all, so it 404s.
 	devLogin bool
+
+	// platformAdmins is the lowercased email set allowed into the operator admin
+	// panel (GET /admin/metrics). Empty means no admins, so the panel is closed by
+	// default (fails safe). Checked on every admin request, not just at nav time.
+	platformAdmins map[string]bool
+
+	// cfAccess verifies the Cloudflare Access token on the admin origin. Non-nil only
+	// when CF Access is configured; then the admin endpoint authorizes off the
+	// verified CF Access identity instead of an app session. Nil = fall back to the
+	// normal session + allowlist (local/dev).
+	cfAccess *authn.CFAccessVerifier
 }
 
 // Config is what the caller (cmd/api) passes to build the Server.
@@ -125,6 +137,12 @@ type Config struct {
 	Jobs     CheckJobPublisher
 	State    checkstate.MultiStore
 	CheckNow CheckNowGate
+	// PlatformAdmins is the lowercased email allowlist for the admin panel. Empty
+	// disables it (no admins). Optional.
+	PlatformAdmins []string
+	// CFAccess verifies the Cloudflare Access token on the admin endpoint. Optional;
+	// nil means the admin endpoint uses the normal session + allowlist (local/dev).
+	CFAccess *authn.CFAccessVerifier
 }
 
 // New builds the identity API server.
@@ -150,27 +168,33 @@ func New(cfg Config) *Server {
 		ents = entitlements.AllOn{}
 	}
 	reg := notify.Default()
+	admins := make(map[string]bool, len(cfg.PlatformAdmins))
+	for _, e := range cfg.PlatformAdmins {
+		admins[strings.ToLower(e)] = true
+	}
 	return &Server{
-		store:       cfg.Store,
-		login:       cfg.Login,
-		jwt:         cfg.JWT,
-		refresh:     cfg.Refresh,
-		cookies:     cfg.Cookies,
-		auth:        cfg.Auth,
-		keys:        cfg.Keys,
-		seats:       seats,
-		monitors:    monitors,
-		statusPages: statusPages,
-		ents:        ents,
-		jobs:        cfg.Jobs,
-		state:       cfg.State,
-		changed:     cfg.Changed,
-		mailer:      mailer,
-		registry:    reg,
-		tester:      notify.NewManager(nil, nil),
-		cooldown:    cfg.CheckNow,
-		appBaseURL:  cfg.AppBaseURL,
-		devLogin:    cfg.DevLogin,
+		store:          cfg.Store,
+		login:          cfg.Login,
+		jwt:            cfg.JWT,
+		refresh:        cfg.Refresh,
+		cookies:        cfg.Cookies,
+		auth:           cfg.Auth,
+		keys:           cfg.Keys,
+		seats:          seats,
+		monitors:       monitors,
+		statusPages:    statusPages,
+		ents:           ents,
+		jobs:           cfg.Jobs,
+		state:          cfg.State,
+		changed:        cfg.Changed,
+		mailer:         mailer,
+		registry:       reg,
+		tester:         notify.NewManager(nil, nil),
+		cooldown:       cfg.CheckNow,
+		appBaseURL:     cfg.AppBaseURL,
+		devLogin:       cfg.DevLogin,
+		platformAdmins: admins,
+		cfAccess:       cfg.CFAccess,
 	}
 }
 
@@ -377,14 +401,21 @@ func (s *Server) buildMe(ctx context.Context, userID int64) (*apigen.Me, error) 
 		avatar = &a
 	}
 	return &apigen.Me{
-		UserId:    strconv.FormatInt(u.ID, 10),
-		Email:     u.Email,
-		Name:      u.Name,
-		AvatarUrl: avatar,
-		Locale:    u.Locale,
-		Timezone:  u.Timezone,
-		Orgs:      memberships,
+		UserId:          strconv.FormatInt(u.ID, 10),
+		Email:           u.Email,
+		Name:            u.Name,
+		AvatarUrl:       avatar,
+		Locale:          u.Locale,
+		Timezone:        u.Timezone,
+		Orgs:            memberships,
+		IsPlatformAdmin: s.isPlatformAdmin(u.Email),
 	}, nil
+}
+
+// isPlatformAdmin reports whether an email is in the platform admin allowlist
+// (PULSE_PLATFORM_ADMINS). Case-insensitive; empty allowlist means no admins.
+func (s *Server) isPlatformAdmin(email string) bool {
+	return s.platformAdmins[strings.ToLower(strings.TrimSpace(email))]
 }
 
 // orgMemberships loads the user's orgs and the role in each. It reads the role per

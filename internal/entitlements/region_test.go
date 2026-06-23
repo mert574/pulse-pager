@@ -17,7 +17,7 @@ func TestPlanRegionsAreKnown(t *testing.T) {
 			}
 		}
 	}
-	if !monitorLimits[PlanFree].AllowsRegion(region.Default) {
+	if !monitorLimits[PlanTier1].AllowsRegion(region.Default) {
 		t.Errorf("Free plan must allow the default region %q", region.Default)
 	}
 }

@@ -23,7 +23,7 @@ const ORG: OrgMembership = {
   name: "Acme Inc",
   slug: "acme",
   role: "admin",
-  plan: "team",
+  plan: "tier3",
 };
 
 const ME = {

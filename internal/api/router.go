@@ -72,6 +72,11 @@ func (s *Server) Router() http.Handler {
 	// session but no org and no role gate (Identify only).
 	mux.Handle("GET /api/v1/plans", identify(http.HandlerFunc(wrapper.ListPlans)))
 
+	// admin panel: platform-wide totals, not org-scoped. adminAuth verifies the
+	// Cloudflare Access identity (or falls back to the session in local/dev); the
+	// handler then enforces the PULSE_PLATFORM_ADMINS allowlist and 403s a non-admin.
+	mux.Handle("GET /api/v1/admin/metrics", s.adminAuth(http.HandlerFunc(wrapper.GetAdminMetrics)))
+
 	// orgs: list/create are per-user (Identify only).
 	mux.Handle("GET /api/v1/orgs", identify(http.HandlerFunc(wrapper.ListOrgs)))
 	mux.Handle("POST /api/v1/orgs", identify(http.HandlerFunc(wrapper.CreateOrg)))
@@ -194,7 +199,7 @@ func (s *Server) Router() http.Handler {
 // and YAML at /api/openapi.yaml, picking the format from the URL suffix. Swagger UI
 // loads this.
 func (s *Server) handleOpenAPISpec(w http.ResponseWriter, r *http.Request) {
-	specJSON, err := apigen.GetSpecJSON()
+	specJSON, err := publicSpecJSON()
 	if err != nil {
 		writeEnvelope(w, http.StatusInternalServerError, "internal", "spec unavailable")
 		return
@@ -216,6 +221,63 @@ func (s *Server) handleOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(specJSON)
+}
+
+// publicSpecJSON is the OpenAPI spec with operator-only surface removed: paths
+// tagged "admin" and the Admin* schemas. The full spec drives codegen (the FE
+// client and Go stubs generate from api/openapi/v1.yaml at build time), but the
+// publicly served spec and Swagger UI must not advertise the admin endpoints or
+// their response shapes. Filtering by tag/name keeps this automatic as admin grows.
+func publicSpecJSON() ([]byte, error) {
+	full, err := apigen.GetSpecJSON()
+	if err != nil {
+		return nil, err
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(full, &doc); err != nil {
+		return nil, err
+	}
+	if paths, ok := doc["paths"].(map[string]any); ok {
+		for path, item := range paths {
+			if operationHasTag(item, "admin") {
+				delete(paths, path)
+			}
+		}
+	}
+	if comps, ok := doc["components"].(map[string]any); ok {
+		if schemas, ok := comps["schemas"].(map[string]any); ok {
+			for name := range schemas {
+				if strings.HasPrefix(name, "Admin") {
+					delete(schemas, name)
+				}
+			}
+		}
+	}
+	return json.Marshal(doc)
+}
+
+// operationHasTag reports whether any operation on a path item carries the tag.
+func operationHasTag(pathItem any, tag string) bool {
+	ops, ok := pathItem.(map[string]any)
+	if !ok {
+		return false
+	}
+	for _, op := range ops {
+		opMap, ok := op.(map[string]any)
+		if !ok {
+			continue
+		}
+		tags, ok := opMap["tags"].([]any)
+		if !ok {
+			continue
+		}
+		for _, t := range tags {
+			if s, _ := t.(string); s == tag {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // handleSwaggerUI serves the Swagger UI page that loads the served spec. The UI

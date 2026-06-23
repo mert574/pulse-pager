@@ -94,7 +94,7 @@ CREATE TABLE organizations (
   -- the org's billing tier (free/starter/team/business). An operator sets it directly
   -- until Stripe lands (PRD-006 6/8.3); the entitlement resolvers read it. Distinct
   -- from plan_id, which will point at the future plans/subscriptions catalog.
-  plan             TEXT NOT NULL DEFAULT 'free',
+  plan             TEXT NOT NULL DEFAULT 'tier1',
   default_locale   TEXT NOT NULL DEFAULT 'en',         -- tenant default locale (RFC-014 9)
   default_timezone TEXT NOT NULL DEFAULT 'UTC',        -- tenant default zone (RFC-014 9)
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -609,3 +609,58 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON channels TO pulse_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON notify_dedup TO pulse_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON notify_deliveries TO pulse_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON org_webhooks TO pulse_app;
+
+-- Platform admin metrics need cross-org counts on the RLS-protected tables
+-- (monitors, channels). A normal query with no app.current_org set returns zero
+-- rows under FORCE ROW LEVEL SECURITY, so the counts go through SECURITY DEFINER
+-- functions: they run as the owner (the superuser that applies this schema), which
+-- bypasses RLS. The functions only return aggregate counts, never row data, so they
+-- cannot leak one org's monitors to another. EXECUTE is granted to pulse_app so the
+-- count works whether the app connects as the owner or the restricted role.
+CREATE OR REPLACE FUNCTION platform_monitor_counts(OUT total bigint, OUT enabled bigint)
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT count(*), count(*) FILTER (WHERE enabled) FROM monitors
+$$;
+
+CREATE OR REPLACE FUNCTION platform_channel_count() RETURNS bigint
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT count(*) FROM channels
+$$;
+
+GRANT EXECUTE ON FUNCTION platform_monitor_counts() TO pulse_app;
+GRANT EXECUTE ON FUNCTION platform_channel_count() TO pulse_app;
+
+-- Activation: how many orgs ever created a monitor, and the median time from org
+-- signup to its first monitor (seconds). Joins the RLS-protected monitors table to
+-- organizations, so it is SECURITY DEFINER like the counts above. median is NULL
+-- when no org has a monitor yet.
+CREATE OR REPLACE FUNCTION platform_activation(
+    OUT orgs_with_monitor bigint,
+    OUT median_ttfm_seconds double precision)
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  WITH first_mon AS (
+    SELECT org_id, min(created_at) AS first_at FROM monitors GROUP BY org_id
+  )
+  SELECT count(*),
+         percentile_cont(0.5) WITHIN GROUP (
+           ORDER BY EXTRACT(EPOCH FROM (fm.first_at - o.created_at)))
+  FROM first_mon fm JOIN organizations o ON o.id = fm.org_id
+$$;
+
+-- Active orgs: orgs with at least one enabled monitor that got a check in the last
+-- 7 days. The "signed up and actually using it" signal. Touches monitors and
+-- check_results (both RLS-protected), so SECURITY DEFINER.
+CREATE OR REPLACE FUNCTION platform_active_orgs_7d() RETURNS bigint
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT count(DISTINCT m.org_id)
+  FROM monitors m
+  WHERE m.enabled
+    AND EXISTS (
+      SELECT 1 FROM check_results cr
+      WHERE cr.monitor_id = m.id
+        AND cr.checked_at > now() - interval '7 days'
+    )
+$$;
+
+GRANT EXECUTE ON FUNCTION platform_activation() TO pulse_app;
+GRANT EXECUTE ON FUNCTION platform_active_orgs_7d() TO pulse_app;

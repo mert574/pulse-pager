@@ -23,13 +23,13 @@ import type { Entitlements, Plan, PlanCatalogEntry } from "../api/types.js";
 
 // The plan tiers in catalog order, so the comparison table rows are stable
 // regardless of the order the API returns them in.
-const PLAN_ORDER: Plan[] = ["free", "starter", "team", "business"];
+const PLAN_ORDER: Plan[] = ["tier1", "tier2", "tier3", "tierCustom"];
 
 const PLAN_LABEL: Record<Plan, MessageKey> = {
-  free: "plan.free",
-  starter: "plan.starter",
-  team: "plan.team",
-  business: "plan.business",
+  tier1: "plan.tier1",
+  tier2: "plan.tier2",
+  tier3: "plan.tier3",
+  tierCustom: "plan.tierCustom",
 };
 
 // A bar is "near cap" once it crosses this fraction of the limit, which flips it

@@ -20,9 +20,7 @@
         try {
           var t = localStorage.getItem("pulse.theme");
           if (t !== "caramellatte" && t !== "coffee") {
-            t = window.matchMedia("(prefers-color-scheme: dark)").matches
-              ? "coffee"
-              : "caramellatte";
+            t = "caramellatte"; // default to the light theme, not the OS preference
           }
           document.documentElement.dataset.theme = t;
         } catch (e) {}

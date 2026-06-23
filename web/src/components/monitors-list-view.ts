@@ -64,22 +64,25 @@ export class MonitorsListView extends AppElement {
     if (orgId && orgId !== this.loadedOrgId) void this.load(orgId);
   }
 
-  // Start the poll when the tab is visible and we have an org, stop it otherwise.
-  // Called on connect, on visibility change, and after the first load.
+  // Kick the live region-state poll. It runs only while a check is actually in
+  // flight (some region in scheduled/running) and the tab is visible: once every
+  // monitor settles there is nothing to refetch until the next check, so the poll
+  // stops instead of hitting the endpoint every few seconds forever. A check-now
+  // or reopening the tab kicks it off again. Called on visibility change, after
+  // the first load, and after check-now.
   private syncPoll(): void {
     const orgId = this.ctx?.activeOrg?.org_id ?? null;
-    const shouldRun = !!orgId && document.visibilityState === "visible";
-    if (shouldRun && this.pollTimer === null) {
-      void this.pollRegionStates();
-      this.pollTimer = window.setInterval(() => void this.pollRegionStates(), POLL_MS);
-    } else if (!shouldRun && this.pollTimer !== null) {
+    if (!orgId || document.visibilityState !== "visible") {
       this.stopPoll();
+      return;
     }
+    // One fetch now; it self-schedules the next tick only while a check is live.
+    void this.pollRegionStates();
   }
 
   private stopPoll(): void {
     if (this.pollTimer !== null) {
-      window.clearInterval(this.pollTimer);
+      window.clearTimeout(this.pollTimer);
       this.pollTimer = null;
     }
   }
@@ -93,6 +96,19 @@ export class MonitorsListView extends AppElement {
     } catch {
       // a failed poll is non-fatal; the table keeps its last chips and the next
       // tick tries again. We do not toast or surface poll errors.
+    }
+    this.scheduleNextPoll();
+  }
+
+  // Schedule the next tick only while some monitor has a check in flight and the
+  // tab is visible, so a settled list stops polling instead of refetching.
+  private scheduleNextPoll(): void {
+    this.stopPoll();
+    const live = Array.from(this.regionStates.values()).some((states) =>
+      states.some((s) => s.state === "scheduled" || s.state === "running"),
+    );
+    if (live && this.ctx?.activeOrg?.org_id && document.visibilityState === "visible") {
+      this.pollTimer = window.setTimeout(() => void this.pollRegionStates(), POLL_MS);
     }
   }
 
@@ -126,10 +142,13 @@ export class MonitorsListView extends AppElement {
     this.busyId = m.id;
     try {
       const accepted = await client.checkNow(orgId, m.id);
+      // Show the scheduled chips right away, then let the poll confirm on its next
+      // tick. Schedule (don't fetch now), so the optimistic chips aren't wiped by a
+      // poll that races ahead of the server reflecting the scheduled state.
       const next = new Map(this.regionStates);
       next.set(accepted.monitor_id, accepted.regions);
       this.regionStates = next;
-      this.syncPoll();
+      this.scheduleNextPoll();
       toast(t("monitor.checkQueued"), "info");
     } catch (err) {
       toastCheckError(err);

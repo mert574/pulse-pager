@@ -14,7 +14,7 @@ const NEW_ORG: OrgMembership = {
   name: "Acme",
   slug: "acme",
   role: "owner",
-  plan: "free",
+  plan: "tier1",
 };
 
 interface Call {

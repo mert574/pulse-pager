@@ -51,13 +51,50 @@ const THEME_TO_DAISY: Record<StatusPageTheme, string> = {
 // summary + recent history strip, and past public incidents. It renders ONLY what
 // the public endpoint returns, so no internal URLs, methods, or failure detail can
 // ever appear here. A 404 (unknown or unpublished slug) shows a plain not-found.
+// A public status page should keep itself current without a manual reload, so it
+// refetches every 30s. The poll pauses while the tab is hidden and resumes (with an
+// immediate refetch) when it comes back, so a backgrounded page does not keep hitting
+// the endpoint.
+const POLL_MS = 30_000;
+
 @customElement("status-page")
 export class StatusPage extends AppElement {
   @state() private status: LoadState = { kind: "loading" };
 
+  private pollTimer: number | null = null;
+
   override connectedCallback(): void {
     super.connectedCallback();
     void this.load();
+    document.addEventListener("visibilitychange", this.onVisibility);
+    this.startPoll();
+  }
+
+  override disconnectedCallback(): void {
+    document.removeEventListener("visibilitychange", this.onVisibility);
+    this.stopPoll();
+    super.disconnectedCallback();
+  }
+
+  private onVisibility = (): void => {
+    if (document.visibilityState === "visible") {
+      void this.refresh();
+      this.startPoll();
+    } else {
+      this.stopPoll();
+    }
+  };
+
+  private startPoll(): void {
+    if (this.pollTimer !== null || document.visibilityState !== "visible") return;
+    this.pollTimer = window.setInterval(() => void this.refresh(), POLL_MS);
+  }
+
+  private stopPoll(): void {
+    if (this.pollTimer !== null) {
+      window.clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
   }
 
   private async load(): Promise<void> {
@@ -77,6 +114,24 @@ export class StatusPage extends AppElement {
       } else {
         this.status = { kind: "error" };
       }
+    }
+  }
+
+  // Background refetch on the poll: it does NOT reset to the loading spinner, and a
+  // failed tick keeps the page showing its last good data rather than blanking it
+  // (a status page must degrade gracefully). A 404 still flips to not-found.
+  private async refresh(): Promise<void> {
+    const slug = resolveSlug();
+    if (!slug) return;
+    try {
+      const data = await fetchPublicStatusPage(slug);
+      this.applyBranding(data);
+      this.status = { kind: "ready", data };
+    } catch (err) {
+      if (err instanceof PublicFetchError && err.status === 404) {
+        this.status = { kind: "notFound" };
+      }
+      // other errors: keep the current view, try again next tick.
     }
   }
 

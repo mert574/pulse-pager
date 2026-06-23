@@ -46,11 +46,11 @@ export class RegionChips extends AppElement {
     const labelKey = failed ? STATE_LABEL.failed : STATE_LABEL[s.state];
     const pulsing = s.state === "running";
     return html`<span
-      class="badge badge-sm gap-1 ${cls}"
+      class="badge badge-xs sm:badge-sm gap-1 whitespace-nowrap ${cls}"
       title=${this.tooltip(s)}
     >
       <span
-        class="inline-block size-2 rounded-full bg-current ${pulsing
+        class="inline-block size-1.5 sm:size-2 rounded-full bg-current ${pulsing
           ? "animate-pulse"
           : ""}"
         aria-hidden="true"

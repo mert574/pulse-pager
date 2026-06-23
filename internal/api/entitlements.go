@@ -72,6 +72,7 @@ func (s *Server) GetEntitlements(ctx context.Context, _ apigen.GetEntitlementsRe
 		RegionsAllowed:       limits.RegionsAllowed,
 		RegionsPerMonitorCap: limits.RegionsPerMonitorCap,
 		CustomDomainAllowed:  entitlements.CustomDomainAllowed(plan),
+		ApiAccessAllowed:     entitlements.APIAccessAllowed(plan),
 		ApiWriteAllowed:      entitlements.APIWriteAllowed(plan),
 		FailureSnapshot:      s.ents.For(p.OrgID).FailureSnapshot,
 	}), nil
@@ -95,6 +96,7 @@ func (s *Server) ListPlans(_ context.Context, _ apigen.ListPlansRequestObject) (
 			RegionsAllowed:       e.RegionsAllowed,
 			RegionsPerMonitorCap: e.RegionsPerMonitorCap,
 			CustomDomainAllowed:  e.CustomDomainAllowed,
+			ApiAccessAllowed:     e.APIAccessAllowed,
 			ApiWriteAllowed:      e.APIWriteAllowed,
 			ApiRatePerMin:        e.APIRatePerMin,
 			ChannelTypes:         e.ChannelTypes,
@@ -110,7 +112,7 @@ func (s *Server) ListPlans(_ context.Context, _ apigen.ListPlansRequestObject) (
 func (s *Server) orgPlan(ctx context.Context, orgID int64) entitlements.Plan {
 	org, err := s.store.GetOrganization(ctx, orgID)
 	if err != nil {
-		return entitlements.PlanFree
+		return entitlements.PlanTier1
 	}
 	return entitlements.ParsePlan(org.Plan)
 }

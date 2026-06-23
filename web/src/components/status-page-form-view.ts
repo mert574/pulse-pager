@@ -414,12 +414,14 @@ export class StatusPageFormView extends AppElement {
             html`<select
               id="theme"
               class="select w-full"
-              .value=${f.theme}
               @change=${(e: Event) =>
                 this.patch("theme", (e.target as HTMLSelectElement).value as StatusPageTheme)}
             >
               ${THEMES.map(
-                (th) => html`<option value=${th}>${t(THEME_LABEL[th])}</option>`,
+                (th) =>
+                  html`<option value=${th} ?selected=${th === f.theme}>
+                    ${t(THEME_LABEL[th])}
+                  </option>`,
               )}
             </select>`,
           )}

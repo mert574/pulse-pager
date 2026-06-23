@@ -14,7 +14,7 @@ const ORG: OrgMembership = {
   name: "Org One",
   slug: "org-one",
   role: "owner",
-  plan: "team",
+  plan: "tier3",
 };
 
 // A catalog with one available type carrying a string, a secret string, an enum,
@@ -55,7 +55,7 @@ const CATALOG: ChannelTypeCatalog = {
       type: "pagerduty",
       display_name: "PagerDuty",
       available: false,
-      required_plan: "business",
+      required_plan: "tierCustom",
       // an unseeded code, so tDynamic falls back to the API-provided message
       unavailable_reason: {
         code: "channel.unavailable.pagerduty_business",
@@ -160,10 +160,11 @@ describe("channel-form-view (create)", () => {
         () => el.textContent?.includes("Webhook") ?? false,
         "catalog renders",
       );
-      // available type is a selectable button, gated type shows an upsell
+      // available type is a selectable button; gated types collapse into a single
+      // upsell that names them (not one banner per type).
       expect(el.textContent).to.contain("PagerDuty");
-      expect(el.querySelector("upsell-banner")).to.not.be.null;
-      expect(el.textContent).to.contain("Upgrade to use PagerDuty");
+      expect(el.querySelectorAll("upsell-banner").length).to.equal(1);
+      expect(el.textContent).to.contain("PagerDuty are available on a higher plan");
     } finally {
       restore();
     }

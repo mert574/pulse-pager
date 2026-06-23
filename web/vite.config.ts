@@ -24,6 +24,7 @@ export default defineConfig({
       input: {
         app: resolve(__dirname, "index.html"),
         status: resolve(__dirname, "status.html"),
+        admin: resolve(__dirname, "admin.html"),
       },
     },
   },

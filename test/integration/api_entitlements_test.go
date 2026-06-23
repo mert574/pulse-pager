@@ -219,7 +219,7 @@ func TestAPIEntitlements(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("want 200, got %d", resp.StatusCode)
 		}
-		if e.Plan != "free" {
+		if e.Plan != "tier1" {
 			t.Fatalf("plan = %q, want free", e.Plan)
 		}
 		if e.MonitorsUsed != 0 {
@@ -369,21 +369,21 @@ func TestAPIEntitlements(t *testing.T) {
 		for _, p := range plans {
 			byPlan[p.Plan] = p
 		}
-		for _, name := range []string{"free", "starter", "team", "business"} {
+		for _, name := range []string{"tier1", "tier2", "tier3", "tierCustom"} {
 			if _, ok := byPlan[name]; !ok {
 				t.Fatalf("plan %q missing from catalog: %+v", name, plans)
 			}
 		}
-		// Free and Business are the locked anchors (PRD-006 3).
-		free := byPlan["free"]
-		if free.MonitorsCap != 2 || free.SeatsCap != 1 || free.StatusPagesCap != 1 {
+		// Free and Custom anchor the catalog (pricing.html).
+		free := byPlan["tier1"]
+		if free.MonitorsCap != 10 || free.SeatsCap != 1 || free.StatusPagesCap != 1 {
 			t.Fatalf("free caps wrong: %+v", free)
 		}
 		if free.RetentionDays != 7 || free.ApiWriteAllowed || free.CustomDomain {
 			t.Fatalf("free flags wrong: %+v", free)
 		}
-		biz := byPlan["business"]
-		if biz.MonitorsCap != 500 || biz.SeatsCap != 25 || biz.StatusPagesCap != 10 {
+		biz := byPlan["tierCustom"]
+		if biz.MonitorsCap != 1000 || biz.SeatsCap != 1_000_000 || biz.StatusPagesCap != 1000 {
 			t.Fatalf("business caps wrong: %+v", biz)
 		}
 		if biz.RetentionDays != 180 || !biz.ApiWriteAllowed || !biz.CustomDomain || biz.ApiRatePerMin != 600 {

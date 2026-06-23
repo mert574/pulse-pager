@@ -118,6 +118,19 @@ type IdentityConfig struct {
 	SMTPPassword string
 	SMTPFrom     string
 	SMTPTLSMode  string
+
+	// PlatformAdmins is the lowercased email allowlist for the operator admin panel
+	// (GET /admin/metrics), read from PULSE_PLATFORM_ADMINS (comma-separated). Empty
+	// means no one is an admin, so the panel is closed by default (fails safe).
+	PlatformAdmins []string
+
+	// CFAccessTeamDomain and CFAccessAUD configure Cloudflare Access verification for
+	// the admin origin (admin.pulsepager.com). When both are set, the admin endpoint
+	// authorizes off the verified CF Access identity instead of an app session, so a
+	// customer app-session cookie can't reach it. Empty = not behind CF Access (the
+	// admin endpoint falls back to the normal session + allowlist, for local/dev).
+	CFAccessTeamDomain string // e.g. yourteam.cloudflareaccess.com
+	CFAccessAUD        string // the Access application AUD tag
 }
 
 // Load reads env vars for the given service and validates the deps it requires.
@@ -251,6 +264,19 @@ func loadIdentity() (IdentityConfig, error) {
 	ic.SMTPPassword = os.Getenv("PULSE_SMTP_PASSWORD")
 	ic.SMTPFrom = os.Getenv("PULSE_SMTP_FROM")
 	ic.SMTPTLSMode = os.Getenv("PULSE_SMTP_TLS_MODE")
+
+	// Platform admin allowlist (the operator admin panel). Comma-separated emails,
+	// lowercased and trimmed so the gate is a plain case-insensitive set lookup.
+	for _, e := range splitList(os.Getenv("PULSE_PLATFORM_ADMINS")) {
+		if e = strings.ToLower(strings.TrimSpace(e)); e != "" {
+			ic.PlatformAdmins = append(ic.PlatformAdmins, e)
+		}
+	}
+
+	// Cloudflare Access for the admin origin (optional). Both must be set to turn on
+	// CF Access verification on the admin endpoint.
+	ic.CFAccessTeamDomain = strings.TrimSpace(os.Getenv("PULSE_CF_ACCESS_TEAM_DOMAIN"))
+	ic.CFAccessAUD = strings.TrimSpace(os.Getenv("PULSE_CF_ACCESS_AUD"))
 
 	// With dev-login on, the api is allowed to boot with no OAuth provider so a
 	// developer can sign in locally without any creds. Otherwise at least one provider

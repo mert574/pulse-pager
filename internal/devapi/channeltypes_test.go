@@ -43,7 +43,7 @@ func TestGetChannelTypesHandlerAvailableAndGated(t *testing.T) {
 	if slack.UnavailableReason != nil {
 		t.Errorf("available channel should have no unavailable_reason, got %+v", slack.UnavailableReason)
 	}
-	if slack.RequiredPlan == nil || *slack.RequiredPlan != apigen.Free {
+	if slack.RequiredPlan == nil || *slack.RequiredPlan != apigen.Tier1 {
 		t.Errorf("slack required_plan = %v, want free", slack.RequiredPlan)
 	}
 
@@ -53,7 +53,7 @@ func TestGetChannelTypesHandlerAvailableAndGated(t *testing.T) {
 	if twilio.Available {
 		t.Error("twilio should not be available on the team plan")
 	}
-	if twilio.RequiredPlan == nil || *twilio.RequiredPlan != apigen.Business {
+	if twilio.RequiredPlan == nil || *twilio.RequiredPlan != apigen.TierCustom {
 		t.Errorf("twilio required_plan = %v, want business", twilio.RequiredPlan)
 	}
 	if twilio.UnavailableReason == nil {
@@ -67,8 +67,8 @@ func TestGetChannelTypesHandlerAvailableAndGated(t *testing.T) {
 		t.Fatal("reason should carry params")
 	}
 	p := *r.Params
-	if p["required_plan"] != "business" {
-		t.Errorf("reason params required_plan = %v, want business", p["required_plan"])
+	if p["required_plan"] != "tierCustom" {
+		t.Errorf("reason params required_plan = %v, want tierCustom", p["required_plan"])
 	}
 	if p["channel_type"] != "twilio" {
 		t.Errorf("reason params channel_type = %v, want twilio", p["channel_type"])
@@ -83,7 +83,7 @@ func TestGetChannelTypesHandlerAvailableAndGated(t *testing.T) {
 // is the gated-channel case from the spec, exercised directly so the plan input
 // is explicit rather than tied to the dev org's plan.
 func TestPagerDutyGatedWhenPlanTooLow(t *testing.T) {
-	allowed := allowedChannelTypes(apigen.Free)
+	allowed := allowedChannelTypes(apigen.Tier1)
 	if allowed[domain.ChannelPagerDuty] {
 		t.Fatal("pagerduty should not be allowed on the free plan")
 	}
@@ -100,14 +100,14 @@ func TestPagerDutyGatedWhenPlanTooLow(t *testing.T) {
 	if got.Available {
 		t.Error("pagerduty should be unavailable")
 	}
-	if got.RequiredPlan == nil || *got.RequiredPlan != apigen.Team {
+	if got.RequiredPlan == nil || *got.RequiredPlan != apigen.Tier3 {
 		t.Errorf("required_plan = %v, want team", got.RequiredPlan)
 	}
 	if got.UnavailableReason == nil {
 		t.Fatal("expected unavailable_reason")
 	}
 	p := *got.UnavailableReason.Params
-	if p["required_plan"] != "team" || p["channel_type"] != "pagerduty" {
+	if p["required_plan"] != "tier3" || p["channel_type"] != "pagerduty" {
 		t.Errorf("reason params = %v", p)
 	}
 	if got.UnavailableReason.Message != "Upgrade to Team to use PagerDuty" {
@@ -121,16 +121,16 @@ func TestAllowedChannelTypesByPlan(t *testing.T) {
 		typ     domain.ChannelType
 		allowed bool
 	}{
-		{apigen.Free, domain.ChannelSlack, true},
-		{apigen.Free, domain.ChannelPagerDuty, false},
-		{apigen.Free, domain.ChannelTwilio, false},
-		{apigen.Starter, domain.ChannelWebhook, true},
-		{apigen.Starter, domain.ChannelOpsgenie, false},
-		{apigen.Team, domain.ChannelPagerDuty, true},
-		{apigen.Team, domain.ChannelOpsgenie, true},
-		{apigen.Team, domain.ChannelTeams, false},
-		{apigen.Business, domain.ChannelTelegram, true},
-		{apigen.Business, domain.ChannelTwilio, true},
+		{apigen.Tier1, domain.ChannelSlack, true},
+		{apigen.Tier1, domain.ChannelPagerDuty, false},
+		{apigen.Tier1, domain.ChannelTwilio, false},
+		{apigen.Tier2, domain.ChannelWebhook, true},
+		{apigen.Tier2, domain.ChannelOpsgenie, false},
+		{apigen.Tier3, domain.ChannelPagerDuty, true},
+		{apigen.Tier3, domain.ChannelOpsgenie, true},
+		{apigen.Tier3, domain.ChannelTeams, false},
+		{apigen.TierCustom, domain.ChannelTelegram, true},
+		{apigen.TierCustom, domain.ChannelTwilio, true},
 	}
 	for _, c := range cases {
 		got := allowedChannelTypes(c.plan)[c.typ]

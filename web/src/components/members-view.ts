@@ -425,7 +425,7 @@ export class MembersView extends AppElement {
       >`;
     }
     return html`<select
-      class="select select-sm select-bordered"
+      class="select select-sm select-bordered min-w-28"
       aria-label=${t("members.colRole")}
       ?disabled=${this.busyMember === m.user_id}
       @change=${(e: Event) =>

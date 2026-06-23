@@ -26,7 +26,7 @@ const (
 	csrfCookie = "pulse_csrf"
 	devSession = "dev-session"
 	devOrgID   = "org_dev"
-	devOrgPlan = "team"
+	devOrgPlan = "tier3"
 )
 
 // monRow is a stored monitor plus the derived bits the list view needs.
@@ -88,7 +88,52 @@ func (s *server) devMe() apigen.Me {
 		Locale:   "en",
 		Timezone: "UTC",
 		Orgs:     s.devOrgs(),
+		// The dev user is a platform admin so the admin panel is browsable without
+		// real infra or an allowlist (devapi is dev-only and never runs in prod).
+		IsPlatformAdmin: true,
 	}
+}
+
+// GetAdminMetrics serves sample platform totals so the admin panel renders in
+// dev-auth mode. Static numbers, no store; the real counts live in internal/api.
+func (s *server) GetAdminMetrics(context.Context, apigen.GetAdminMetricsRequestObject) (apigen.GetAdminMetricsResponseObject, error) {
+	signups := make([]apigen.AdminSignupPoint, 0, 30)
+	for i := 29; i >= 0; i-- {
+		// vary the sample by day index so the trend looks alive (no time calls here).
+		day := 30 - i
+		signups = append(signups, apigen.AdminSignupPoint{
+			Date:  "2026-06-" + twoDigit(day),
+			Users: (i % 4),
+			Orgs:  (i % 3),
+		})
+	}
+	medianTTFM := 3600
+	return apigen.GetAdminMetrics200JSONResponse{
+		Users:                           42,
+		Orgs:                            17,
+		MonitorsTotal:                   128,
+		MonitorsEnabled:                 113,
+		MonitorsDisabled:                15,
+		Channels:                        54,
+		OrgsWithMonitor:                 12,
+		MedianTimeToFirstMonitorSeconds: &medianTTFM,
+		ActiveOrgs7d:                    9,
+		OrgsByPlan: []apigen.AdminPlanCount{
+			{Plan: "tier1", Count: 9},
+			{Plan: "tier2", Count: 4},
+			{Plan: "tier3", Count: 3},
+			{Plan: "tierCustom", Count: 1},
+		},
+		Signups: signups,
+	}, nil
+}
+
+// twoDigit zero-pads 1..31 for the sample dates.
+func twoDigit(n int) string {
+	if n < 10 {
+		return "0" + string(rune('0'+n))
+	}
+	return string(rune('0'+n/10)) + string(rune('0'+n%10))
 }
 
 func (s *server) devOrgs() []apigen.OrgMembership {
@@ -143,7 +188,7 @@ func (s *server) CreateOrg(_ context.Context, req apigen.CreateOrgRequestObject)
 		slug = *req.Body.Slug
 	}
 	return apigen.CreateOrg201JSONResponse(apigen.OrgMembership{
-		OrgId: s.newID("org"), Name: req.Body.Name, Slug: slug, Role: "owner", Plan: "free",
+		OrgId: s.newID("org"), Name: req.Body.Name, Slug: slug, Role: "owner", Plan: "tier1",
 	}), nil
 }
 
@@ -177,6 +222,7 @@ func (s *server) GetEntitlements(_ context.Context, _ apigen.GetEntitlementsRequ
 		RegionsAllowed:       []string{"eu-central", "us-west", "us-east"},
 		RegionsPerMonitorCap: 4,
 		CustomDomainAllowed:  true,
+		ApiAccessAllowed:     true,
 		ApiWriteAllowed:      true,
 		FailureSnapshot:      true,
 	}), nil
@@ -198,6 +244,7 @@ func (s *server) ListPlans(_ context.Context, _ apigen.ListPlansRequestObject) (
 			RegionsAllowed:       e.RegionsAllowed,
 			RegionsPerMonitorCap: e.RegionsPerMonitorCap,
 			CustomDomainAllowed:  e.CustomDomainAllowed,
+			ApiAccessAllowed:     e.APIAccessAllowed,
 			ApiWriteAllowed:      e.APIWriteAllowed,
 			ApiRatePerMin:        e.APIRatePerMin,
 			ChannelTypes:         e.ChannelTypes,
