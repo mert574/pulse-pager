@@ -3,7 +3,7 @@ import { ContextProvider } from "@lit/context";
 import "./monitor-form-view.js";
 import type { MonitorFormView } from "./monitor-form-view.js";
 import { appContext, type AppContext } from "../state/context.js";
-import type { OrgMembership } from "../api/types.js";
+import type { Entitlements, OrgMembership } from "../api/types.js";
 
 const ORG: OrgMembership = {
   org_id: "o1",
@@ -11,6 +11,25 @@ const ORG: OrgMembership = {
   slug: "org-one",
   role: "owner",
   plan: "tier3",
+};
+
+// Entitlements with two allowed regions, for the default-region and region-cap paths.
+const ENTS: Entitlements = {
+  plan: "tier3",
+  monitors_used: 0,
+  monitors_cap: 50,
+  seats_used: 1,
+  seats_cap: 10,
+  status_pages_used: 0,
+  status_pages_cap: 3,
+  min_interval_seconds: 30,
+  retention_days: 90,
+  regions_allowed: ["eu-central", "us-west"],
+  regions_per_monitor_cap: 4,
+  custom_domain_allowed: true,
+  api_access_allowed: true,
+  api_write_allowed: true,
+  failure_snapshot: true,
 };
 
 interface Call {
@@ -51,13 +70,13 @@ function route(c: Call): Response {
   return json(200, {});
 }
 
-async function mountForm(): Promise<MonitorFormView> {
+async function mountForm(ent: Entitlements | null = null): Promise<MonitorFormView> {
   const host = document.createElement("div");
   const ctx: AppContext = {
     me: { user_id: "u", email: "e", name: "n", avatar_url: null, orgs: [ORG] },
     activeOrg: ORG,
     role: "owner",
-    entitlements: null,
+    entitlements: ent,
     refreshMe: async () => {},
   };
   new ContextProvider(host, { context: appContext, initialValue: ctx });
@@ -205,6 +224,59 @@ describe("monitor-form-view (create)", () => {
       const sent = JSON.parse(calls.find((c) => c.method === "POST")!.body ?? "{}");
       expect(sent.type).to.equal("ssl");
       expect(sent.url).to.equal("example.com");
+    } finally {
+      restore();
+    }
+  });
+
+  it("defaults to the first allowed region once entitlements load", async () => {
+    const { calls, restore } = installFetch(route);
+    try {
+      const el = await mountForm(ENTS);
+      // the first allowed region is pre-selected (its toggle button reads active)
+      await waitUntil(
+        () => el.textContent?.includes("eu-central") ?? false,
+        "regions render",
+      );
+      setInput(el, "#name", "Marketing site");
+      setInput(el, "#url", "https://example.com");
+      await el.updateComplete;
+      el.querySelector("form")!.dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      );
+      await waitUntil(() => calls.some((c) => c.method === "POST"), "POST fired");
+      const sent = JSON.parse(calls.find((c) => c.method === "POST")!.body ?? "{}");
+      expect(sent.regions).to.deep.equal(["eu-central"]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("renders a server-side regions error under the regions field", async () => {
+    const { restore } = installFetch((c) => {
+      if (c.url.endsWith("/channels")) return json(200, []);
+      if (c.url.endsWith("/monitors") && c.method === "POST")
+        return json(422, {
+          error: {
+            code: "validation_failed",
+            message: "Validation failed",
+            fields: { regions: "at least one region is required" },
+          },
+        });
+      return json(200, {});
+    });
+    try {
+      const el = await mountForm();
+      setInput(el, "#name", "Marketing site");
+      setInput(el, "#url", "https://example.com");
+      await el.updateComplete;
+      el.querySelector("form")!.dispatchEvent(
+        new Event("submit", { bubbles: true, cancelable: true }),
+      );
+      await waitUntil(
+        () => el.textContent?.includes("at least one region is required") ?? false,
+        "regions error shown",
+      );
     } finally {
       restore();
     }

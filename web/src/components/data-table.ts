@@ -112,7 +112,11 @@ export class DataTable extends AppElement {
     const colCount = this.columns.length + (expandable ? 1 : 0);
 
     return html`
-      <div class="overflow-x-auto rounded-box border border-base-200">
+      <!-- min-w-0: as a flex item the scroll container defaults to min-width:auto, so
+           it grows to the table's content width and overflows its parent instead of
+           scrolling. min-w-0 lets it shrink to the available width, so the scrollbar
+           only appears when the columns truly do not fit (mobile), not on desktop. -->
+      <div class="overflow-x-auto rounded-box border border-base-200 min-w-0">
         <table class="table table-zebra">
           <thead>
             <tr>

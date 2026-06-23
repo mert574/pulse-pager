@@ -115,6 +115,8 @@ export class MonitorFormView extends AppElement {
   @state() private capMessage: string | null = null;
 
   private loadedKey: string | null = null;
+  // create-mode only: whether we have applied the default first region yet.
+  private regionSeeded = false;
 
   private get orgId(): string | null {
     return this.ctx?.activeOrg?.org_id ?? null;
@@ -144,6 +146,16 @@ export class MonitorFormView extends AppElement {
     const orgId = this.orgId;
     const key = orgId ? `${orgId}:${this.monitorId}` : null;
     if (key && key !== this.loadedKey) void this.load();
+
+    // On create, default to the first allowed region once the plan entitlements
+    // load (the backend requires at least one region). Seed once so deselecting
+    // every region does not silently re-add one.
+    if (!this.isEdit && !this.regionSeeded && this.allowedRegions.length > 0) {
+      this.regionSeeded = true;
+      if (this.form.regions.length === 0) {
+        this.patch("regions", [this.allowedRegions[0]]);
+      }
+    }
   }
 
   private async load(): Promise<void> {
@@ -672,6 +684,9 @@ export class MonitorFormView extends AppElement {
               </label>`;
             })}
           </div>
+          ${this.errors.regions
+            ? html`<p class="fieldset-label text-error">${this.errors.regions}</p>`
+            : ""}
         </fieldset>
         ${this.field(
           "down_policy",

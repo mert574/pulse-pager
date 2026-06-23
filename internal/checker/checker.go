@@ -124,10 +124,19 @@ func (c *Checker) checkHTTP(ctx context.Context, m *domain.Monitor, captureRespo
 		}
 	}
 
-	// Parse the status matcher up front. An invalid spec means the monitor was
-	// stored with a bad value; treat it as a status mismatch since we cannot
-	// decide what counts as healthy.
-	matcher, matcherErr := ParseStatusCodes(m.ExpectedStatusCodes)
+	// Parse the status matcher up front. expected_status_codes is optional: an empty
+	// spec means "do not assert the status" (the monitor relies on its other
+	// assertions instead), so we skip the status check entirely. A non-empty but
+	// invalid spec means the monitor was stored with a bad value; treat it as a
+	// status mismatch since we cannot decide what counts as healthy.
+	checkStatus := strings.TrimSpace(m.ExpectedStatusCodes) != ""
+	var (
+		matcher    StatusMatcher
+		matcherErr error
+	)
+	if checkStatus {
+		matcher, matcherErr = ParseStatusCodes(m.ExpectedStatusCodes)
+	}
 
 	// Per-check timeout. This deadline covers the dial, the request, and the
 	// body read, so a slow body still counts against TimeoutSeconds.
@@ -213,7 +222,7 @@ func (c *Checker) checkHTTP(ctx context.Context, m *domain.Monitor, captureRespo
 
 	// Assertions in PRD 4.2 priority order: status, then latency, then body.
 	// blocked_target and connection/timeout are already handled above.
-	if matcherErr != nil || matcher == nil || !matcher.Matches(status) {
+	if checkStatus && (matcherErr != nil || matcher == nil || !matcher.Matches(status)) {
 		if captureResponse {
 			res.Snapshot = snapshot()
 		}

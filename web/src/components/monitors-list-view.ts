@@ -357,12 +357,12 @@ export class MonitorsListView extends AppElement {
       (new Date(m.cert_expires_at).getTime() - Date.now()) / (24 * 60 * 60 * 1000),
     );
     if (days < 0) {
-      return html`<span class="badge badge-error badge-soft badge-sm"
+      return html`<span class="badge badge-error badge-soft badge-sm whitespace-nowrap"
         >${t("monitor.certExpired")}</span
       >`;
     }
     const cls = days <= 7 ? "badge-warning" : "badge-success";
-    return html`<span class="badge ${cls} badge-soft badge-sm"
+    return html`<span class="badge ${cls} badge-soft badge-sm whitespace-nowrap"
       >${days} ${t("monitor.certDaysLeft")}</span
     >`;
   }

@@ -75,6 +75,29 @@ func TestCheck_WrongStatus(t *testing.T) {
 	}
 }
 
+// With an empty expected_status_codes the status is not asserted, so a non-2xx
+// response is still healthy as long as the other assertions pass (body_contains).
+func TestCheck_EmptyExpectedSkipsStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("still serving"))
+	}))
+	defer srv.Close()
+
+	m := baseMonitor(srv.URL)
+	m.ExpectedStatusCodes = "" // no status assertion
+	needle := "still serving"
+	m.BodyContains = &needle
+
+	res := newChecker().Check(context.Background(), m, false)
+	if !res.Healthy {
+		t.Fatalf("expected healthy (status not asserted), got reason %v", res.FailureReason)
+	}
+	if res.StatusCode == nil || *res.StatusCode != 503 {
+		t.Fatalf("expected status 503 recorded, got %v", res.StatusCode)
+	}
+}
+
 func TestCheck_Timeout(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)

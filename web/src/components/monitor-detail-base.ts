@@ -62,6 +62,37 @@ export abstract class MonitorDetailBase extends AppElement {
 
   private loadedId: string | null = null;
 
+  // The detail page auto-refreshes its data every 10s while the tab is visible, so
+  // new checks / incident changes show without a manual reload. Paused when hidden.
+  private refreshTimer: number | null = null;
+  private readonly onRefreshVisibility = () => this.syncRefresh();
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    document.addEventListener("visibilitychange", this.onRefreshVisibility);
+    this.syncRefresh();
+  }
+
+  override disconnectedCallback(): void {
+    document.removeEventListener("visibilitychange", this.onRefreshVisibility);
+    this.stopRefresh();
+    super.disconnectedCallback();
+  }
+
+  private syncRefresh(): void {
+    this.stopRefresh();
+    if (document.visibilityState === "visible") {
+      this.refreshTimer = window.setInterval(() => void this.loadShared(), 10_000);
+    }
+  }
+
+  private stopRefresh(): void {
+    if (this.refreshTimer !== null) {
+      window.clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+  }
+
   protected get orgId(): string | null {
     return this.ctx?.activeOrg?.org_id ?? null;
   }
@@ -80,7 +111,7 @@ export abstract class MonitorDetailBase extends AppElement {
 
   private async loadShared(): Promise<void> {
     const orgId = this.orgId;
-    if (!orgId) return;
+    if (!orgId || !this.monitor) return; // the auto-refresh can fire before the prop lands
     this.loadError = null;
     try {
       const incidents = await client.listMonitorIncidents(orgId, this.monitor.id);
@@ -180,6 +211,19 @@ export abstract class MonitorDetailBase extends AppElement {
           </div>
         </div>
         <div class="flex items-center gap-2">
+          ${member
+            ? html`<button
+                class="btn btn-sm btn-ghost text-error gap-1.5"
+                @click=${() => this.deleteDialog.open()}
+              >
+                ${icon("trash", "size-4")}${t("monitor.delete")}
+              </button>
+              <a
+                class="btn btn-sm gap-1.5"
+                href=${`${this.base}/monitors/${m.id}/edit`}
+                >${icon("edit", "size-4")}${t("monitor.edit")}</a
+              >`
+            : ""}
           ${can(role, "monitor.test") && this.showCheckNow()
             ? html`<button
                 class="btn btn-sm btn-primary gap-1.5"
@@ -191,19 +235,6 @@ export abstract class MonitorDetailBase extends AppElement {
                       ${t("monitor.checking")}`
                   : html`${icon("refresh", "size-4")}${t("monitor.checkNow")}`}
               </button>`
-            : ""}
-          ${member
-            ? html`<a
-                  class="btn btn-sm gap-1.5"
-                  href=${`${this.base}/monitors/${m.id}/edit`}
-                  >${icon("edit", "size-4")}${t("monitor.edit")}</a
-                >
-                <button
-                  class="btn btn-sm btn-ghost text-error gap-1.5"
-                  @click=${() => this.deleteDialog.open()}
-                >
-                  ${icon("trash", "size-4")}${t("monitor.delete")}
-                </button>`
             : ""}
         </div>
       </div>

@@ -563,8 +563,10 @@ func monitorFromInput(orgID, id int64, in apigen.MonitorInput, limits entitlemen
 	if in.Method == "" || isSSL {
 		method = "GET"
 	}
-	expected := in.ExpectedStatusCodes
-	if expected == "" || isSSL {
+	// expected_status_codes is optional (empty = do not assert the status). ssl
+	// ignores it entirely, so force a harmless value there.
+	expected := strings.TrimSpace(in.ExpectedStatusCodes)
+	if isSSL {
 		expected = "200"
 	}
 	if !isSSL {
@@ -578,7 +580,7 @@ func monitorFromInput(orgID, id int64, in apigen.MonitorInput, limits entitlemen
 				errs["body"] = "body is too large"
 			}
 		}
-		if !validExpectedStatusCodes(expected) {
+		if expected != "" && !validExpectedStatusCodes(expected) {
 			errs["expected_status_codes"] = "expected_status_codes must be codes (100..599) and/or 2xx/3xx/4xx/5xx"
 		}
 	}
@@ -630,6 +632,14 @@ func monitorFromInput(orgID, id int64, in apigen.MonitorInput, limits entitlemen
 		}
 		if in.BodyContains != nil && len(*in.BodyContains) > maxBodyContainsLen {
 			errs["body_contains"] = fmt.Sprintf("body_contains must be at most %d characters", maxBodyContainsLen)
+		}
+		// A monitor needs something to assert: at least one of the status codes, a
+		// body-contains string, or a max latency. All three empty means the check
+		// could never fail, so reject it (surfaced on expected_status_codes).
+		hasBodyContains := in.BodyContains != nil && strings.TrimSpace(*in.BodyContains) != ""
+		hasMaxLatency := in.MaxLatencyMs != nil && *in.MaxLatencyMs > 0
+		if expected == "" && !hasBodyContains && !hasMaxLatency && errs["expected_status_codes"] == "" {
+			errs["expected_status_codes"] = "set at least one assertion: expected status codes, body contains, or max latency"
 		}
 		if in.FailureThreshold < 1 {
 			errs["failure_threshold"] = "failure_threshold must be at least 1"

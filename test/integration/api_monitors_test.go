@@ -575,6 +575,8 @@ func TestAPIMonitors(t *testing.T) {
 			{"interval_below_hard_floor", `{"name":"x","url":"https://a.test","method":"GET","expected_status_codes":"200","timeout_seconds":5,"interval_seconds":10,"enabled":true,"failure_threshold":1,"regions":["eu-central"],"down_policy":"quorum"}`, "interval_seconds"},
 			{"interval_below_timeout", `{"name":"x","url":"https://a.test","method":"GET","expected_status_codes":"200","timeout_seconds":40,"interval_seconds":35,"enabled":true,"failure_threshold":1,"regions":["eu-central"],"down_policy":"quorum"}`, "interval_seconds"},
 			{"body_on_get", `{"name":"x","url":"https://a.test","method":"GET","body":"hello","expected_status_codes":"200","timeout_seconds":5,"interval_seconds":60,"enabled":true,"failure_threshold":1,"regions":["eu-central"],"down_policy":"quorum"}`, "body"},
+			// expected_status_codes is optional, but all three assertions empty is rejected.
+			{"no_assertions", `{"name":"x","url":"https://a.test","method":"GET","expected_status_codes":"","timeout_seconds":5,"interval_seconds":60,"enabled":true,"max_latency_ms":null,"body_contains":null,"failure_threshold":1,"regions":["eu-central"],"down_policy":"quorum"}`, "expected_status_codes"},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -592,6 +594,21 @@ func TestAPIMonitors(t *testing.T) {
 					t.Fatalf("expected per-field error on %q, got fields %+v", tc.field, env.Error.Fields)
 				}
 			})
+		}
+	})
+
+	// --- expected_status_codes optional: empty is fine when another assertion is set ---
+	t.Run("create_with_empty_status_codes", func(t *testing.T) {
+		body := `{"name":"body only","url":"https://a.test","method":"GET","expected_status_codes":"","timeout_seconds":5,"interval_seconds":60,"enabled":true,"body_contains":"ok","failure_threshold":1,"regions":["eu-central"],"down_policy":"quorum"}`
+		resp := post(ownerClient, "/api/v1/orgs/"+orgID+"/monitors", body)
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("want 201, got %d (%s)", resp.StatusCode, readBody(resp))
+		}
+		var m monitorDTO
+		decode(t, resp, &m)
+		if m.ExpectedStatusCodes != "" {
+			t.Fatalf("expected_status_codes = %q, want empty (no status assertion)", m.ExpectedStatusCodes)
 		}
 	})
 
