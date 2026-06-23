@@ -1264,6 +1264,7 @@ components:
           median_time_to_first_monitor_seconds,
           active_orgs_7d,
           orgs_by_plan,
+          monitors_by_type,
           signups,
         ]
       properties:
@@ -1288,6 +1289,10 @@ components:
         orgs_by_plan:
           type: array
           items: { $ref: "#/components/schemas/AdminPlanCount" }
+        monitors_by_type:
+          type: array
+          description: monitor counts split by check type (http, ssl)
+          items: { $ref: "#/components/schemas/AdminTypeCount" }
         signups:
           type: array
           description: daily new users and orgs for the last 30 days, oldest first
@@ -1297,6 +1302,12 @@ components:
       required: [plan, count]
       properties:
         plan: { $ref: "#/components/schemas/Plan" }
+        count: { type: integer }
+    AdminTypeCount:
+      type: object
+      required: [type, count]
+      properties:
+        type: { $ref: "#/components/schemas/MonitorType" }
         count: { type: integer }
     AdminSignupPoint:
       type: object

@@ -5,7 +5,7 @@ import { client, ApiError } from "../api/client.js";
 import { t, type MessageKey } from "../i18n.js";
 import { icon } from "../icons.js";
 import { formatDuration } from "../format.js";
-import type { AdminMetrics, Plan } from "../api/types.js";
+import type { AdminMetrics, MonitorType, Plan } from "../api/types.js";
 
 // Operator admin panel: platform-wide totals across every org (signed-up users,
 // orgs, monitors, channels), orgs by plan, and a 30-day signup trend. It lives in
@@ -24,6 +24,14 @@ const PLAN_LABEL: Record<Plan, MessageKey> = {
 
 // Plan rows render in tier order regardless of the order the API groups them.
 const PLAN_ORDER: Plan[] = ["tier1", "tier2", "tier3", "tierCustom"];
+
+// Monitor-type rows render in a fixed order, with the SSL split reusing the form's
+// type labels.
+const TYPE_ORDER: MonitorType[] = ["http", "ssl"];
+const TYPE_LABEL: Record<MonitorType, MessageKey> = {
+  http: "monitorForm.typeHttp",
+  ssl: "monitorForm.typeSsl",
+};
 
 @customElement("admin-view")
 export class AdminView extends AppElement {
@@ -89,7 +97,8 @@ export class AdminView extends AppElement {
     }
     return html`
       ${this.totals(this.metrics)} ${this.activation(this.metrics)}
-      ${this.byPlan(this.metrics)} ${this.signups(this.metrics)}
+      ${this.byPlan(this.metrics)} ${this.byType(this.metrics)}
+      ${this.signups(this.metrics)}
     `;
   }
 
@@ -173,6 +182,34 @@ export class AdminView extends AppElement {
               (p) => html`<tr>
                 <td>${t(PLAN_LABEL[p])}</td>
                 <td class="text-right tabular-nums">${counts.get(p) ?? 0}</td>
+              </tr>`,
+            )}
+          </tbody>
+        </table>
+      </section>
+    `;
+  }
+
+  // --- monitors by check type ---
+
+  private byType(m: AdminMetrics) {
+    const counts = new Map<MonitorType, number>();
+    for (const c of m.monitors_by_type) counts.set(c.type, c.count);
+    return html`
+      <section class="flex flex-col gap-3">
+        <h2 class="text-lg font-semibold">${t("admin.byType")}</h2>
+        <table class="table border border-base-300 rounded-box">
+          <thead>
+            <tr>
+              <th>${t("admin.type")}</th>
+              <th class="text-right">${t("admin.monitors")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${TYPE_ORDER.map(
+              (ty) => html`<tr>
+                <td>${t(TYPE_LABEL[ty])}</td>
+                <td class="text-right tabular-nums">${counts.get(ty) ?? 0}</td>
               </tr>`,
             )}
           </tbody>

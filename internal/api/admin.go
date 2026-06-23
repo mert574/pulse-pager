@@ -55,6 +55,10 @@ func (s *Server) GetAdminMetrics(ctx context.Context, _ apigen.GetAdminMetricsRe
 	for _, pc := range m.OrgsByPlan {
 		byPlan = append(byPlan, apigen.AdminPlanCount{Plan: apigen.Plan(pc.Plan), Count: int(pc.Count)})
 	}
+	byType := make([]apigen.AdminTypeCount, 0, len(m.MonitorsByType))
+	for _, mc := range m.MonitorsByType {
+		byType = append(byType, apigen.AdminTypeCount{Type: apigen.MonitorType(mc.Type), Count: int(mc.Count)})
+	}
 	signups := make([]apigen.AdminSignupPoint, 0, len(m.Signups))
 	for _, sp := range m.Signups {
 		signups = append(signups, apigen.AdminSignupPoint{Date: sp.Date, Users: int(sp.Users), Orgs: int(sp.Orgs)})
@@ -77,6 +81,7 @@ func (s *Server) GetAdminMetrics(ctx context.Context, _ apigen.GetAdminMetricsRe
 		MedianTimeToFirstMonitorSeconds: medianTTFM,
 		ActiveOrgs7d:                    int(m.ActiveOrgs7d),
 		OrgsByPlan:                      byPlan,
+		MonitorsByType:                  byType,
 		Signups:                         signups,
 	}, nil
 }

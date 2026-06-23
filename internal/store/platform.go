@@ -16,6 +16,7 @@ type PlatformMetrics struct {
 	MonitorsEnabled int64
 	Channels        int64
 	OrgsByPlan      []PlanCount
+	MonitorsByType  []MonitorTypeCount
 	Signups         []SignupPoint
 
 	// Activation: orgs that ever created a monitor, and the median seconds from org
@@ -30,6 +31,12 @@ type PlatformMetrics struct {
 // PlanCount is the number of orgs on one plan.
 type PlanCount struct {
 	Plan  string
+	Count int64
+}
+
+// MonitorTypeCount is the number of monitors of one check type, across all orgs.
+type MonitorTypeCount struct {
+	Type  string
 	Count int64
 }
 
@@ -88,6 +95,24 @@ func (p *Pool) PlatformMetrics(ctx context.Context) (*PlatformMetrics, error) {
 		m.OrgsByPlan = append(m.OrgsByPlan, pc)
 	}
 	if err := planRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// monitors grouped by check type (via the SECURITY DEFINER function so the
+	// cross-org count bypasses RLS), ordered for a stable FE list.
+	typeRows, err := p.Query(ctx, `SELECT monitor_type, count FROM platform_monitor_counts_by_type() ORDER BY monitor_type`)
+	if err != nil {
+		return nil, err
+	}
+	defer typeRows.Close()
+	for typeRows.Next() {
+		var mc MonitorTypeCount
+		if err := typeRows.Scan(&mc.Type, &mc.Count); err != nil {
+			return nil, err
+		}
+		m.MonitorsByType = append(m.MonitorsByType, mc)
+	}
+	if err := typeRows.Err(); err != nil {
 		return nil, err
 	}
 

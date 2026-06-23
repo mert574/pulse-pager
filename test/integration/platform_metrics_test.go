@@ -20,7 +20,7 @@ func TestPlatformMetrics(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	// two orgs, each with an owner user; org two is on the business plan.
+	// two orgs, each with an owner user; org two is on the top (custom) plan.
 	u1 := mkUser(ctx, t, pool, "owner1@example.com")
 	org1, _, err := pool.CreateOrgWithOwner(ctx, "Org One", "", u1)
 	if err != nil {
@@ -31,7 +31,7 @@ func TestPlatformMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create org2: %v", err)
 	}
-	if _, err := pool.Exec(ctx, "UPDATE organizations SET plan='business' WHERE id=$1", org2.ID); err != nil {
+	if _, err := pool.Exec(ctx, "UPDATE organizations SET plan='tierCustom' WHERE id=$1", org2.ID); err != nil {
 		t.Fatalf("set plan: %v", err)
 	}
 
@@ -79,13 +79,21 @@ func TestPlatformMetrics(t *testing.T) {
 	if got.MedianTimeToFirstMonitorSeconds == nil {
 		t.Error("MedianTimeToFirstMonitorSeconds = nil, want a value")
 	}
-	// plan breakdown: free (org1) and business (org2) each present once.
+	// plan breakdown: org1 on the default tier1, org2 on tierCustom, each once.
 	byPlan := map[string]int64{}
 	for _, pc := range got.OrgsByPlan {
 		byPlan[pc.Plan] = pc.Count
 	}
 	if byPlan["tier1"] != 1 || byPlan["tierCustom"] != 1 {
-		t.Errorf("OrgsByPlan = %+v, want free=1 business=1", got.OrgsByPlan)
+		t.Errorf("OrgsByPlan = %+v, want tier1=1 tierCustom=1", got.OrgsByPlan)
+	}
+	// monitor breakdown by type: the one monitor is http.
+	byType := map[string]int64{}
+	for _, mc := range got.MonitorsByType {
+		byType[mc.Type] = mc.Count
+	}
+	if byType["http"] != 1 {
+		t.Errorf("MonitorsByType = %+v, want http=1", got.MonitorsByType)
 	}
 	// signup series is one row per day for 30 days.
 	if len(got.Signups) != 30 {

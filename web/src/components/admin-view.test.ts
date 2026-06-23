@@ -19,6 +19,10 @@ const METRICS: AdminMetrics = {
     { plan: "tier3", count: 3 },
     { plan: "tierCustom", count: 1 },
   ],
+  monitors_by_type: [
+    { type: "http", count: 104 },
+    { type: "ssl", count: 24 },
+  ],
   signups: [
     { date: "2026-05-25", users: 2, orgs: 1 },
     { date: "2026-06-23", users: 3, orgs: 0 },
@@ -83,6 +87,10 @@ describe("admin-view", () => {
       expect(el.textContent).to.contain("15");
       // plan breakdown table renders a row per tier
       expect(el.textContent).to.contain("9");
+      // monitors-by-type breakdown
+      expect(el.textContent).to.contain("Monitors by type");
+      expect(el.textContent).to.contain("104");
+      expect(el.textContent).to.contain("24");
       // signup trend totals (2 + 3 new users)
       expect(el.textContent).to.contain("5");
     } finally {

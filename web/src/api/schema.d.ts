@@ -926,11 +926,17 @@ export interface components {
             /** @description orgs with an enabled monitor checked in the last 7 days */
             active_orgs_7d: number;
             orgs_by_plan: components["schemas"]["AdminPlanCount"][];
+            /** @description monitor counts split by check type (http, ssl) */
+            monitors_by_type: components["schemas"]["AdminTypeCount"][];
             /** @description daily new users and orgs for the last 30 days, oldest first */
             signups: components["schemas"]["AdminSignupPoint"][];
         };
         AdminPlanCount: {
             plan: components["schemas"]["Plan"];
+            count: number;
+        };
+        AdminTypeCount: {
+            type: components["schemas"]["MonitorType"];
             count: number;
         };
         AdminSignupPoint: {

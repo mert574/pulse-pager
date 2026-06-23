@@ -124,6 +124,10 @@ func (s *server) GetAdminMetrics(context.Context, apigen.GetAdminMetricsRequestO
 			{Plan: "tier3", Count: 3},
 			{Plan: "tierCustom", Count: 1},
 		},
+		MonitorsByType: []apigen.AdminTypeCount{
+			{Type: "http", Count: 104},
+			{Type: "ssl", Count: 24},
+		},
 		Signups: signups,
 	}, nil
 }
