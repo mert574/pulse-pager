@@ -96,12 +96,13 @@
 .drawer-side > .drawer-overlay {
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: 1;
 }
 .drawer-side > app-nav {
   display: block;
   position: relative;
-  z-index: 1;
+  /* well above the overlay; mobile Safari needs a clear gap, not just +1 */
+  z-index: 50;
   align-self: stretch; /* full 100dvh height; width stays the aside's w-64 */
 }
 .drawer-side > app-nav > aside {
