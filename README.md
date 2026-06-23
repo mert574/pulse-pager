@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs-site/assets/og.png" alt="Pulse Pager — developer-first uptime monitoring" width="720">
+</p>
+
 # Pulse Pager
 
 Developer-first uptime monitoring that pages you the moment something breaks.
@@ -24,10 +28,11 @@ What works:
   API keys, multi-tenant orgs with roles (owner/admin/member/viewer) and
   invitations. Postgres row-level security means one org can never read another's
   rows, even if an app-level filter is missed.
-- **Monitors and checks**: HTTP/TCP checks with
-  interval, timeout, expected status codes, latency and body assertions;
-  per-region scheduling; manual check-now with a rate limit; live per-region
-  state; and recent-check history grouped one row per run.
+- **Monitors and checks**: HTTP checks (method, headers, optional expected status
+  codes, latency and body assertions) and SSL-certificate checks that warn 7, 3,
+  and 1 day before a cert expires; interval, timeout, per-region scheduling; manual
+  check-now with a rate limit; live per-region state; and recent-check history
+  grouped one row per run.
 - **Pipeline**: scheduler then worker then alerting then
   notifier, over the event bus. Workers run per region, alerting opens and closes
   incidents, the notifier delivers. The bus is pluggable (`PULSE_BUS`): Kafka by
@@ -35,7 +40,7 @@ What works:
 - **Channels**: nine integrations (Slack, Discord, webhook,
   email/SMTP, Telegram, PagerDuty, Opsgenie, Microsoft Teams, Twilio), each with
   a config schema and a test-send. Secret config is encrypted at rest.
-- **Plans and entitlements**: free/starter/team/business with monitor
+- **Plans and entitlements**: Free/Hobby/Professional/Custom with monitor
   caps, interval floors, region sets, seat caps, status-page caps, and per-plan
   channel access, all enforced server-side, plus a usage-vs-caps screen.
 - **Status pages**: public per-org status pages with monitors,
@@ -50,10 +55,8 @@ Still early or not built yet:
   verdict, the cross-region reduce is not wired yet.
 - Billing is usage and plan-catalog display only. Payments (Stripe) are not
   wired, so plans are set by an operator for now.
-- No versioned migrations. `make schema` drops and recreates the tables, which
-  also doubles as the dev reset.
-- Deployment (Helm/Terraform/k8s), SLO dashboards, enterprise SSO, and extra
-  check types (SSL-expiry, heartbeat) are not built.
+- Deployment (Helm/Terraform/k8s), SLO dashboards, enterprise SSO, and the
+  cron/heartbeat check type are not built yet.
 
 ## Prerequisites
 
@@ -69,22 +72,25 @@ Bring up local infra (Postgres, Redis, Redpanda):
 make up
 ```
 
-Load env and apply the schema:
+Set up your env and the database:
 
 ```sh
 cp .env.example .env
-set -a; source .env; set +a
-make schema
+make schema     # bootstrap a fresh db: the frozen baseline + every migration
 ```
 
-There are no migrations yet. `make schema` drops and recreates the tables, so it
-doubles as a reset. To wipe data entirely, `make reset` (down with volumes, then
-up) and `make schema` again.
+`make schema`, `make migrate`, and `make run` source `.env` for you. `make schema`
+bootstraps an empty database (baseline + all migrations) and refuses to run against
+an already-initialized one. Day-to-day schema changes go through goose migrations in
+`internal/store/migrations/`: `make migrate` applies pending ones to a real database
+(forward-only, never drops data), and `make migrate-create name=<snake_case>` scaffolds
+a new one. To wipe a dev db and start clean, `make reset` then `make schema`.
 
-Run the control-plane API:
+Run the control-plane API (`make run` sources `.env` and serves on `:8081`):
 
 ```sh
-PULSE_HEALTH_ADDR=:8080 go run ./cmd/api
+make run
+# or, raw: set -a; . ./.env; set +a; go run ./cmd/api
 ```
 
 Run the check pipeline (each service on its own health port):
@@ -124,9 +130,9 @@ The Lit SPA lives in `web/`. Two easy ways to browse it without setting up OAuth
 
 ```sh
 # Option A: dev-auth stub. Self-contained fake session + sample data, no infra.
-PULSE_DEV_AUTH=true go run ./cmd/api
+make dev   # serves on :8081 to match the SPA dev-server proxy
 
-# the SPA dev server, which proxies /api, /auth, /healthz to :8080
+# the SPA dev server, which proxies /api, /auth, /healthz to :8081
 cd web && npm install && npm run dev   # http://localhost:5173
 ```
 
