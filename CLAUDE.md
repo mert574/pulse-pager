@@ -93,3 +93,7 @@ The transport is pluggable behind a backend interface, selected by `PULSE_BUS`: 
 - Match the existing comment style: comments explain *why* and cite the RFC/PRD, in plain language. No em-dashes.
 - `make lint` must be clean (`gofmt`, `go vet`) before committing. Only commit/push when explicitly asked.
 - Adding a tenant entity: add to `schema.sql` (with RLS policy), a `store/<entity>.go` accessor using `WithOrg`, the spec in `v1.yaml`, then `make gen`.
+
+## Parallel work safety
+
+Other agents are often working in this tree at the same time. Never run commands that throw away or overwrite files you did not write in this session: no `git checkout HEAD -- <file>`, `git reset --hard`, `git stash`, or copying a saved snapshot back over a file. These wipe in-flight work from other agents, and a backup/restore dance is not safe because minutes pass between the steps. To commit only your own change, stage just your hunks with `git add -p` (or `git apply --cached` of a patch you built); leave every other file and every other hunk untouched.
