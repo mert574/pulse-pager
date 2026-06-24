@@ -212,6 +212,12 @@ tbody tr:nth-child(even) td { background: rgba(0,0,0,0.018); }
 .plan li { padding: 0.28rem 0; }
 .plan .contact-link { margin-top: auto; padding-top: 1rem; font-weight: 600; }
 
+/* Paddle checkout page (checkout.html): a narrow column holding the inline checkout. */
+.checkout-page { max-width: 560px; }
+.checkout-page .nav-brand { display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 700; margin-bottom: 1.5rem; }
+.checkout-page .checkout-container { margin: 1.5rem 0; min-height: 360px; }
+.checkout-page .checkout-help { color: var(--text-dim); font-size: 0.85rem; }
+
 .note {
   background: oklch(94% 0.06 80);
   border: 1px solid var(--border);

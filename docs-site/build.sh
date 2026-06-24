@@ -41,6 +41,12 @@ CONTACT_EMAIL="${CONTACT_EMAIL:-hi@pulsepager.com}"
 SITE_URL="${SITE_URL:-https://pulsepager.com}"
 JURISDICTION="${JURISDICTION:-[seller jurisdiction not set]}"
 EFFECTIVE_DATE="${EFFECTIVE_DATE:-2026-06-24}"
+# Paddle checkout page (checkout.html). The client-side token is safe in the browser
+# (it is not the secret API key); env is "production" or "sandbox"; APP_URL is where
+# Paddle returns the buyer after payment. Defaults keep this fork-friendly/unconfigured.
+PADDLE_CLIENT_TOKEN="${PADDLE_CLIENT_TOKEN:-[paddle client token not set]}"
+PADDLE_ENVIRONMENT="${PADDLE_ENVIRONMENT:-production}"
+APP_URL="${APP_URL:-https://app.pulsepager.com}"
 
 render_legal() { # $1 = page slug (terms|privacy|refund)
   local tmpl="${SCRIPT_DIR}/legal/${1}.template.html"
@@ -59,7 +65,21 @@ for page in terms privacy refund; do
   render_legal "${page}"
 done
 
+# Render the Paddle checkout page from its template, same approach as the legal pages.
+sed -e "s|{{PROJECT_NAME}}|${PROJECT_NAME}|g" \
+    -e "s|{{CONTACT_EMAIL}}|${CONTACT_EMAIL}|g" \
+    -e "s|{{SITE_URL}}|${SITE_URL}|g" \
+    -e "s|{{PADDLE_CLIENT_TOKEN}}|${PADDLE_CLIENT_TOKEN}|g" \
+    -e "s|{{PADDLE_ENVIRONMENT}}|${PADDLE_ENVIRONMENT}|g" \
+    -e "s|{{APP_URL}}|${APP_URL}|g" \
+    "${SCRIPT_DIR}/checkout.template.html" > "${SCRIPT_DIR}/checkout.html"
+echo "rendered checkout.template.html -> docs-site/checkout.html"
+
 echo "docs site ready in docs-site/ (serve it statically; open index.html)"
+if [ "${PADDLE_CLIENT_TOKEN}" = "[paddle client token not set]" ]; then
+  echo "note: PADDLE_CLIENT_TOKEN is unset. Set it in docs-site/site.config (Paddle >" >&2
+  echo "      Authentication > Client-side tokens) before checkout.html can run." >&2
+fi
 if [ "${SELLER_NAME}" = "[seller legal name not set]" ]; then
   echo "note: SELLER_NAME/JURISDICTION are unset placeholders. Set them in docs-site/site.config" >&2
   echo "      (copy site.config.example) before publishing the legal pages for Paddle." >&2

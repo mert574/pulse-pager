@@ -27,3 +27,18 @@ JURISDICTION="Germany"
 # Effective / last-updated date shown on the pages (YYYY-MM-DD). Bump it when you
 # change the content, not on every build.
 EFFECTIVE_DATE="2026-06-24"
+
+# --- Paddle checkout page (checkout.html) ---
+# This page is what you set as Paddle's "Default payment link", on a domain you have
+# approved in Paddle > Checkout > Approved domains. Paddle opens it as
+# <link>?_ptxn=<transaction id> and the page loads Paddle.js to show the payment form.
+
+# Client-side token from Paddle > Authentication > Client-side tokens (starts with
+# "live_" or "test_"). This is NOT the secret API key; it is meant for the browser.
+PADDLE_CLIENT_TOKEN="live_xxx"
+
+# "production" for live, "sandbox" for the Paddle sandbox.
+PADDLE_ENVIRONMENT="production"
+
+# Where Paddle sends the buyer after a successful payment (your app origin).
+APP_URL="https://app.pulsepager.com"

@@ -9,3 +9,7 @@ site.config
 terms.html
 privacy.html
 refund.html
+
+# Build artifact: rendered from checkout.template.html by build.sh. Holds the
+# deployment's Paddle client token, so it stays out of the repo.
+checkout.html

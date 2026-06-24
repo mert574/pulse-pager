@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Checkout - {{PROJECT_NAME}}</title>
+  <!-- A transient checkout page reached via Paddle's _ptxn link; never index it. -->
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="stylesheet" href="./assets/styles.css">
+  <link rel="icon" type="image/svg+xml" href="./assets/logo.svg" media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/svg+xml" href="./assets/logo-dark.svg" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+  <div class="container checkout-page">
+    <a class="nav-brand" href="./"><img class="logo" src="./assets/logo.svg" alt="" width="22" height="22">{{PROJECT_NAME}}</a>
+    <h1>Complete your purchase</h1>
+
+    <!-- Paddle renders the inline checkout (line items, totals, payment form) here. -->
+    <div class="checkout-container"></div>
+
+    <p id="checkout-status" class="note" hidden></p>
+    <p class="checkout-help">
+      Having trouble? <a href="{{SITE_URL}}/pricing.html">Back to pricing</a>
+      or email <a href="mailto:{{CONTACT_EMAIL}}">{{CONTACT_EMAIL}}</a>.
+    </p>
+  </div>
+
+  <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+  <script>
+    (function () {
+      // Filled in by docs-site/build.sh from site.config (or env). The client-side
+      // token is safe to ship to the browser (it is not the secret API key).
+      var TOKEN = "{{PADDLE_CLIENT_TOKEN}}";
+      var ENV = "{{PADDLE_ENVIRONMENT}}";
+      var APP_URL = "{{APP_URL}}";
+
+      var statusEl = document.getElementById("checkout-status");
+      function showStatus(msg) { statusEl.textContent = msg; statusEl.hidden = false; }
+
+      // Paddle builds this page's URL as <default payment link>?_ptxn=<transaction id>,
+      // so the transaction to pay for is in the query string.
+      var txn = new URLSearchParams(window.location.search).get("_ptxn");
+      if (!txn) {
+        showStatus("No checkout in progress. Start one from the billing page in the app.");
+        return;
+      }
+      // The placeholder starts with "[", so an unconfigured deploy says so instead of
+      // failing silently inside Paddle.js.
+      if (!TOKEN || TOKEN.charAt(0) === "[") {
+        showStatus("Checkout is not configured for this site yet.");
+        return;
+      }
+
+      Paddle.Environment.set(ENV || "production");
+      Paddle.Initialize({ token: TOKEN });
+      Paddle.Checkout.open({
+        transactionId: txn,
+        settings: {
+          displayMode: "inline",
+          frameTarget: "checkout-container",
+          frameInitialHeight: 480,
+          frameStyle: "width:100%; min-width:312px; background:transparent; border:none;",
+          // On success Paddle sends the buyer back to the app. The plan itself is
+          // applied by the webhook, so the app just needs to land them signed in.
+          successUrl: APP_URL
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
