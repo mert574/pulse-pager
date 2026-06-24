@@ -36,6 +36,16 @@ func TestRenderEmailHTMLEscapesAndContainsContent(t *testing.T) {
 		}
 	}
 
+	// The font-family must render as the real stack, not html/template's ZgotmplZ
+	// sentinel (which happens when a CSS value is not marked template.CSS). Otherwise
+	// every client falls back to its default font.
+	if strings.Contains(html, "ZgotmplZ") {
+		t.Error("font-family was filtered to ZgotmplZ; mark it as css")
+	}
+	if !strings.Contains(html, "font-family:system-ui,") {
+		t.Errorf("expected the system font stack in the output")
+	}
+
 	// User-controlled text must be escaped, never injected as a live tag.
 	if strings.Contains(html, "<script>") {
 		t.Error("unescaped <script> in heading")
@@ -164,5 +174,46 @@ func TestInviteAndMagicLinkKeepURLInText(t *testing.T) {
 	}
 	if !strings.Contains(mhtml, "Sign in") {
 		t.Error("magic-link html missing CTA")
+	}
+}
+
+func TestNoEmailRendersZgotmplZ(t *testing.T) {
+	// Every email shares the branded shell. A CSS value the template can't vouch for
+	// (an untyped string in a style attribute) becomes the ZgotmplZ sentinel and the
+	// client loses that styling. Render every builder and guard against it, so a future
+	// un-css'd style value is caught here instead of in someone's inbox.
+	_, _, down := AlertEmail(downEvent())
+	_, _, rec := AlertEmail(recoveryEvent())
+	_, _, test := TestEmail("Ops", "the Team email channel works", 42)
+	_, _, inv := InviteEmail("Acme", "Jane (jane@acme.com)", "admin", "https://app.test/invitations/t", "en")
+	_, _, magic := MagicLinkEmail("https://app.test/auth/email/verify?token=t", "en")
+	for name, html := range map[string]string{
+		"down": down, "recovery": rec, "test": test, "invite": inv, "magic-link": magic,
+	} {
+		if strings.Contains(html, "ZgotmplZ") {
+			t.Errorf("%s email contains the ZgotmplZ sentinel (an un-trusted CSS value)", name)
+		}
+	}
+}
+
+func TestBuildMessageFromHeaderAndEnvelope(t *testing.T) {
+	// A configured From in "Display Name <addr>" form goes into the From header verbatim
+	// (not wrapped again), and the SMTP envelope sender (MAIL FROM) is the bare address.
+	// Wrapping it twice or sending the display-name form as the envelope is the 501
+	// "Bad sender address syntax" Resend returns.
+	from := "Pulse Pager <noreply@pulsepager.com>"
+	raw := string(buildMessage(from, []string{"to@x.test"}, "Subj", "body", ""))
+	if !strings.Contains(raw, "From: Pulse Pager <noreply@pulsepager.com>\r\n") {
+		t.Errorf("From header should be the configured value verbatim:\n%s", raw)
+	}
+	if strings.Contains(raw, "Pulse Pager <Pulse Pager") {
+		t.Error("From header double-wrapped the display name")
+	}
+	if got := envelopeAddr(from); got != "noreply@pulsepager.com" {
+		t.Errorf("envelope sender = %q, want the bare address", got)
+	}
+	// A bare address passes through unchanged.
+	if got := envelopeAddr("plain@x.test"); got != "plain@x.test" {
+		t.Errorf("bare envelope = %q", got)
 	}
 }

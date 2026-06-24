@@ -12,7 +12,11 @@
   header #5b4231, cream #f7efe0, caramel #d98a4f, body #4a3526, heading #3a2a1d,
   muted #8a7257, hairline #ece0cc, zebra #faf5ec.
 */ -}}
-{{- $font := "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" -}}
+{{- /* css-typed so html/template trusts it in the style attributes; an untyped
+       string here is filtered to the ZgotmplZ sentinel and the font is lost. Leads
+       with system-ui (the standard "OS UI font" keyword) and keeps the vendor names
+       as fallbacks for older clients. */ -}}
+{{- $font := css "system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" -}}
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head>
 <body style="margin:0;padding:0;background:#ece2d2;">
 {{- if .Preheader}}

@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"net/textproto"
 	"strings"
@@ -201,9 +202,11 @@ func buildEmail(ev Event) (subject, body string) {
 // buildMessage keeps its plain []byte result.
 func buildMessage(from string, to []string, subject, body, html string) []byte {
 	var msg bytes.Buffer
-	// From display name is the product brand (RFC-017 2.6); the address is the
-	// configured internal value, carried through unchanged.
-	fmt.Fprintf(&msg, "From: Pulse Pager <%s>\r\n", from)
+	// The From is the configured value as-is: it already carries the display name and
+	// address (e.g. "Pulse Pager <noreply@pulsepager.com>", RFC-017 2.6), so we must not
+	// wrap it again. The envelope sender (MAIL FROM) is the bare address, parsed in the
+	// transport, since MAIL FROM rejects a display-name form.
+	fmt.Fprintf(&msg, "From: %s\r\n", from)
 	fmt.Fprintf(&msg, "To: %s\r\n", strings.Join(to, ", "))
 	fmt.Fprintf(&msg, "Subject: %s\r\n", subject)
 	msg.WriteString("MIME-Version: 1.0\r\n")
@@ -270,6 +273,17 @@ func base64Wrapped(s string) string {
 	return b.String()
 }
 
+// envelopeAddr returns the bare email address for the SMTP MAIL FROM command. The
+// configured From may be a "Display Name <addr>" value, but MAIL FROM takes only the
+// address (a display name there is a 501 syntax error). It falls back to the raw value
+// if it does not parse as an address.
+func envelopeAddr(from string) string {
+	if a, err := mail.ParseAddress(from); err == nil {
+		return a.Address
+	}
+	return from
+}
+
 // realSMTPSend is the production transport. It dials the server, sets up TLS or
 // STARTTLS, authenticates, and sends the message.
 func realSMTPSend(ctx context.Context, addr, host string, auth smtp.Auth, from string, to []string, msg []byte, useTLS bool) error {
@@ -315,7 +329,7 @@ func realSMTPSend(ctx context.Context, addr, host string, auth smtp.Auth, from s
 		}
 	}
 
-	if err := c.Mail(from); err != nil {
+	if err := c.Mail(envelopeAddr(from)); err != nil {
 		return fmt.Errorf("smtp: mail from: %w", err)
 	}
 	for _, r := range to {
