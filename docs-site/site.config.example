@@ -1,0 +1,29 @@
+# Site identity for the generated legal pages (terms/privacy/refund).
+#
+# Copy to docs-site/site.config and fill in your real values, OR set these as env
+# vars in CI. site.config is gitignored so your legal name never lands in the repo
+# (this is an open-source project). build.sh sources this, then renders the legal
+# templates. Re-run `make docs` (or docs-site/build.sh) after changing anything.
+#
+# For Paddle verification you MUST set SELLER_NAME (your Einzelunternehmen / legal
+# name, since a sole proprietor's legal name is preferred) and JURISDICTION.
+
+# Product/brand name shown on the pages.
+PROJECT_NAME="Pulse Pager"
+
+# The legal seller. For a sole proprietor this is your personal legal name; for a
+# company, the registered company name.
+SELLER_NAME="Your Legal Name"
+
+# Where buyers reach you for support, privacy, and refund requests.
+CONTACT_EMAIL="hi@pulsepager.com"
+
+# Public site origin (no trailing slash).
+SITE_URL="https://pulsepager.com"
+
+# Governing-law / place of establishment, e.g. "Germany".
+JURISDICTION="Germany"
+
+# Effective / last-updated date shown on the pages (YYYY-MM-DD). Bump it when you
+# change the content, not on every build.
+EFFECTIVE_DATE="2026-06-24"

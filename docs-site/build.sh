@@ -25,4 +25,42 @@ fi
 
 cp "${SPEC_SRC}" "${SPEC_DST}"
 echo "copied $(basename "${SPEC_SRC}") -> docs-site/openapi.yaml"
+
+# Render the legal pages (terms / privacy / refund) from their templates, filling in
+# the site identity. The values are kept OUT of the repo so this stays fork-friendly:
+# defaults are generic placeholders, and a deployment supplies the real ones via env
+# vars or an untracked docs-site/site.config (see site.config.example). The rendered
+# *.html are build artifacts (gitignored), regenerated here and in CI like openapi.yaml.
+if [ -f "${SCRIPT_DIR}/site.config" ]; then
+  # shellcheck disable=SC1091
+  . "${SCRIPT_DIR}/site.config"
+fi
+PROJECT_NAME="${PROJECT_NAME:-Pulse Pager}"
+SELLER_NAME="${SELLER_NAME:-[seller legal name not set]}"
+CONTACT_EMAIL="${CONTACT_EMAIL:-hi@pulsepager.com}"
+SITE_URL="${SITE_URL:-https://pulsepager.com}"
+JURISDICTION="${JURISDICTION:-[seller jurisdiction not set]}"
+EFFECTIVE_DATE="${EFFECTIVE_DATE:-2026-06-24}"
+
+render_legal() { # $1 = page slug (terms|privacy|refund)
+  local tmpl="${SCRIPT_DIR}/legal/${1}.template.html"
+  local out="${SCRIPT_DIR}/${1}.html"
+  # | as the sed delimiter so URLs (with /) pass through; values must not contain |.
+  sed -e "s|{{PROJECT_NAME}}|${PROJECT_NAME}|g" \
+      -e "s|{{SELLER_NAME}}|${SELLER_NAME}|g" \
+      -e "s|{{CONTACT_EMAIL}}|${CONTACT_EMAIL}|g" \
+      -e "s|{{SITE_URL}}|${SITE_URL}|g" \
+      -e "s|{{JURISDICTION}}|${JURISDICTION}|g" \
+      -e "s|{{EFFECTIVE_DATE}}|${EFFECTIVE_DATE}|g" \
+      "${tmpl}" > "${out}"
+  echo "rendered legal/${1}.template.html -> docs-site/${1}.html"
+}
+for page in terms privacy refund; do
+  render_legal "${page}"
+done
+
 echo "docs site ready in docs-site/ (serve it statically; open index.html)"
+if [ "${SELLER_NAME}" = "[seller legal name not set]" ]; then
+  echo "note: SELLER_NAME/JURISDICTION are unset placeholders. Set them in docs-site/site.config" >&2
+  echo "      (copy site.config.example) before publishing the legal pages for Paddle." >&2
+fi
