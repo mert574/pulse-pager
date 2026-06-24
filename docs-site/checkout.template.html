@@ -37,10 +37,8 @@
       var statusEl = document.getElementById("checkout-status");
       function showStatus(msg) { statusEl.textContent = msg; statusEl.hidden = false; }
 
-      // Paddle builds this page's URL as <default payment link>?_ptxn=<transaction id>,
-      // so the transaction to pay for is in the query string.
-      var txn = new URLSearchParams(window.location.search).get("_ptxn");
-      if (!txn) {
+      // Paddle builds this page's URL as <default payment link>?_ptxn=<transaction id>.
+      if (!new URLSearchParams(window.location.search).has("_ptxn")) {
         showStatus("No checkout in progress. Start one from the billing page in the app.");
         return;
       }
@@ -51,18 +49,23 @@
         return;
       }
 
+      // Paddle.js opens the checkout for the _ptxn transaction by itself once it loads;
+      // we must NOT also call Paddle.Checkout.open or two checkouts render at once
+      // (https://developer.paddle.com/build/transactions/default-payment-link). Instead
+      // we pass default checkout settings to Initialize, which the auto-opened checkout
+      // uses: inline display, and successUrl to send the buyer back to the app on
+      // completion (the plan itself is applied by the webhook).
       Paddle.Environment.set(ENV || "production");
-      Paddle.Initialize({ token: TOKEN });
-      Paddle.Checkout.open({
-        transactionId: txn,
-        settings: {
-          displayMode: "inline",
-          frameTarget: "checkout-container",
-          frameInitialHeight: 480,
-          frameStyle: "width:100%; min-width:312px; background:transparent; border:none;",
-          // On success Paddle sends the buyer back to the app. The plan itself is
-          // applied by the webhook, so the app just needs to land them signed in.
-          successUrl: APP_URL
+      Paddle.Initialize({
+        token: TOKEN,
+        checkout: {
+          settings: {
+            displayMode: "inline",
+            frameTarget: "checkout-container",
+            frameInitialHeight: 480,
+            frameStyle: "width:100%; min-width:312px; background:transparent; border:none;",
+            successUrl: APP_URL
+          }
         }
       });
     })();
