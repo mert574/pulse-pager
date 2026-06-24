@@ -566,22 +566,8 @@ func (s *Server) seatUsage(ctx context.Context, orgID int64) (entitlements.SeatU
 // resend. The accept link points at the FE route ${APP_BASE_URL}/invitations/{token}.
 func (s *Server) sendInviteEmail(ctx context.Context, inv *domain.Invitation, orgName, rawToken string) {
 	acceptURL := s.appBaseURL + "/invitations/" + rawToken
-	subject, body := inviteEmailBody(orgName, string(inv.Role), acceptURL, inv.Locale)
-	_ = s.mailer.Send(ctx, notify.Mail{To: inv.Email, Subject: subject, Body: body})
-}
-
-// inviteEmailBody renders the plain-text invite email, localized to the invite
-// locale (RFC-014 7/9). v1 ships English and German copy; an unknown locale falls
-// back to English. The accept URL carries the raw token.
-func inviteEmailBody(orgName, role, acceptURL, locale string) (subject, body string) {
-	if strings.HasPrefix(strings.ToLower(locale), "de") {
-		subject = fmt.Sprintf("Du wurdest zu %s bei Pulse Pager eingeladen", orgName)
-		body = fmt.Sprintf("Du wurdest eingeladen, %s als %s beizutreten.\n\nEinladung annehmen:\n%s\n\nDieser Link ist 7 Tage gultig.\n", orgName, role, acceptURL)
-		return subject, body
-	}
-	subject = fmt.Sprintf("You're invited to %s on Pulse Pager", orgName)
-	body = fmt.Sprintf("You've been invited to join %s as %s.\n\nAccept the invitation:\n%s\n\nThis link is valid for 7 days.\n", orgName, role, acceptURL)
-	return subject, body
+	subject, body, html := notify.InviteEmail(orgName, string(inv.Role), acceptURL, inv.Locale)
+	_ = s.mailer.Send(ctx, notify.Mail{To: inv.Email, Subject: subject, Body: body, HTML: html})
 }
 
 // memberDTO maps a membership + user to the API Member shape.

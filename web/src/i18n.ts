@@ -12,11 +12,22 @@
 const en = {
   // login
   "login.tagline": "Sign in to your Pulse Pager account",
-  "login.google": "Sign in with Google",
-  "login.github": "Sign in with GitHub",
+  "login.github": "Continue with GitHub",
   "login.dev": "Dev sign in",
+  "login.agreePrefix": "I agree to the",
+  "login.agreeTerms": "Terms",
+  "login.agreeMid": "and",
+  "login.agreePrivacy": "Privacy Policy",
+  "login.agreeSuffix": ".",
   "login.errorGeneric": "Could not sign you in. Please try again.",
   "login.errorDenied": "Sign in was cancelled.",
+  "login.emailOr": "or",
+  "login.emailLabel": "Email address",
+  "login.emailPlaceholder": "you@example.com",
+  "login.emailSubmit": "Email me a link",
+  "login.emailSending": "Sending…",
+  "login.emailSent":
+    "If that email has an account, we sent a sign-in link. Check your inbox.",
 
   // org switcher
   "org.switch": "Switch organization",
@@ -436,6 +447,7 @@ const en = {
   "channelForm.secretReplaceHint": "Enter a new value to replace it.",
   "channelForm.addItem": "Add",
   "channelForm.removeItem": "Remove",
+  "channelForm.memberListEmpty": "No members to pick yet. Invite teammates first.",
 
   // channel-type catalog keys the API references (RFC-014). These seed the common
   // codes; anything the catalog sends that is not here falls back to its message.
@@ -760,11 +772,22 @@ export type MessageKey = keyof typeof en;
 
 const es: Record<MessageKey, string> = {
   "login.tagline": "Inicia sesión en tu cuenta de Pulse Pager",
-  "login.google": "Iniciar sesión con Google",
-  "login.github": "Iniciar sesión con GitHub",
+  "login.github": "Continuar con GitHub",
   "login.dev": "Inicio de sesión de desarrollo",
+  "login.agreePrefix": "Acepto los",
+  "login.agreeTerms": "Términos",
+  "login.agreeMid": "y la",
+  "login.agreePrivacy": "Política de Privacidad",
+  "login.agreeSuffix": ".",
   "login.errorGeneric": "No se pudo iniciar sesión. Inténtalo de nuevo.",
   "login.errorDenied": "Se canceló el inicio de sesión.",
+  "login.emailOr": "o",
+  "login.emailLabel": "Correo electrónico",
+  "login.emailPlaceholder": "tu@ejemplo.com",
+  "login.emailSubmit": "Enviarme un enlace",
+  "login.emailSending": "Enviando…",
+  "login.emailSent":
+    "Si esa cuenta existe, enviamos un enlace de acceso. Revisa tu bandeja de entrada.",
   "org.switch": "Cambiar de organización",
   "org.create": "Crear organización…",
   "org.id": "ID",
@@ -1157,6 +1180,7 @@ const es: Record<MessageKey, string> = {
     "Introduce un nuevo valor para reemplazarlo.",
   "channelForm.addItem": "Añadir",
   "channelForm.removeItem": "Quitar",
+  "channelForm.memberListEmpty": "Aún no hay miembros para elegir. Invita a tu equipo primero.",
   "channel.unavailable.plan_upgrade": "Disponible en un plan superior.",
   "members.heading": "Miembros",
   "members.colName": "Nombre",
@@ -1466,11 +1490,22 @@ const es: Record<MessageKey, string> = {
 
 const de: Record<MessageKey, string> = {
   "login.tagline": "Melde dich bei deinem Pulse Pager-Konto an",
-  "login.google": "Mit Google anmelden",
-  "login.github": "Mit GitHub anmelden",
+  "login.github": "Mit GitHub fortfahren",
+  "login.agreePrefix": "Ich stimme den",
+  "login.agreeTerms": "Nutzungsbedingungen",
+  "login.agreeMid": "und der",
+  "login.agreePrivacy": "Datenschutzerklärung",
+  "login.agreeSuffix": "zu.",
   "login.dev": "Dev-Anmeldung",
   "login.errorGeneric": "Anmeldung fehlgeschlagen. Bitte versuche es erneut.",
   "login.errorDenied": "Die Anmeldung wurde abgebrochen.",
+  "login.emailOr": "oder",
+  "login.emailLabel": "E-Mail-Adresse",
+  "login.emailPlaceholder": "du@beispiel.de",
+  "login.emailSubmit": "Link zusenden",
+  "login.emailSending": "Wird gesendet…",
+  "login.emailSent":
+    "Falls ein Konto zu dieser E-Mail existiert, haben wir einen Anmeldelink gesendet. Schau in dein Postfach.",
   "org.switch": "Organisation wechseln",
   "org.create": "Organisation erstellen…",
   "org.id": "ID",
@@ -1860,6 +1895,7 @@ const de: Record<MessageKey, string> = {
   "channelForm.secretReplaceHint": "Neuen Wert eingeben, um ihn zu ersetzen.",
   "channelForm.addItem": "Hinzufügen",
   "channelForm.removeItem": "Entfernen",
+  "channelForm.memberListEmpty": "Noch keine Mitglieder zur Auswahl. Lade zuerst dein Team ein.",
   "channel.unavailable.plan_upgrade": "In einem höheren Tarif verfügbar.",
   "members.heading": "Mitglieder",
   "members.colName": "Name",
