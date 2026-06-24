@@ -239,11 +239,14 @@ func TestChannelsManagement(t *testing.T) {
 		// available in the catalog (the FE then stops disabling them).
 		var orgIDInt int64
 		fmt.Sscan(orgID, &orgIDInt)
-		if _, err := admin.Exec(ctx, "UPDATE organizations SET plan='business' WHERE id=$1", orgIDInt); err != nil {
-			t.Fatalf("set business plan: %v", err)
+		// tierCustom is the top tier and the only one with every phased type (incl.
+		// twilio); the plan codes are tier1..tierCustom (the free/business names were
+		// renamed). An unknown code would silently parse to tier1 and unlock nothing.
+		if _, err := admin.Exec(ctx, "UPDATE organizations SET plan='tierCustom' WHERE id=$1", orgIDInt); err != nil {
+			t.Fatalf("set top plan: %v", err)
 		}
 		t.Cleanup(func() {
-			admin.Exec(ctx, "UPDATE organizations SET plan='free' WHERE id=$1", orgIDInt)
+			admin.Exec(ctx, "UPDATE organizations SET plan='tier1' WHERE id=$1", orgIDInt)
 		})
 
 		resp, err := ownerClient.Get(ts.URL + "/api/v1/orgs/" + orgID + "/channel-types")

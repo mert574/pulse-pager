@@ -179,6 +179,15 @@ func TestAPIKeys(t *testing.T) {
 	}
 	orgID := ownerMe.Orgs[0].OrgID
 
+	// API keys need a paid plan (Free has no API access in the pricing-matched
+	// entitlements). A freshly registered org is on tier1, so put it on tier3
+	// (Professional, full read+write) before exercising the key CRUD/auth subtests.
+	var orgIDInt int64
+	fmt.Sscan(orgID, &orgIDInt)
+	if _, err := admin.Exec(ctx, "UPDATE organizations SET plan='tier3' WHERE id=$1", orgIDInt); err != nil {
+		t.Fatalf("set plan: %v", err)
+	}
+
 	// --- owner creates a member-role key: response carries the full secret once + metadata ---
 	var memberKeySecret string
 	t.Run("owner_creates_key_secret_once", func(t *testing.T) {

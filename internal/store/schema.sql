@@ -1,32 +1,15 @@
--- Single source-of-truth schema for early development. There are no incremental
--- migrations yet: this whole file is applied to a fresh (or reset) database by
--- store.ApplySchema. It drops the known tables first, so re-running it resets the
--- schema. Once the data model stabilizes we switch to versioned migrations.
-
-DROP TABLE IF EXISTS org_webhooks;
-DROP TABLE IF EXISTS notify_deliveries;
-DROP TABLE IF EXISTS notify_dedup;
-DROP TABLE IF EXISTS channels;
--- CASCADE: the public-lookup RLS policies on monitors/incidents/check_results
--- reference these two tables, so a plain DROP would fail while those tables still
--- exist. CASCADE drops the dependent policies with them; the referencing tables are
--- recreated below with the policies, so the reset stays clean.
-DROP TABLE IF EXISTS status_page_monitors CASCADE;
-DROP TABLE IF EXISTS status_pages CASCADE;
-DROP TABLE IF EXISTS monitor_last_failure;
-DROP TABLE IF EXISTS incident_annotations;
-DROP TABLE IF EXISTS incidents;
-DROP TABLE IF EXISTS check_results;
-DROP TABLE IF EXISTS monitors;
--- identity tables (added with the identity/onboarding work package). Dropped
--- before organizations because they reference it.
-DROP TABLE IF EXISTS api_keys;
-DROP TABLE IF EXISTS refresh_tokens;
-DROP TABLE IF EXISTS invitations;
-DROP TABLE IF EXISTS memberships;
-DROP TABLE IF EXISTS user_identities;
-DROP TABLE IF EXISTS users;
-DROP TABLE IF EXISTS organizations;
+-- Frozen baseline schema. store.ApplySchema applies this file, then the goose
+-- migrations in migrations/ on top, so a fresh or test database matches a migrated
+-- one. To keep a re-run a CLEAN reset, it first drops and recreates the public schema:
+-- enumerating tables by hand stopped working once migrations started adding their own
+-- tables and functions (monitor_cert, subscriptions, payments, billing_events, ...),
+-- which the baseline drop-list could never know about. Dropping the schema clears
+-- everything from any prior apply (baseline + migrations) in one shot. USAGE is granted
+-- back to PUBLIC so the restricted pulse_app role keeps schema access; its per-table
+-- privileges are granted further down (and by each migration).
+DROP SCHEMA IF EXISTS public CASCADE;
+CREATE SCHEMA public;
+GRANT USAGE ON SCHEMA public TO PUBLIC;
 
 -- Restricted role that RLS applies to. Services that handle user requests connect
 -- as this role so a missed org filter fails safe (RFC-001 6.1). Created idempotently
