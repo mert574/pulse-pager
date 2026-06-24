@@ -16,6 +16,10 @@ import tailwindcss from "@tailwindcss/vite";
 // backend so the SPA can talk to it with HMR and no binary rebuild.
 export default defineConfig({
   base: "/",
+  // Read .env from the repo root (one level up) instead of web/, so the build picks
+  // up the same root .env the Go services use. Only VITE_-prefixed vars are exposed
+  // to the client bundle, so the PULSE_* secrets in that file stay server-side.
+  envDir: resolve(__dirname, ".."),
   plugins: [tailwindcss()],
   build: {
     outDir: "dist",

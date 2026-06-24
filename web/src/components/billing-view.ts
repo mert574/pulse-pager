@@ -89,6 +89,16 @@ export class BillingView extends AppElement {
         plan,
         cycle: this.cycle,
       });
+      // stash where to come back to: /checkout (Paddle's default payment link) reads
+      // this after the overlay closes, since the _ptxn redirect carries no org id.
+      try {
+        window.sessionStorage.setItem(
+          "pulse.checkout.return",
+          window.location.pathname,
+        );
+      } catch {
+        // sessionStorage may be blocked; checkout falls back to /account.
+      }
       this.redirectTo(url);
     } catch (err) {
       this.billingError =

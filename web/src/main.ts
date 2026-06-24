@@ -93,6 +93,16 @@ const routes: Route[] = [
       ),
   },
   {
+    // Paddle's default payment link redirects here as /checkout?_ptxn=<txn>; the
+    // view loads Paddle.js and opens the checkout overlay. No guard: the redirect
+    // keeps the session cookie, and the overlay works off the transaction id alone.
+    pattern: "/checkout",
+    render: () =>
+      import("./components/checkout-view.js").then(
+        () => html`<checkout-view></checkout-view>`,
+      ),
+  },
+  {
     pattern: "/orgs/new",
     guard: requireAuth,
     render: () =>
