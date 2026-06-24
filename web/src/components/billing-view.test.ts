@@ -173,15 +173,18 @@ describe("billing-view", () => {
   it("renders the plan comparison with the current plan highlighted", async () => {
     const { el, restore } = await mount({});
     try {
-      await waitUntil(() => el.querySelector("table") !== null, "table renders");
-      // a row per tier from /plans (scoped to the compare table, not invoices rows)
-      expect(el.querySelectorAll("tr[data-plan]").length).to.equal(4);
-      // the current (team) row is marked current; lower/other rows are not
-      const teamRow = el.querySelector<HTMLElement>('tr[data-plan="tier3"]')!;
-      expect(teamRow.dataset.current).to.equal("true");
-      expect(teamRow.textContent).to.contain("Current");
-      const freeRow = el.querySelector<HTMLElement>('tr[data-plan="tier1"]')!;
-      expect(freeRow.dataset.current).to.equal("false");
+      await waitUntil(
+        () => el.querySelector("[data-plan]") !== null,
+        "plan cards render",
+      );
+      // a card per tier from /plans
+      expect(el.querySelectorAll("[data-plan]").length).to.equal(4);
+      // the current (team) card is marked current; lower/other cards are not
+      const teamCard = el.querySelector<HTMLElement>('[data-plan="tier3"]')!;
+      expect(teamCard.dataset.current).to.equal("true");
+      expect(teamCard.textContent).to.contain("Current");
+      const freeCard = el.querySelector<HTMLElement>('[data-plan="tier1"]')!;
+      expect(freeCard.dataset.current).to.equal("false");
     } finally {
       restore();
     }
@@ -190,7 +193,7 @@ describe("billing-view", () => {
   it("offers Upgrade only on higher tiers and opens a contact/coming-soon affordance, not a checkout", async () => {
     const { el, calls, restore } = await mount({});
     try {
-      await waitUntil(() => el.querySelector("table") !== null);
+      await waitUntil(() => el.querySelector("[data-plan]") !== null);
       // upgrade only on the higher tier (business), not on free/starter/team
       expect(el.querySelector('[data-upgrade="tier1"]')).to.be.null;
       expect(el.querySelector('[data-upgrade="tier3"]')).to.be.null;
@@ -228,7 +231,7 @@ describe("billing-view", () => {
     };
     const { el, calls, restore } = await mount({ handler });
     try {
-      await waitUntil(() => el.querySelector("table") !== null);
+      await waitUntil(() => el.querySelector("[data-plan]") !== null);
       let redirected: string | null = null;
       (el as unknown as { redirectTo: (u: string) => void }).redirectTo = (u) =>
         (redirected = u);
@@ -303,7 +306,7 @@ describe("billing-view", () => {
       // a member never reaches the entitlements/plans calls
       expect(calls.length).to.equal(0);
       expect(el.querySelector("[data-meter]")).to.be.null;
-      expect(el.querySelector("table")).to.be.null;
+      expect(el.querySelector("[data-plan]")).to.be.null;
     } finally {
       restore();
     }

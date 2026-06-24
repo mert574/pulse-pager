@@ -204,6 +204,10 @@ tbody tr:nth-child(even) td { background: rgba(0,0,0,0.018); }
   border-bottom: 1px solid var(--border);
 }
 .plan .plan-price small { display: block; font-weight: 400; font-size: 0.78rem; color: var(--text-dim); }
+/* Annual price + saving, shown under the monthly headline. */
+.plan .plan-save { display: block; margin-top: 0.35rem; font-weight: 600; font-size: 0.76rem; color: var(--accent); }
+/* Small pill calling out the free trial above the feature list. */
+.plan .plan-trial { display: inline-block; align-self: flex-start; margin: 0 0 1rem; padding: 0.18rem 0.6rem; font-size: 0.74rem; font-weight: 600; color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; }
 .plan ul { list-style: none; padding: 0; margin: 0; font-size: 0.9rem; }
 .plan li { padding: 0.28rem 0; }
 .plan .contact-link { margin-top: auto; padding-top: 1rem; font-weight: 600; }

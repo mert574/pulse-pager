@@ -37,6 +37,38 @@ const PLAN_LABEL: Record<Plan, MessageKey> = {
   tierCustom: "plan.tierCustom",
 };
 
+// One-line "who it's for" tagline per plan, same copy as the public pricing page.
+const PLAN_TAGLINE: Record<Plan, MessageKey> = {
+  tier1: "billing.tier1For",
+  tier2: "billing.tier2For",
+  tier3: "billing.tier3For",
+  tierCustom: "billing.tierCustomFor",
+};
+
+type PriceInfo =
+  | { kind: "free" }
+  | { kind: "paid"; monthly: number; annual: number }
+  | { kind: "custom"; from: number };
+
+// Published cloud prices in whole dollars (docs-site/pricing.html and PRD.md).
+// The catalog API returns caps, not price, and the real charge always comes from
+// the provider price id at checkout, so these are display-only. Annual is ten
+// months' price (two months free), so the saving is computed, not hard-coded.
+const PLAN_PRICE: Record<Plan, PriceInfo> = {
+  tier1: { kind: "free" },
+  tier2: { kind: "paid", monthly: 7, annual: 70 },
+  tier3: { kind: "paid", monthly: 19, annual: 190 },
+  tierCustom: { kind: "custom", from: 129 },
+};
+
+// Free-trial length by billing cycle, display copy matching each provider
+// price's trial_days: a shorter trial on monthly, a longer one on annual. Only
+// the self-serve paid plans carry a trial (Free needs none, Custom is contract).
+const CYCLE_TRIAL_DAYS: Record<"monthly" | "annual", number> = {
+  monthly: 3,
+  annual: 7,
+};
+
 // A bar is "near cap" once it crosses this fraction of the limit, which flips it
 // to a warning color so an org sees a limit coming before it blocks a write.
 const NEAR_CAP = 0.8;
@@ -403,7 +435,7 @@ export class BillingView extends AppElement {
       : html`<span class="text-base-content/50">${t("billing.notIncluded")}</span>`;
   }
 
-  // --- plan comparison ---
+  // --- plan comparison (a card grid mirroring the public pricing page) ---
 
   private compareSection(plans: PlanCatalogEntry[], current: Plan) {
     const byPlan = new Map(plans.map((p) => [p.plan, p]));
@@ -412,80 +444,168 @@ export class BillingView extends AppElement {
     );
     const currentRank = PLAN_ORDER.indexOf(current);
     return html`
-      <section class="flex flex-col gap-3">
+      <section class="flex flex-col gap-4">
         <div class="flex items-end justify-between gap-3 flex-wrap">
           <div>
             <h2 class="text-lg font-semibold">${t("billing.compare")}</h2>
             <p class="text-base-content/60 text-sm">${t("billing.compareHint")}</p>
           </div>
-          <div class="join" role="group" aria-label=${t("billing.cycle")}>
-            <button
-              class=${`btn btn-sm join-item ${this.cycle === "monthly" ? "btn-active" : ""}`}
-              @click=${() => (this.cycle = "monthly")}
+          <div class="flex flex-col items-end gap-1">
+            <div class="join" role="group" aria-label=${t("billing.cycle")}>
+              <button
+                class=${`btn btn-sm join-item ${this.cycle === "monthly" ? "btn-active" : ""}`}
+                @click=${() => (this.cycle = "monthly")}
+              >
+                ${t("billing.monthly")}
+              </button>
+              <button
+                class=${`btn btn-sm join-item ${this.cycle === "annual" ? "btn-active" : ""}`}
+                @click=${() => (this.cycle = "annual")}
+              >
+                ${t("billing.annual")}
+              </button>
+            </div>
+            <span class="text-success text-xs font-medium"
+              >${t("billing.annualBadge")}</span
             >
-              ${t("billing.monthly")}
-            </button>
-            <button
-              class=${`btn btn-sm join-item ${this.cycle === "annual" ? "btn-active" : ""}`}
-              @click=${() => (this.cycle = "annual")}
-            >
-              ${t("billing.annual")}
-            </button>
           </div>
         </div>
-        <div class="overflow-x-auto rounded-box border border-base-300">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>${t("billing.colPlan")}</th>
-                <th>${t("billing.colMonitors")}</th>
-                <th>${t("billing.colInterval")}</th>
-                <th>${t("billing.colSeats")}</th>
-                <th>${t("billing.colStatusPages")}</th>
-                <th>${t("billing.colRetention")}</th>
-                <th>${t("billing.colApiRate")}</th>
-                <th>${t("billing.colChannels")}</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              ${ordered.map((p) => this.planRow(p, current, currentRank))}
-            </tbody>
-          </table>
+        <div class="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          ${ordered.map((p) => this.planCard(p, current, currentRank))}
         </div>
       </section>
     `;
   }
 
-  private planRow(p: PlanCatalogEntry, current: Plan, currentRank: number) {
+  private planCard(p: PlanCatalogEntry, current: Plan, currentRank: number) {
     const isCurrent = p.plan === current;
     const isHigher = PLAN_ORDER.indexOf(p.plan) > currentRank;
-    return html`<tr
-      class=${isCurrent ? "bg-primary/5" : ""}
+    // tier3 (Professional) is the highlighted plan on the public pricing page too.
+    const featured = p.plan === "tier3";
+    const price = this.planPrice(p.plan);
+    const trialDays =
+      PLAN_PRICE[p.plan].kind === "paid"
+        ? CYCLE_TRIAL_DAYS[this.cycle]
+        : undefined;
+    return html`<div
+      class=${`card border bg-base-100 ${
+        featured ? "border-primary ring-1 ring-primary" : "border-base-300"
+      } ${isCurrent ? "bg-primary/5" : ""}`}
       data-plan=${p.plan}
       data-current=${isCurrent ? "true" : "false"}
     >
-      <td class="font-medium">
-        <div class="flex items-center gap-2">
-          ${this.planLabel(p.plan)}
-          ${isCurrent
-            ? html`<span class="badge badge-primary badge-sm"
-                >${t("billing.currentTier")}</span
+      <div class="card-body gap-4">
+        <div class="flex flex-col gap-1">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-base font-semibold">${this.planLabel(p.plan)}</h3>
+            ${isCurrent
+              ? html`<span class="badge badge-primary badge-sm"
+                  >${t("billing.currentTier")}</span
+                >`
+              : featured
+                ? html`<span class="badge badge-primary badge-outline badge-sm"
+                    >${t("billing.recommended")}</span
+                  >`
+                : nothing}
+          </div>
+          <p class="text-base-content/60 text-sm">${t(PLAN_TAGLINE[p.plan])}</p>
+        </div>
+        <div class="flex flex-col gap-1">
+          <div class="flex items-baseline gap-1">
+            <span class="text-3xl font-bold tabular-nums">${price.amount}</span>
+            <span class="text-base-content/60 text-sm">${price.sub}</span>
+          </div>
+          ${price.save
+            ? html`<div class="flex items-center gap-2 text-xs">
+                ${price.struck
+                  ? html`<span
+                      class="text-base-content/40 line-through tabular-nums"
+                      >${price.struck}</span
+                    >`
+                  : nothing}
+                <span class="text-success font-medium">${price.save}</span>
+              </div>`
+            : nothing}
+          ${trialDays
+            ? html`<span class="badge badge-info badge-outline badge-sm mt-1 w-fit"
+                >${tDynamic("billing.trialDays", "", { days: trialDays })}</span
               >`
             : nothing}
         </div>
-      </td>
-      <td>${p.monitors_cap}</td>
-      <td>${formatDuration(p.min_interval_seconds)}</td>
-      <td>${p.seats_cap}</td>
-      <td>${p.status_pages_cap}</td>
-      <td>${tDynamic("billing.factRetentionValue", "", { days: p.retention_days })}</td>
-      <td>${tDynamic("billing.colApiRateValue", "", { count: p.api_rate_per_min })}</td>
-      <td>${p.channel_types.length}</td>
-      <td class="text-right">
-        ${isHigher ? this.upgradeButton(p.plan) : nothing}
-      </td>
-    </tr>`;
+        <ul class="flex flex-col gap-2 text-sm">
+          ${this.planFeatures(p).map(
+            (f) => html`<li class="flex items-start gap-2">
+              <span class="text-success mt-0.5">${icon("check", "size-4")}</span>
+              <span>${f}</span>
+            </li>`,
+          )}
+        </ul>
+        <div class="card-actions mt-auto pt-2">
+          ${isCurrent
+            ? html`<button class="btn btn-sm btn-block btn-disabled" disabled>
+                ${t("billing.currentTier")}
+              </button>`
+            : isHigher
+              ? this.upgradeButton(p.plan)
+              : nothing}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // The published display price per plan (see PLAN_PRICE), with the monthly/annual
+  // amount picked by the current toggle. On annual it also returns the struck
+  // full-year price and the saving so the discount is visible on the card.
+  private planPrice(plan: Plan): {
+    amount: string;
+    sub: string;
+    struck?: string;
+    save?: string;
+  } {
+    const info = PLAN_PRICE[plan];
+    if (info.kind === "free") {
+      return { amount: "$0", sub: t("billing.priceFree") };
+    }
+    if (info.kind === "custom") {
+      return {
+        amount: tDynamic("billing.fromPrice", "", { price: `$${info.from}` }),
+        sub: t("billing.perMonthAnnual"),
+      };
+    }
+    if (this.cycle === "annual") {
+      const fullYear = info.monthly * 12;
+      const saved = fullYear - info.annual;
+      return {
+        amount: `$${info.annual}`,
+        sub: t("billing.perYear"),
+        struck: `$${fullYear}`,
+        save: tDynamic("billing.saveAnnual", "", { amount: `$${saved}` }),
+      };
+    }
+    return { amount: `$${info.monthly}`, sub: t("billing.perMonth") };
+  }
+
+  // Six feature bullets per card, read straight off the live plan catalog so they
+  // stay true to the enforced caps rather than drifting from marketing copy.
+  private planFeatures(p: PlanCatalogEntry): string[] {
+    return [
+      tDynamic("billing.featChecks", "", {
+        interval: formatDuration(p.min_interval_seconds),
+      }),
+      tDynamic("billing.featMonitors", "", { count: p.monitors_cap }),
+      p.regions_per_monitor_cap > 1
+        ? tDynamic("billing.featRegionsMulti", "", {
+            count: p.regions_per_monitor_cap,
+          })
+        : t("billing.featRegionsSingle"),
+      tDynamic("billing.featRetention", "", { days: p.retention_days }),
+      tDynamic("billing.featStatusPages", "", { count: p.status_pages_cap }),
+      !p.api_access_allowed
+        ? t("billing.featApiNone")
+        : p.api_write_allowed
+          ? t("billing.featApiFull")
+          : t("billing.featApiRead"),
+    ];
   }
 
   // The upgrade affordance differs by tier: tier2/tier3 are self-serve, so the button
@@ -494,7 +614,7 @@ export class BillingView extends AppElement {
   private upgradeButton(plan: Plan) {
     if (plan === "tierCustom") {
       return html`<button
-        class="btn btn-sm btn-outline"
+        class="btn btn-sm btn-block btn-outline"
         data-upgrade=${plan}
         @click=${() => (this.upgradeTo = plan)}
       >
