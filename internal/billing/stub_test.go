@@ -102,8 +102,8 @@ func TestStubOperatorMethods(t *testing.T) {
 	if err != nil || !strings.Contains(url, "org=7") || !strings.Contains(url, "plan=tier2") {
 		t.Fatalf("Checkout: url=%q err=%v", url, err)
 	}
-	portal, err := s.PortalURL(ctx, 7)
-	if err != nil || !strings.Contains(portal, "org=7") {
+	portal, err := s.PortalURL(ctx, "ctm_7", "sub_7")
+	if err != nil || !strings.Contains(portal, "customer=ctm_7") {
 		t.Fatalf("PortalURL: url=%q err=%v", portal, err)
 	}
 	if err := s.UpdateSubscription(ctx, "sub_1", PlanChange{Plan: "tier3", Cycle: "annual"}); err != nil {

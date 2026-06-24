@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strconv"
 
+	"github.com/jackc/pgx/v5"
+
 	"pulse/internal/apigen"
 	"pulse/internal/authz"
 	"pulse/internal/billing"
@@ -61,7 +63,20 @@ func (s *Server) CreateBillingPortal(ctx context.Context, req apigen.CreateBilli
 		return apigen.CreateBillingPortal422JSONResponse{ValidationFailedJSONResponse: validationFailed("billing is not configured")}, nil
 	}
 
-	url, err := s.billing.PortalURL(ctx, p.OrgID)
+	// The portal is a per-customer provider page, so the org needs a subscription with a
+	// provider customer id first. A Free/never-subscribed org has nothing to manage.
+	sub, err := s.store.GetSubscriptionByOrg(ctx, p.OrgID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apigen.CreateBillingPortal422JSONResponse{ValidationFailedJSONResponse: validationFailed("no billing to manage on this plan")}, nil
+		}
+		return nil, err
+	}
+	if sub.ProviderCustomerID == "" {
+		return apigen.CreateBillingPortal422JSONResponse{ValidationFailedJSONResponse: validationFailed("no billing to manage on this plan")}, nil
+	}
+
+	url, err := s.billing.PortalURL(ctx, sub.ProviderCustomerID, sub.ProviderSubscriptionID)
 	if err != nil {
 		if errors.Is(err, billing.ErrNotImplemented) {
 			return apigen.CreateBillingPortal422JSONResponse{ValidationFailedJSONResponse: validationFailed("the customer portal is not available yet")}, nil

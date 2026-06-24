@@ -104,7 +104,12 @@ type Provider interface {
 	SignatureHeader() string
 
 	Checkout(ctx context.Context, orgID int64, plan, cycle string) (url string, err error)
-	PortalURL(ctx context.Context, orgID int64) (string, error)
+	// PortalURL returns a provider-hosted page where the customer manages their own
+	// billing (change/cancel plan, update card, view invoices). It takes the provider
+	// customer id (and the subscription id, for deep links) since the org's plan moves
+	// happen on the provider's side, not ours. The caller resolves both from the org's
+	// subscription row.
+	PortalURL(ctx context.Context, providerCustomerID, providerSubscriptionID string) (string, error)
 	UpdateSubscription(ctx context.Context, providerSubID string, target PlanChange) error
 	CancelSubscription(ctx context.Context, providerSubID string, when CancelWhen) error
 	Refund(ctx context.Context, providerPaymentID string, amount *Money, reason string) error

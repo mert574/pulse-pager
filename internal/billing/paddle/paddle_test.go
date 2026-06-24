@@ -82,6 +82,43 @@ func TestCheckoutUnknownPrice(t *testing.T) {
 	}
 }
 
+func TestPortalURL(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// the SDK addresses /customers/{customer_id}/portal-sessions
+		if r.URL.Path != "/customers/ctm_1/portal-sessions" {
+			t.Errorf("path: got %s want /customers/ctm_1/portal-sessions", r.URL.Path)
+		}
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"id":"cpls_1","customer_id":"ctm_1",
+			"urls":{"general":{"overview":"https://pay.paddle.com/portal/ctm_1"}}}}`))
+	}))
+	defer srv.Close()
+
+	p := newProvider(t, srv.URL)
+	url, err := p.PortalURL(context.Background(), "ctm_1", "sub_1")
+	if err != nil {
+		t.Fatalf("PortalURL: %v", err)
+	}
+	if url != "https://pay.paddle.com/portal/ctm_1" {
+		t.Fatalf("portal url: %q", url)
+	}
+	// passing a subscription id asks Paddle for that subscription's deep links too
+	ids, _ := gotBody["subscription_ids"].([]any)
+	if len(ids) != 1 || ids[0] != "sub_1" {
+		t.Fatalf("subscription_ids: %v", gotBody["subscription_ids"])
+	}
+}
+
+func TestPortalURLNoCustomer(t *testing.T) {
+	p := newProvider(t, "https://example.invalid")
+	if _, err := p.PortalURL(context.Background(), "", ""); err == nil {
+		t.Fatal("expected error when no customer id is given")
+	}
+}
+
 func TestVerifyWebhookSubscription(t *testing.T) {
 	p := newProvider(t, "")
 	body := []byte(`{

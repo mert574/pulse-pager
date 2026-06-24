@@ -3,13 +3,13 @@
 // billing.Provider seam so the rest of the app stays provider-agnostic.
 //
 // What's implemented against the live API: Checkout (create a transaction and return
-// its hosted checkout URL), VerifyWebhook (SDK signature verifier + event mapping to
-// billing.Event), CancelSubscription, and full Refund (a Paddle adjustment). Two
+// its hosted checkout URL), PortalURL (create a customer-portal session so the customer
+// manages/cancels their own plan), VerifyWebhook (SDK signature verifier + event mapping
+// to billing.Event), CancelSubscription, and full Refund (a Paddle adjustment). Two
 // operator-only flows are not wired yet and return billing.ErrNotImplemented, which the
 // api treats gracefully (it still applies the local override): UpdateSubscription (the
 // PatchField/proration plan move) and SetCustomPrice (creating a per-org non-catalog
-// price). PortalURL also returns ErrNotImplemented until we store the Paddle customer id
-// per org. Partial refunds need transaction line-item amounts, so they error for now;
+// price). Partial refunds need transaction line-item amounts, so they error for now;
 // full refunds work.
 package paddle
 
@@ -157,10 +157,26 @@ func (p *Provider) Refund(ctx context.Context, providerPaymentID string, amount 
 	return nil
 }
 
-// PortalURL is not wired yet: it needs the Paddle customer id for the org, which we only
-// learn from the first webhook. Returns ErrNotImplemented so the api degrades gracefully.
-func (p *Provider) PortalURL(ctx context.Context, orgID int64) (string, error) {
-	return "", billing.ErrNotImplemented
+// PortalURL creates a Paddle customer-portal session and returns its general overview
+// link. That hosted page is where the customer manages billing themselves: change or
+// cancel the plan, update the card, and see invoices. Paddle can't defer a plan change
+// to the next billing period via the API (proration only controls billing, not when the
+// switch happens), so a downgrade is the customer cancelling here and re-subscribing to a
+// cheaper plan. Passing the subscription id makes Paddle include per-subscription deep
+// links (e.g. a pre-opened cancel form) in the session too.
+func (p *Provider) PortalURL(ctx context.Context, providerCustomerID, providerSubscriptionID string) (string, error) {
+	if providerCustomerID == "" {
+		return "", fmt.Errorf("paddle: portal session needs a customer id")
+	}
+	req := &paddle.CreateCustomerPortalSessionRequest{CustomerID: providerCustomerID}
+	if providerSubscriptionID != "" {
+		req.SubscriptionIDs = []string{providerSubscriptionID}
+	}
+	session, err := p.sdk.CreateCustomerPortalSession(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("paddle: create portal session: %w", err)
+	}
+	return session.URLs.General.Overview, nil
 }
 
 // UpdateSubscription (operator plan move) uses Paddle's PatchField/proration flow; not

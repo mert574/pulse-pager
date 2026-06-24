@@ -200,9 +200,9 @@ func (s *Stub) Checkout(_ context.Context, orgID int64, plan, cycle string) (str
 	return fmt.Sprintf("%s/checkout?org=%d&plan=%s&cycle=%s", stubBaseURL, orgID, plan, cycle), nil
 }
 
-// PortalURL returns a fake customer-portal url for the org.
-func (s *Stub) PortalURL(_ context.Context, orgID int64) (string, error) {
-	return fmt.Sprintf("%s/portal?org=%d", stubBaseURL, orgID), nil
+// PortalURL returns a fake customer-portal url for the given provider customer.
+func (s *Stub) PortalURL(_ context.Context, providerCustomerID, providerSubscriptionID string) (string, error) {
+	return fmt.Sprintf("%s/portal?customer=%s&subscription=%s", stubBaseURL, providerCustomerID, providerSubscriptionID), nil
 }
 
 // UpdateSubscription pretends to switch the subscription price; the webhook reconciles.
