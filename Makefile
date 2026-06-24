@@ -87,6 +87,15 @@ gen:
 docs:
 	./docs-site/build.sh
 
+# Fetch the Paddle product/price catalog (price ids, trial periods, custom data),
+# for mapping plans -> price ids (RFC-018). Needs a read-only Paddle key in the env:
+#   PADDLE_API_KEY=pdl_... make paddle-catalog   (add --json via ARGS=--json)
+.PHONY: paddle-catalog
+paddle-catalog:
+	@test -n "$$PADDLE_API_KEY" || test -n "$$PULSE_PADDLE_API_KEY" || \
+		{ echo "set PADDLE_API_KEY to a read-only Paddle key"; exit 1; }
+	go run ./cmd/paddle-catalog $(ARGS)
+
 # Drift check (RFC-012 8.3): the spec must lint, and the committed generated
 # files must match a fresh regeneration. Fails the build if the spec and code
 # disagree. Run in CI.
