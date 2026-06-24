@@ -566,8 +566,26 @@ func (s *Server) seatUsage(ctx context.Context, orgID int64) (entitlements.SeatU
 // resend. The accept link points at the FE route ${APP_BASE_URL}/invitations/{token}.
 func (s *Server) sendInviteEmail(ctx context.Context, inv *domain.Invitation, orgName, rawToken string) {
 	acceptURL := s.appBaseURL + "/invitations/" + rawToken
-	subject, body, html := notify.InviteEmail(orgName, string(inv.Role), acceptURL, inv.Locale)
+	subject, body, html := notify.InviteEmail(orgName, s.inviterDisplay(ctx, inv), string(inv.Role), acceptURL, inv.Locale)
 	_ = s.mailer.Send(ctx, notify.Mail{To: inv.Email, Subject: subject, Body: body, HTML: html})
+}
+
+// inviterDisplay resolves who sent the invite into a display string for the email,
+// e.g. "Jane Doe (jane@acme.com)", or just the email when no name is set. It returns
+// "" when there is no creator on record or the lookup fails, so the invite copy
+// falls back to its passive phrasing rather than blocking the send.
+func (s *Server) inviterDisplay(ctx context.Context, inv *domain.Invitation) string {
+	if inv.CreatedBy == nil {
+		return ""
+	}
+	u, err := s.store.GetUser(ctx, *inv.CreatedBy)
+	if err != nil {
+		return ""
+	}
+	if u.Name == "" {
+		return u.Email
+	}
+	return fmt.Sprintf("%s (%s)", u.Name, u.Email)
 }
 
 // memberDTO maps a membership + user to the API Member shape.

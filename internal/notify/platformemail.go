@@ -80,7 +80,7 @@ func (p *platformEmailProvider) Validate(cfg map[string]any) error {
 // SMTP channel read identically.
 func emailContent(ev Event) (subject, text, html string) {
 	if ev.Test {
-		return TestEmail(ev.ChannelName, "the Team email channel works")
+		return TestEmail(ev.ChannelName, "the Team email channel works", ev.OrgID)
 	}
 	return AlertEmail(ev)
 }

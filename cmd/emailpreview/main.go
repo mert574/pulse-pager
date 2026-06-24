@@ -33,6 +33,10 @@ func main() {
 	to := flag.String("to", "", "send the rendered emails to this address (needs PULSE_SMTP_* env); empty = write files only")
 	flag.Parse()
 
+	// Set a sample SPA origin so the previews show the "manage your channels" link the
+	// real alert/test emails carry.
+	notify.SetAppBaseURL("https://app.pulsepager.com")
+
 	samples := buildSamples()
 
 	if err := os.MkdirAll(*outDir, 0o755); err != nil {
@@ -87,6 +91,10 @@ type sample struct {
 	html    string
 }
 
+// sampleOrgID is the org the sample alert/test emails belong to; it makes the
+// "manage your channels" link resolve to a realistic /orgs/{id}/channels path.
+const sampleOrgID = 42
+
 func buildSamples() []sample {
 	var out []sample
 
@@ -103,15 +111,16 @@ func buildSamples() []sample {
 	add("02-alert-recovery", "Alert: recovery", subj, text, html)
 
 	// 3) Channel test message.
-	subj, text, html = notify.TestEmail("Ops on-call", "the email channel works")
+	subj, text, html = notify.TestEmail("Ops on-call", "the email channel works", sampleOrgID)
 	add("03-test-message", "Channel test", subj, text, html)
 
 	// 4) Org invite (English, German, Spanish).
-	subj, text, html = notify.InviteEmail("Acme Inc", "admin", "https://app.pulsepager.com/invitations/inv_8f2c1a9b4d", "en")
+	const inviter = "Jane Doe (jane@acme.com)"
+	subj, text, html = notify.InviteEmail("Acme Inc", inviter, "admin", "https://app.pulsepager.com/invitations/inv_8f2c1a9b4d", "en")
 	add("04-invite-en", "Invite (EN)", subj, text, html)
-	subj, text, html = notify.InviteEmail("Acme Inc", "admin", "https://app.pulsepager.com/invitations/inv_8f2c1a9b4d", "de")
+	subj, text, html = notify.InviteEmail("Acme Inc", inviter, "admin", "https://app.pulsepager.com/invitations/inv_8f2c1a9b4d", "de")
 	add("05-invite-de", "Invite (DE)", subj, text, html)
-	subj, text, html = notify.InviteEmail("Acme Inc", "admin", "https://app.pulsepager.com/invitations/inv_8f2c1a9b4d", "es")
+	subj, text, html = notify.InviteEmail("Acme Inc", inviter, "admin", "https://app.pulsepager.com/invitations/inv_8f2c1a9b4d", "es")
 	add("06-invite-es", "Invite (ES)", subj, text, html)
 
 	// 5) Magic-link sign-in (English, German, Spanish).
@@ -133,6 +142,7 @@ func downEvent() notify.Event {
 	started := time.Date(2026, 6, 24, 9, 12, 0, 0, time.UTC)
 	return notify.Event{
 		EventType:   notify.EventDown,
+		OrgID:       sampleOrgID,
 		ChannelName: "Ops on-call",
 		Monitor: domain.Monitor{
 			ID:     123,
@@ -157,6 +167,7 @@ func recoveryEvent() notify.Event {
 	ended := time.Date(2026, 6, 24, 9, 27, 0, 0, time.UTC)
 	return notify.Event{
 		EventType:   notify.EventRecovery,
+		OrgID:       sampleOrgID,
 		ChannelName: "Ops on-call",
 		Monitor: domain.Monitor{
 			ID:     123,

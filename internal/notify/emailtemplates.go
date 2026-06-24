@@ -19,6 +19,19 @@ func AlertEmail(ev Event) (subject, text, html string) {
 	return subject, text, html
 }
 
+// alertCallout is the "why am I getting this?" box shared by the down and recovery
+// alerts. It links to the recipient's channels page (when the base URL is set) so
+// they can change what notifies them. It does not name a specific channel: one event
+// fans out to every attached channel, so the alert does not carry a single name.
+func alertCallout(ev Event) *EmailCallout {
+	return &EmailCallout{
+		Title:     "Why am I getting this?",
+		Body:      "You're getting this because a Pulse Pager alert channel is set to notify you when one of your monitors changes state.",
+		LinkLabel: "Manage your alert channels",
+		LinkURL:   channelsURL(orgIDString(ev.OrgID)),
+	}
+}
+
 // alertEmailHTML builds the HTML body for a down or recovery alert.
 func alertEmailHTML(ev Event) string {
 	name := ev.Monitor.Name
@@ -45,11 +58,11 @@ func alertEmailHTML(ev Event) string {
 		}
 		return RenderEmailHTML(EmailContent{
 			Preheader: fmt.Sprintf("%s is back up after %s", name, humanDuration(dur)),
-			Banner:    &EmailBanner{Label: "Recovered", Color: colorOK, BG: colorOKBG},
+			Banner:    &EmailBanner{Label: "Recovered", Tone: "ok"},
 			Heading:   name + " is back up",
 			Intro:     "Good news. Pulse Pager can reach this monitor again and the incident is closed.",
 			Rows:      rows,
-			Footer:    "You're getting this because a Pulse Pager alert channel is set to notify you.",
+			Callout:   alertCallout(ev),
 		})
 	}
 
@@ -73,11 +86,11 @@ func alertEmailHTML(ev Event) string {
 
 	return RenderEmailHTML(EmailContent{
 		Preheader: fmt.Sprintf("%s is down", name),
-		Banner:    &EmailBanner{Label: "Down", Color: colorDown, BG: colorDownBG},
+		Banner:    &EmailBanner{Label: "Down", Tone: "down"},
 		Heading:   name + " is down",
 		Intro:     "Pulse Pager just opened an incident for this monitor. Here's what we saw.",
 		Rows:      rows,
-		Footer:    "You're getting this because a Pulse Pager alert channel is set to notify you.",
+		Callout:   alertCallout(ev),
 	})
 }
 
@@ -92,57 +105,77 @@ func failureReason(ev Event) string {
 
 // TestEmail renders the "test message" a user sends to confirm a channel works.
 // worksLine is the channel-specific confirmation ("the SMTP channel works", "the
-// Team email channel works").
-func TestEmail(channelName, worksLine string) (subject, text, html string) {
+// Team email channel works"). orgID lets the "why am I getting this?" box link back
+// to that org's channels page.
+func TestEmail(channelName, worksLine string, orgID int64) (subject, text, html string) {
 	subject = "[Pulse Pager] Test message"
 	text = fmt.Sprintf("This is a test message from Pulse Pager for channel %q.\nIf you received this, %s.\n", channelName, worksLine)
 	html = RenderEmailHTML(EmailContent{
 		Preheader: "Test message from Pulse Pager",
-		Banner:    &EmailBanner{Label: "Test", Color: colorTest, BG: colorTestBG},
+		Banner:    &EmailBanner{Label: "Test", Tone: "test"},
 		Heading:   "Your channel is working",
 		Intro:     fmt.Sprintf("This is a test message from Pulse Pager for the channel %q. If you received this, %s and you're all set to get real alerts here.", channelName, worksLine),
-		Footer:    "You triggered this test from your Pulse Pager notification settings.",
+		Callout: &EmailCallout{
+			Title:     "Why am I getting this?",
+			Body:      fmt.Sprintf("You sent this test from your Pulse Pager notification settings to check the %q channel.", channelName),
+			LinkLabel: "Back to your channels",
+			LinkURL:   channelsURL(orgIDString(orgID)),
+		},
 	})
 	return subject, text, html
 }
 
 // InviteEmail renders the org invitation, localized to the invite locale (RFC-014
 // 7/9). v1 ships English, German, and Spanish; an unknown locale falls back to
-// English. The accept URL carries the raw token and is kept on its own line in the
-// text part so the accept flow can read it back.
-func InviteEmail(orgName, role, acceptURL, locale string) (subject, text, html string) {
+// English. inviter is the person who sent the invite, already formatted for display
+// (e.g. "Jane Doe (jane@acme.com)"); when it is empty the copy falls back to the
+// passive "you've been invited" phrasing. The accept URL carries the raw token and
+// is kept on its own line in the text part so the accept flow can read it back.
+func InviteEmail(orgName, inviter, role, acceptURL, locale string) (subject, text, html string) {
 	switch {
 	case strings.HasPrefix(strings.ToLower(locale), "de"):
+		lead := fmt.Sprintf("Du wurdest eingeladen, %s als %s", orgName, role)
+		if inviter != "" {
+			lead = fmt.Sprintf("%s hat dich eingeladen, %s als %s", inviter, orgName, role)
+		}
 		subject = fmt.Sprintf("Du wurdest zu %s bei Pulse Pager eingeladen", orgName)
-		text = fmt.Sprintf("Du wurdest eingeladen, %s als %s beizutreten.\n\nEinladung annehmen:\n%s\n\nDieser Link ist 7 Tage gultig.\n", orgName, role, acceptURL)
+		text = fmt.Sprintf("%s beizutreten.\n\nEinladung annehmen:\n%s\n\nDieser Link ist 7 Tage gultig.\n", lead, acceptURL)
 		html = RenderEmailHTML(EmailContent{
 			Preheader: fmt.Sprintf("Du wurdest zu %s eingeladen", orgName),
 			Heading:   fmt.Sprintf("Du wurdest zu %s eingeladen", orgName),
-			Intro:     fmt.Sprintf("Du wurdest eingeladen, %s als %s bei Pulse Pager beizutreten.", orgName, role),
+			Intro:     fmt.Sprintf("%s bei Pulse Pager beizutreten.", lead),
 			Button:    &EmailButton{Label: "Einladung annehmen", URL: acceptURL},
 			Note:      "Dieser Link ist 7 Tage gultig.",
 			Footer:    "Wenn du diese Einladung nicht erwartet hast, kannst du diese E-Mail ignorieren.",
 		})
 		return subject, text, html
 	case strings.HasPrefix(strings.ToLower(locale), "es"):
+		lead := fmt.Sprintf("Te han invitado a unirte a %s como %s", orgName, role)
+		if inviter != "" {
+			lead = fmt.Sprintf("%s te ha invitado a unirte a %s como %s", inviter, orgName, role)
+		}
 		subject = fmt.Sprintf("Te han invitado a %s en Pulse Pager", orgName)
-		text = fmt.Sprintf("Te han invitado a unirte a %s como %s.\n\nAcepta la invitacion:\n%s\n\nEste enlace es valido durante 7 dias.\n", orgName, role, acceptURL)
+		text = fmt.Sprintf("%s.\n\nAcepta la invitacion:\n%s\n\nEste enlace es valido durante 7 dias.\n", lead, acceptURL)
 		html = RenderEmailHTML(EmailContent{
 			Preheader: fmt.Sprintf("Te han invitado a %s", orgName),
 			Heading:   fmt.Sprintf("Te han invitado a %s", orgName),
-			Intro:     fmt.Sprintf("Te han invitado a unirte a %s como %s en Pulse Pager.", orgName, role),
+			Intro:     fmt.Sprintf("%s en Pulse Pager.", lead),
 			Button:    &EmailButton{Label: "Aceptar invitacion", URL: acceptURL},
 			Note:      "Este enlace es valido durante 7 dias.",
 			Footer:    "Si no esperabas esta invitacion, puedes ignorar este correo.",
 		})
 		return subject, text, html
 	}
+	lead := fmt.Sprintf("You've been invited to join %s as %s", orgName, role)
+	if inviter != "" {
+		lead = fmt.Sprintf("%s invited you to join %s as %s", inviter, orgName, role)
+	}
 	subject = fmt.Sprintf("You're invited to %s on Pulse Pager", orgName)
-	text = fmt.Sprintf("You've been invited to join %s as %s.\n\nAccept the invitation:\n%s\n\nThis link is valid for 7 days.\n", orgName, role, acceptURL)
+	text = fmt.Sprintf("%s.\n\nAccept the invitation:\n%s\n\nThis link is valid for 7 days.\n", lead, acceptURL)
 	html = RenderEmailHTML(EmailContent{
 		Preheader: fmt.Sprintf("You're invited to join %s", orgName),
 		Heading:   fmt.Sprintf("You're invited to %s", orgName),
-		Intro:     fmt.Sprintf("You've been invited to join %s as %s on Pulse Pager. Accept below to get started.", orgName, role),
+		Intro:     fmt.Sprintf("%s on Pulse Pager. Accept below to get started.", lead),
 		Button:    &EmailButton{Label: "Accept invitation", URL: acceptURL},
 		Note:      "This link is valid for 7 days.",
 		Footer:    "If you weren't expecting this invitation, you can ignore this email.",

@@ -82,6 +82,13 @@ type Config struct {
 	// configured: the api logs the invite link instead of sending, and the Team email
 	// channel's send fails clearly ("no mailer configured").
 	SMTP SMTPConfig
+
+	// AppBaseURL is the SPA origin (e.g. https://app.pulsepager.com), read from
+	// PULSE_APP_BASE_URL for both the api and the notifier. The email templates use it
+	// to link the recipient to their channels page. The api edge also keeps a copy in
+	// Identity for the OAuth redirect; this top-level one is what the notifier reads,
+	// since it does not load the api-only identity config.
+	AppBaseURL string
 }
 
 // SMTPConfig is the platform mailer connection settings, read from the PULSE_SMTP_*
@@ -247,6 +254,7 @@ func Load(service Service) (*Config, error) {
 	// optional (empty host = no real mailer), so this never fails the boot.
 	if service == ServiceAPI || service == ServiceNotifier {
 		cfg.SMTP = loadSMTP()
+		cfg.AppBaseURL = os.Getenv("PULSE_APP_BASE_URL")
 	}
 
 	// Only the api edge needs the identity/auth config.

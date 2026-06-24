@@ -64,6 +64,9 @@ func main() {
 		svc.Cfg.SMTP.Password, svc.Cfg.SMTP.From, svc.Cfg.SMTP.TLSMode, svc.Log,
 	)
 	mgr.SetEmailDeps(mailer, pg)
+	// The alert/test emails link the recipient to their channels page; the notifier
+	// builds those emails, so it needs the SPA origin from config.
+	notify.SetAppBaseURL(svc.Cfg.AppBaseURL)
 	runner := notify.NewRunner(mgr, registry, pg, rd, cons, svc.Log, notify.WithWebhooks(pg))
 
 	runCtx, cancel := context.WithCancel(ctx)

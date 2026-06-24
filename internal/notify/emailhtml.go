@@ -1,49 +1,72 @@
 package notify
 
 import (
+	"bytes"
+	_ "embed"
 	"fmt"
-	"html"
+	"html/template"
+	"strconv"
 	"strings"
 )
 
 // HTML email rendering for every message the platform sends: the down/recovery
-// alert mail, the channel test message, the org invite, and the magic-link
-// sign-in. They all share one branded shell (RenderEmailHTML) so the look stays
-// consistent and there is a single place to change the chrome.
-//
-// Everything is built for email clients, not browsers: tables for layout, inline
-// styles only (Gmail strips <style> and <head>), a 600px centered card, and
-// bulletproof table-wrapped buttons so Outlook renders them. No external images
-// (the logo is drawn from text + the caramel "ping" dot), so nothing is blocked
-// or broken when remote content is off. Dynamic values are HTML-escaped, since
-// monitor names, org names, and error text are user-controlled.
-//
-// The palette is the product's coffee/latte brand, taken from the web theme and
-// the logo: dark coffee #5b4231, cream #f7efe0, caramel #d98a4f.
-const (
-	colorPageBG     = "#ece2d2" // warm latte page background
-	colorCardBG     = "#fffdf9" // near-white cream card
-	colorHeaderBG   = "#5b4231" // dark coffee (the logo badge)
-	colorHeaderText = "#f7efe0" // cream wordmark on the coffee header
-	colorAccent     = "#d98a4f" // caramel (the logo ping dot)
-	colorText       = "#4a3526" // body copy, dark coffee
-	colorHeading    = "#3a2a1d" // headings, darkest coffee
-	colorDim        = "#8a7257" // muted labels and footer
-	colorBorder     = "#ece0cc" // hairline between rows
-	colorRowBG      = "#faf5ec" // fact-table zebra tint
-	colorButtonBG   = "#5b4231" // primary CTA, coffee
-	colorButtonText = "#f7efe0" // CTA label, cream
+// alert mail, the channel test message, the org invite, and the magic-link sign-in.
+// They all share one branded shell (assets/email.html.tmpl) so the look stays
+// consistent and there is a single place to change the chrome. The template is an
+// html/template, so every value is escaped for its context (monitor names, org
+// names, and error text are user-controlled). The Go side here just fills an
+// EmailContent and runs the template.
 
-	// Status banner colors (warm-tinted so they sit in the palette).
-	colorDown   = "#c0392b"
-	colorDownBG = "#fbeae7"
-	colorOK     = "#1f9254"
-	colorOKBG   = "#e9f6ee"
-	colorTest   = "#9a5a34"
-	colorTestBG = "#f6ecdd"
+// emailLogoPNG is the Pulse Pager mark (the cream-badge "dark mode" variant, which
+// reads well on the dark coffee header). It is embedded so every email carries its
+// own logo as an inline attachment (see buildMessage): no remote image fetch, so it
+// renders even when a client blocks remote content. emailLogoCID is the Content-ID
+// the html <img src="cid:..."> and the attachment part agree on.
+//
+//go:embed assets/logo-email.png
+var emailLogoPNG []byte
 
-	fontStack = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
-)
+const emailLogoCID = "pulselogo"
+
+//go:embed assets/email.html.tmpl
+var emailTemplateSrc string
+
+// emailTemplate is the branded shell, parsed once at startup. The funcs cover the
+// three things the template context needs: raw emits the Outlook conditional
+// comments (html/template would strip them), css passes a trusted color into a
+// style attribute, and odd zebra-stripes the fact table.
+var emailTemplate = template.Must(template.New("email").Funcs(template.FuncMap{
+	"raw":   func(s string) template.HTML { return template.HTML(s) },
+	"css":   func(s string) template.CSS { return template.CSS(s) },
+	"odd":   func(i int) bool { return i%2 == 1 },
+	"upper": strings.ToUpper,
+}).Parse(emailTemplateSrc))
+
+// appBaseURL is the SPA origin (e.g. https://app.pulsepager.com), set once at
+// startup with SetAppBaseURL. The alert/test emails use it to link the recipient to
+// their channels page so they can change what notifies them. Empty (the default, and
+// in tests) just drops the link; the rest of the email is unaffected. A package var
+// set at boot follows the same shape as the registry and smtpSend seams.
+var appBaseURL string
+
+// SetAppBaseURL records the SPA origin used to build in-email links. The api and the
+// notifier both call it at startup from config. Trailing slashes are trimmed so the
+// joined paths never double up.
+func SetAppBaseURL(u string) { appBaseURL = strings.TrimRight(u, "/") }
+
+// channelsURL is the recipient's channels page for an org, or "" when the base URL
+// is not configured (then the callout shows its text without a link). orgID is a
+// string because org ids are moving to hex; today's int64 is formatted by the caller.
+func channelsURL(orgID string) string {
+	if appBaseURL == "" || orgID == "" {
+		return ""
+	}
+	return appBaseURL + "/orgs/" + orgID + "/channels"
+}
+
+// orgIDString renders the current int64 org id as the string the email layer works
+// with. It is the one spot to change when org ids become hex strings.
+func orgIDString(orgID int64) string { return strconv.FormatInt(orgID, 10) }
 
 // EmailButton is an optional call-to-action rendered as a bulletproof button.
 type EmailButton struct {
@@ -57,168 +80,57 @@ type EmailRow struct {
 	Value string
 }
 
-// EmailBanner is the colored status pill at the top of the body (alerts/test).
+// EmailBanner is the colored status pill at the top of the body. Tone selects the
+// pill colors in the template ("down", "ok", or "test"); the template owns the
+// actual hex values so the whole palette lives in one place.
 type EmailBanner struct {
-	Label string // e.g. "DOWN", "RECOVERED", "TEST"
-	Color string // text/dot color
-	BG    string // pill background
+	Label string
+	Tone  string
+}
+
+// EmailCallout is the "Why am I getting this?" box: a short explanation plus an
+// optional link (e.g. "Manage your alert channels") so the recipient can change
+// what notifies them. The link is dropped when LinkURL is empty.
+type EmailCallout struct {
+	Title     string
+	Body      string
+	LinkLabel string
+	LinkURL   string
 }
 
 // EmailContent is everything the shell needs to render one branded HTML email.
-// All string fields are plain text; RenderEmailHTML escapes them.
+// All string fields are plain text; the template escapes them.
 type EmailContent struct {
-	Preheader string       // hidden inbox preview line
-	Banner    *EmailBanner // optional status pill
-	Heading   string       // big headline
-	Intro     string       // a paragraph under the heading
-	Rows      []EmailRow   // optional fact table
-	Button    *EmailButton // optional CTA
-	Note      string       // optional small print under the body
-	Footer    string       // context line in the footer ("you're getting this because...")
+	Preheader string        // hidden inbox preview line
+	Banner    *EmailBanner  // optional status pill
+	Heading   string        // big headline
+	Intro     string        // a paragraph under the heading
+	Rows      []EmailRow    // optional fact table
+	Button    *EmailButton  // optional CTA
+	Note      string        // optional small print under the body
+	Callout   *EmailCallout // optional "why am I getting this?" box
+	Footer    string        // context line in the footer ("you're getting this because...")
 }
 
-// RenderEmailHTML builds the full HTML document for one email. It is exported so
-// the api package (invite, magic link) and a preview tool can reuse the same
-// shell the notify providers use.
+// emailView is the data the template renders: the content plus the inline logo's
+// src. LogoSrc is a template.URL so the cid: scheme is not stripped by the URL
+// filter (it is a trusted, fixed value, not user input).
+type emailView struct {
+	EmailContent
+	LogoSrc template.URL
+}
+
+// RenderEmailHTML builds the full HTML document for one email. It is exported so the
+// api package (invite, magic link) and a preview tool can reuse the same shell the
+// notify providers use.
 func RenderEmailHTML(c EmailContent) string {
-	var b strings.Builder
-
-	b.WriteString(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">`)
-	b.WriteString(`<meta name="viewport" content="width=device-width,initial-scale=1">`)
-	b.WriteString(`<meta name="color-scheme" content="light"></head>`)
-	b.WriteString(fmt.Sprintf(`<body style="margin:0;padding:0;background:%s;">`, colorPageBG))
-
-	// Hidden preheader: sets the inbox preview text without showing in the body.
-	if c.Preheader != "" {
-		b.WriteString(fmt.Sprintf(
-			`<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">%s</div>`,
-			esc(c.Preheader)))
+	var b bytes.Buffer
+	view := emailView{EmailContent: c, LogoSrc: template.URL("cid:" + emailLogoCID)}
+	if err := emailTemplate.Execute(&b, view); err != nil {
+		// The template is embedded and parsed at startup, so an execute error is a
+		// programming bug, not a runtime condition. Surface it rather than send a
+		// half-rendered email.
+		return fmt.Sprintf("email render error: %v", err)
 	}
-
-	// Outer full-width table centers the card on the latte background.
-	b.WriteString(fmt.Sprintf(
-		`<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" border="0" style="background:%s;">`,
-		colorPageBG))
-	b.WriteString(`<tr><td align="center" style="padding:32px 16px;">`)
-
-	// The card is fluid up to 600px: width:100% + max-width caps it on phones, and
-	// an Outlook-only ghost table caps it on desktop Outlook (which ignores
-	// max-width). So it fills a narrow screen and centers at 600px everywhere else.
-	b.WriteString(`<!--[if mso]><table role="presentation" width="600" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->`)
-	b.WriteString(fmt.Sprintf(
-		`<table role="presentation" align="center" width="100%%" cellpadding="0" cellspacing="0" border="0" style="width:100%%;max-width:600px;background:%s;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(58,42,29,0.08);">`,
-		colorCardBG))
-
-	// Header: coffee bar with the cream wordmark and the caramel ping dot.
-	b.WriteString(fmt.Sprintf(`<tr><td style="background:%s;padding:26px 32px;text-align:center;">`, colorHeaderBG))
-	b.WriteString(fmt.Sprintf(
-		`<span style="font-family:%s;font-size:20px;font-weight:700;letter-spacing:-0.01em;color:%s;">`+
-			`<span style="color:%s;font-size:22px;line-height:1;">&#9679;</span>&nbsp;Pulse Pager</span>`,
-		fontStack, colorHeaderText, colorAccent))
-	b.WriteString(`</td></tr>`)
-
-	// Body.
-	b.WriteString(`<tr><td style="padding:32px;">`)
-
-	if c.Banner != nil {
-		b.WriteString(renderBanner(*c.Banner))
-	}
-
-	if c.Heading != "" {
-		b.WriteString(fmt.Sprintf(
-			`<h1 style="margin:0 0 12px;font-family:%s;font-size:22px;line-height:1.3;font-weight:700;color:%s;">%s</h1>`,
-			fontStack, colorHeading, esc(c.Heading)))
-	}
-
-	if c.Intro != "" {
-		b.WriteString(fmt.Sprintf(
-			`<p style="margin:0 0 20px;font-family:%s;font-size:15px;line-height:1.6;color:%s;">%s</p>`,
-			fontStack, colorText, esc(c.Intro)))
-	}
-
-	if len(c.Rows) > 0 {
-		b.WriteString(renderRows(c.Rows))
-	}
-
-	if c.Button != nil {
-		b.WriteString(renderButton(*c.Button))
-	}
-
-	if c.Note != "" {
-		b.WriteString(fmt.Sprintf(
-			`<p style="margin:20px 0 0;font-family:%s;font-size:13px;line-height:1.6;color:%s;">%s</p>`,
-			fontStack, colorDim, esc(c.Note)))
-	}
-
-	b.WriteString(`</td></tr>`)
-
-	// Footer.
-	b.WriteString(fmt.Sprintf(`<tr><td style="padding:22px 32px;border-top:1px solid %s;">`, colorBorder))
-	if c.Footer != "" {
-		b.WriteString(fmt.Sprintf(
-			`<p style="margin:0 0 6px;font-family:%s;font-size:12px;line-height:1.5;color:%s;">%s</p>`,
-			fontStack, colorDim, esc(c.Footer)))
-	}
-	b.WriteString(fmt.Sprintf(
-		`<p style="margin:0;font-family:%s;font-size:12px;line-height:1.5;color:%s;">`+
-			`Pulse Pager &middot; open-source uptime monitoring &middot; `+
-			`<a href="https://pulsepager.com" style="color:%s;text-decoration:none;">pulsepager.com</a></p>`,
-		fontStack, colorDim, colorAccent))
-	b.WriteString(`</td></tr>`)
-
-	b.WriteString(`</table>`) // card
-	b.WriteString(`<!--[if mso]></td></tr></table><![endif]-->`)
-	b.WriteString(`</td></tr></table>`)
-	b.WriteString(`</body></html>`)
 	return b.String()
 }
-
-// renderBanner draws the colored status pill (DOWN / RECOVERED / TEST).
-func renderBanner(bn EmailBanner) string {
-	return fmt.Sprintf(
-		`<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;">`+
-			`<tr><td style="background:%s;border-radius:999px;padding:7px 16px;font-family:%s;">`+
-			`<span style="color:%s;font-size:13px;">&#9679;</span>`+
-			`<span style="color:%s;font-size:13px;font-weight:700;letter-spacing:0.08em;">&nbsp;%s</span>`+
-			`</td></tr></table>`,
-		bn.BG, fontStack, bn.Color, bn.Color, esc(strings.ToUpper(bn.Label)))
-}
-
-// renderRows draws the label/value fact table used by the alert emails.
-func renderRows(rows []EmailRow) string {
-	var b strings.Builder
-	b.WriteString(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 4px;">`)
-	for i, r := range rows {
-		bg := ""
-		if i%2 == 1 {
-			bg = fmt.Sprintf("background:%s;", colorRowBG)
-		}
-		b.WriteString(`<tr>`)
-		b.WriteString(fmt.Sprintf(
-			`<td style="%spadding:11px 12px;font-family:%s;font-size:13px;color:%s;white-space:nowrap;vertical-align:top;border-radius:6px 0 0 6px;">%s</td>`,
-			bg, fontStack, colorDim, esc(r.Label)))
-		b.WriteString(fmt.Sprintf(
-			`<td style="%spadding:11px 12px;font-family:%s;font-size:14px;font-weight:500;color:%s;word-break:break-word;vertical-align:top;border-radius:0 6px 6px 0;">%s</td>`,
-			bg, fontStack, colorText, esc(r.Value)))
-		b.WriteString(`</tr>`)
-	}
-	b.WriteString(`</table>`)
-	return b.String()
-}
-
-// renderButton draws a bulletproof, table-wrapped CTA so Outlook renders it.
-func renderButton(btn EmailButton) string {
-	return fmt.Sprintf(
-		`<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 4px;">`+
-			`<tr><td align="center" bgcolor="%s" style="border-radius:10px;">`+
-			`<a href="%s" target="_blank" style="display:inline-block;padding:14px 30px;font-family:%s;font-size:15px;font-weight:600;line-height:1;color:%s;text-decoration:none;border-radius:10px;">%s</a>`+
-			`</td></tr></table>`,
-		colorButtonBG, escAttr(btn.URL), fontStack, colorButtonText, esc(btn.Label))
-}
-
-// esc escapes text for HTML body context.
-func esc(s string) string { return html.EscapeString(s) }
-
-// escAttr escapes a value for an attribute (href). EscapeString already handles
-// the quote and angle brackets that matter here.
-func escAttr(s string) string { return html.EscapeString(s) }

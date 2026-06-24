@@ -123,6 +123,10 @@ func Build(ctx context.Context, d Deps) (*Server, http.Handler, error) {
 		auditPub = &busAuditPublisher{prod: d.Producer, log: d.Log}
 	}
 
+	// The "send test" channel email is built in this process by the Manager, so it
+	// needs the SPA origin to link the recipient back to their channels page.
+	notify.SetAppBaseURL(ic.AppBaseURL)
+
 	// The Authenticator writes 401/403 using the localizable envelope so an auth
 	// failure reads the same as a handler-level failure.
 	auth := authn.NewAuthenticator(jwt, keyVerifier, d.Store, d.Redis,

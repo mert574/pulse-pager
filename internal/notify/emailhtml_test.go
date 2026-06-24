@@ -13,7 +13,7 @@ import (
 func TestRenderEmailHTMLEscapesAndContainsContent(t *testing.T) {
 	html := RenderEmailHTML(EmailContent{
 		Preheader: "preview line",
-		Banner:    &EmailBanner{Label: "Down", Color: colorDown, BG: colorDownBG},
+		Banner:    &EmailBanner{Label: "Down", Tone: "down"},
 		Heading:   "Acme <script> is down",
 		Intro:     "intro text",
 		Rows:      []EmailRow{{Label: "URL", Value: "https://x.test/a?b=1&c=2"}},
@@ -78,37 +78,58 @@ func TestBuildMessageMultipartParses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse content-type: %v", err)
 	}
-	if mediaType != "multipart/alternative" {
+	// The top level is multipart/related: the alternative (text+html) plus the inline
+	// logo the html references with cid:pulselogo.
+	if mediaType != "multipart/related" {
 		t.Fatalf("media type = %q", mediaType)
 	}
 
-	mr := multipart.NewReader(msg.Body, params["boundary"])
-	var gotText, gotHTML bool
+	var gotText, gotHTML, gotLogo bool
+	rel := multipart.NewReader(msg.Body, params["boundary"])
 	for {
-		p, err := mr.NextPart()
+		part, err := rel.NextPart()
 		if err != nil {
 			break
 		}
-		ct := p.Header.Get("Content-Type")
-		buf := new(strings.Builder)
-		if _, err := io.Copy(buf, base64.NewDecoder(base64.StdEncoding, p)); err != nil {
-			t.Fatalf("decode part: %v", err)
-		}
+		ct, ctParams, _ := mime.ParseMediaType(part.Header.Get("Content-Type"))
 		switch {
-		case strings.HasPrefix(ct, "text/plain"):
-			gotText = true
-			if !strings.Contains(buf.String(), "Down since:") {
-				t.Error("text part lost its content")
+		case ct == "multipart/alternative":
+			alt := multipart.NewReader(part, ctParams["boundary"])
+			for {
+				p, err := alt.NextPart()
+				if err != nil {
+					break
+				}
+				inner := p.Header.Get("Content-Type")
+				buf := new(strings.Builder)
+				if _, err := io.Copy(buf, base64.NewDecoder(base64.StdEncoding, p)); err != nil {
+					t.Fatalf("decode part: %v", err)
+				}
+				switch {
+				case strings.HasPrefix(inner, "text/plain"):
+					gotText = true
+					if !strings.Contains(buf.String(), "Down since:") {
+						t.Error("text part lost its content")
+					}
+				case strings.HasPrefix(inner, "text/html"):
+					gotHTML = true
+					if !strings.Contains(buf.String(), "Prod API health is down") {
+						t.Error("html part lost its content")
+					}
+					if !strings.Contains(buf.String(), "cid:"+emailLogoCID) {
+						t.Error("html part does not reference the inline logo")
+					}
+				}
 			}
-		case strings.HasPrefix(ct, "text/html"):
-			gotHTML = true
-			if !strings.Contains(buf.String(), "Prod API health is down") {
-				t.Error("html part lost its content")
+		case ct == "image/png":
+			gotLogo = true
+			if id := part.Header.Get("Content-ID"); id != "<"+emailLogoCID+">" {
+				t.Errorf("logo Content-ID = %q", id)
 			}
 		}
 	}
-	if !gotText || !gotHTML {
-		t.Errorf("missing parts: text=%v html=%v", gotText, gotHTML)
+	if !gotText || !gotHTML || !gotLogo {
+		t.Errorf("missing parts: text=%v html=%v logo=%v", gotText, gotHTML, gotLogo)
 	}
 }
 
@@ -126,12 +147,15 @@ func TestBuildMessageNoHTMLStaysPlainText(t *testing.T) {
 }
 
 func TestInviteAndMagicLinkKeepURLInText(t *testing.T) {
-	_, text, html := InviteEmail("Acme", "admin", "https://app.test/invitations/tok123", "en")
+	_, text, html := InviteEmail("Acme", "Jane Doe (jane@acme.com)", "admin", "https://app.test/invitations/tok123", "en")
 	if !strings.Contains(text, "https://app.test/invitations/tok123\n") {
 		t.Errorf("invite text dropped the accept URL:\n%s", text)
 	}
 	if !strings.Contains(html, "Accept invitation") {
 		t.Error("invite html missing CTA")
+	}
+	if !strings.Contains(html, "Jane Doe (jane@acme.com) invited you") {
+		t.Errorf("invite html missing inviter:\n%s", html)
 	}
 
 	_, mtext, mhtml := MagicLinkEmail("https://app.test/auth/email/verify?token=tok456", "en")

@@ -1,12 +1,16 @@
 package notify
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net"
 	"net/smtp"
+	"net/textproto"
 	"strings"
 
 	"pulse/internal/domain"
@@ -24,7 +28,7 @@ var smtpSend = realSMTPSend
 
 func (p *smtpProvider) Send(ctx context.Context, cfg map[string]any, ev Event) error {
 	if ev.Test {
-		subject, text, html := TestEmail(ev.ChannelName, "the SMTP channel works")
+		subject, text, html := TestEmail(ev.ChannelName, "the SMTP channel works", ev.OrgID)
 		return p.deliver(ctx, cfg, subject, text, html)
 	}
 	subject, text, html := AlertEmail(ev)
@@ -183,48 +187,73 @@ func buildEmail(ev Event) (subject, body string) {
 	return subject, b.String()
 }
 
-// multipartBoundary separates the text and html parts of an alternative message.
-// A fixed, distinctive token is fine: it is long and random-looking enough that it
-// will not appear in a body, which is all RFC 2046 requires.
-const multipartBoundary = "----=_pulse_a1b2c3d4e5f60718"
-
 // buildMessage wraps the subject and body in a minimal RFC 5322 message. With no
-// html it is a single text/plain part (unchanged). With html it is a
-// multipart/alternative carrying the plain text first and the HTML second, so a
-// client that cannot render HTML still shows the text; both parts are base64 so a
-// long HTML line can't trip the 998-char SMTP line limit.
+// html it is a single text/plain part. With html it is a multipart/related whose
+// first part is a multipart/alternative (plain text first, HTML second, so a
+// non-HTML client still shows the text) and whose second part is the inline Pulse
+// logo the HTML references with <img src="cid:...">. Attaching the logo inline means
+// no remote fetch, so the header mark renders even when a client blocks remote
+// images.
+//
+// mime/multipart manages the boundaries; parts are base64 wrapped at 76 chars so a
+// long line can't trip the 998-char SMTP limit. Everything assembles into bytes
+// buffers, which never fail to write, so the multipart errors are not propagated and
+// buildMessage keeps its plain []byte result.
 func buildMessage(from string, to []string, subject, body, html string) []byte {
-	var b strings.Builder
+	var msg bytes.Buffer
 	// From display name is the product brand (RFC-017 2.6); the address is the
 	// configured internal value, carried through unchanged.
-	fmt.Fprintf(&b, "From: Pulse Pager <%s>\r\n", from)
-	fmt.Fprintf(&b, "To: %s\r\n", strings.Join(to, ", "))
-	fmt.Fprintf(&b, "Subject: %s\r\n", subject)
-	b.WriteString("MIME-Version: 1.0\r\n")
+	fmt.Fprintf(&msg, "From: Pulse Pager <%s>\r\n", from)
+	fmt.Fprintf(&msg, "To: %s\r\n", strings.Join(to, ", "))
+	fmt.Fprintf(&msg, "Subject: %s\r\n", subject)
+	msg.WriteString("MIME-Version: 1.0\r\n")
 
 	if html == "" {
-		b.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")
-		b.WriteString("\r\n")
+		msg.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n\r\n")
 		// Normalize line endings to CRLF for the body.
-		b.WriteString(strings.ReplaceAll(body, "\n", "\r\n"))
-		return []byte(b.String())
+		msg.WriteString(strings.ReplaceAll(body, "\n", "\r\n"))
+		return msg.Bytes()
 	}
 
-	fmt.Fprintf(&b, "Content-Type: multipart/alternative; boundary=\"%s\"\r\n", multipartBoundary)
-	b.WriteString("\r\n")
+	// The text+html alternative is built in its own buffer, then carried in as one
+	// part of the related container alongside the inline logo.
+	var altBuf bytes.Buffer
+	alt := multipart.NewWriter(&altBuf)
+	addBase64Part(alt, "text/plain; charset=\"utf-8\"", body, nil)
+	addBase64Part(alt, "text/html; charset=\"utf-8\"", html, nil)
+	alt.Close()
 
-	writePart := func(contentType, content string) {
-		fmt.Fprintf(&b, "--%s\r\n", multipartBoundary)
-		fmt.Fprintf(&b, "Content-Type: %s; charset=\"utf-8\"\r\n", contentType)
-		b.WriteString("Content-Transfer-Encoding: base64\r\n")
-		b.WriteString("\r\n")
-		b.WriteString(base64Wrapped(content))
-		b.WriteString("\r\n")
+	var relBuf bytes.Buffer
+	related := multipart.NewWriter(&relBuf)
+	altHeader := textproto.MIMEHeader{"Content-Type": {"multipart/alternative; boundary=\"" + alt.Boundary() + "\""}}
+	if altPart, err := related.CreatePart(altHeader); err == nil {
+		altPart.Write(altBuf.Bytes())
 	}
-	writePart("text/plain", body)
-	writePart("text/html", html)
-	fmt.Fprintf(&b, "--%s--\r\n", multipartBoundary)
-	return []byte(b.String())
+	// The inline logo, referenced by the html as cid:pulselogo.
+	addBase64Part(related, "image/png", string(emailLogoPNG), textproto.MIMEHeader{
+		"Content-ID":          {"<" + emailLogoCID + ">"},
+		"Content-Disposition": {"inline; filename=\"pulse-logo.png\""},
+	})
+	related.Close()
+
+	fmt.Fprintf(&msg, "Content-Type: multipart/related; boundary=\"%s\"; type=\"multipart/alternative\"\r\n\r\n", related.Boundary())
+	msg.Write(relBuf.Bytes())
+	return msg.Bytes()
+}
+
+// addBase64Part adds one base64-encoded part (76-char wrapped) with the given content
+// type and any extra headers (e.g. Content-ID / Content-Disposition for the inline
+// logo). The multipart writer is backed by a bytes.Buffer, so the writes cannot fail.
+func addBase64Part(w *multipart.Writer, contentType, content string, extra textproto.MIMEHeader) {
+	h := textproto.MIMEHeader{}
+	for k, v := range extra {
+		h[k] = v
+	}
+	h.Set("Content-Type", contentType)
+	h.Set("Content-Transfer-Encoding", "base64")
+	if p, err := w.CreatePart(h); err == nil {
+		io.WriteString(p, base64Wrapped(content))
+	}
 }
 
 // base64Wrapped base64-encodes s and wraps it to 76-character lines with CRLF, as
