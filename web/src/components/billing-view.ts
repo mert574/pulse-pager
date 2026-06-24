@@ -496,14 +496,15 @@ export class BillingView extends AppElement {
     >
       <div class="card-body gap-4">
         <div class="flex flex-col gap-1">
-          <div class="flex items-center justify-between gap-2">
+          <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
             <h3 class="text-base font-semibold">${this.planLabel(p.plan)}</h3>
             ${isCurrent
-              ? html`<span class="badge badge-primary badge-sm"
+              ? html`<span class="badge badge-primary badge-sm shrink-0"
                   >${t("billing.currentTier")}</span
                 >`
               : featured
-                ? html`<span class="badge badge-primary badge-outline badge-sm"
+                ? html`<span
+                    class="badge badge-primary badge-outline badge-sm shrink-0"
                     >${t("billing.recommended")}</span
                   >`
                 : nothing}
