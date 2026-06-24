@@ -75,6 +75,26 @@ type Config struct {
 
 	// Billing is the billing-service config (RFC-018). Only the billing service loads it.
 	Billing BillingConfig
+
+	// SMTP is the platform transactional mailer (PRD-001 6.1, RFC-007a). Both the api
+	// (invitation email) and the notifier (the Team email channel) build a mailer from
+	// it, so it is loaded for both services. Empty SMTPHost means no real mailer is
+	// configured: the api logs the invite link instead of sending, and the Team email
+	// channel's send fails clearly ("no mailer configured").
+	SMTP SMTPConfig
+}
+
+// SMTPConfig is the platform mailer connection settings, read from the PULSE_SMTP_*
+// env vars. It is the platform-level transactional mailer (not a per-org channel),
+// shared by the api's invitation email and the notifier's Team email channel.
+type SMTPConfig struct {
+	Host     string
+	Port     string
+	Username string
+	Password string
+	From     string
+	// TLSMode is starttls | implicit | none (defaults to starttls in the mailer).
+	TLSMode string
 }
 
 // BillingConfig is the billing service's settings (RFC-018 Phase 1). The provider is
@@ -136,16 +156,6 @@ type IdentityConfig struct {
 	GitHubClientID     string
 	GitHubClientSecret string
 	GitHubRedirectURL  string
-
-	// SMTP is the transactional-email connection used for invitation emails
-	// (PRD-001 6.1). When SMTPHost is empty the api falls back to a dev mailer that
-	// logs the accept link instead of sending, so the flow still completes.
-	SMTPHost     string
-	SMTPPort     string
-	SMTPUsername string
-	SMTPPassword string
-	SMTPFrom     string
-	SMTPTLSMode  string
 
 	// PlatformAdmins is the lowercased email allowlist for the operator admin panel
 	// (GET /admin/metrics), read from PULSE_PLATFORM_ADMINS (comma-separated). Empty
@@ -232,6 +242,13 @@ func Load(service Service) (*Config, error) {
 		}
 	}
 
+	// The platform mailer is shared: the api sends invitation email, the notifier
+	// sends the Team email channel. Both read the same PULSE_SMTP_* vars. It is
+	// optional (empty host = no real mailer), so this never fails the boot.
+	if service == ServiceAPI || service == ServiceNotifier {
+		cfg.SMTP = loadSMTP()
+	}
+
 	// Only the api edge needs the identity/auth config.
 	if service == ServiceAPI {
 		if cfg.Identity, err = loadIdentity(); err != nil {
@@ -279,6 +296,20 @@ func loadBilling() (BillingConfig, error) {
 	return bc, nil
 }
 
+// loadSMTP reads the platform mailer settings from PULSE_SMTP_*. All fields are
+// optional: an empty host means no real mailer is configured (the api logs invite
+// links, the Team email channel send fails clearly). Shared by the api and notifier.
+func loadSMTP() SMTPConfig {
+	return SMTPConfig{
+		Host:     os.Getenv("PULSE_SMTP_HOST"),
+		Port:     os.Getenv("PULSE_SMTP_PORT"),
+		Username: os.Getenv("PULSE_SMTP_USERNAME"),
+		Password: os.Getenv("PULSE_SMTP_PASSWORD"),
+		From:     os.Getenv("PULSE_SMTP_FROM"),
+		TLSMode:  os.Getenv("PULSE_SMTP_TLS_MODE"),
+	}
+}
+
 // loadIdentity reads the api edge's auth config (RFC-003 8.1). The JWT signing key
 // is required and fails closed when missing (no silent dev key in the real api;
 // PULSE_DEV_AUTH bypasses this whole path by running devapi instead). The OAuth
@@ -321,14 +352,6 @@ func loadIdentity() (IdentityConfig, error) {
 	ic.GitHubClientID = os.Getenv("PULSE_GITHUB_CLIENT_ID")
 	ic.GitHubClientSecret = os.Getenv("PULSE_GITHUB_CLIENT_SECRET")
 	ic.GitHubRedirectURL = os.Getenv("PULSE_GITHUB_REDIRECT_URL")
-
-	// Transactional email for invitations (optional; dev mailer logs when unset).
-	ic.SMTPHost = os.Getenv("PULSE_SMTP_HOST")
-	ic.SMTPPort = os.Getenv("PULSE_SMTP_PORT")
-	ic.SMTPUsername = os.Getenv("PULSE_SMTP_USERNAME")
-	ic.SMTPPassword = os.Getenv("PULSE_SMTP_PASSWORD")
-	ic.SMTPFrom = os.Getenv("PULSE_SMTP_FROM")
-	ic.SMTPTLSMode = os.Getenv("PULSE_SMTP_TLS_MODE")
 
 	// Platform admin allowlist (the operator admin panel). Comma-separated emails,
 	// lowercased and trimmed so the gate is a plain case-insensitive set lookup.

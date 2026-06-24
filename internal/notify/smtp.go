@@ -3,6 +3,7 @@ package notify
 import (
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/smtp"
@@ -23,12 +24,11 @@ var smtpSend = realSMTPSend
 
 func (p *smtpProvider) Send(ctx context.Context, cfg map[string]any, ev Event) error {
 	if ev.Test {
-		subject := "[Pulse Pager] Test message"
-		body := fmt.Sprintf("This is a test message from Pulse Pager for channel %q.\nIf you received this, the SMTP channel works.\n", ev.ChannelName)
-		return p.deliver(ctx, cfg, subject, body)
+		subject, text, html := TestEmail(ev.ChannelName, "the SMTP channel works")
+		return p.deliver(ctx, cfg, subject, text, html)
 	}
-	subject, body := buildEmail(ev)
-	return p.deliver(ctx, cfg, subject, body)
+	subject, text, html := AlertEmail(ev)
+	return p.deliver(ctx, cfg, subject, text, html)
 }
 
 func (p *smtpProvider) Validate(cfg map[string]any) error {
@@ -45,7 +45,7 @@ func (p *smtpProvider) Validate(cfg map[string]any) error {
 }
 
 // deliver builds the RFC 5322 message and hands it to the transport seam.
-func (p *smtpProvider) deliver(ctx context.Context, cfg map[string]any, subject, body string) error {
+func (p *smtpProvider) deliver(ctx context.Context, cfg map[string]any, subject, body, html string) error {
 	host := cfgString(cfg, "host")
 	port := cfgString(cfg, "port")
 	username := cfgString(cfg, "username")
@@ -73,7 +73,7 @@ func (p *smtpProvider) deliver(ctx context.Context, cfg map[string]any, subject,
 	}
 
 	addr := net.JoinHostPort(host, port)
-	msg := buildMessage(from, to, subject, body)
+	msg := buildMessage(from, to, subject, body, html)
 	// implicit TLS wraps the connection from the start; starttls and none dial
 	// plain first (none never upgrades, starttls upgrades after greeting).
 	return smtpSend(ctx, addr, host, auth, from, to, msg, mode == "implicit")
@@ -183,8 +183,17 @@ func buildEmail(ev Event) (subject, body string) {
 	return subject, b.String()
 }
 
-// buildMessage wraps the subject and body in a minimal RFC 5322 message.
-func buildMessage(from string, to []string, subject, body string) []byte {
+// multipartBoundary separates the text and html parts of an alternative message.
+// A fixed, distinctive token is fine: it is long and random-looking enough that it
+// will not appear in a body, which is all RFC 2046 requires.
+const multipartBoundary = "----=_pulse_a1b2c3d4e5f60718"
+
+// buildMessage wraps the subject and body in a minimal RFC 5322 message. With no
+// html it is a single text/plain part (unchanged). With html it is a
+// multipart/alternative carrying the plain text first and the HTML second, so a
+// client that cannot render HTML still shows the text; both parts are base64 so a
+// long HTML line can't trip the 998-char SMTP line limit.
+func buildMessage(from string, to []string, subject, body, html string) []byte {
 	var b strings.Builder
 	// From display name is the product brand (RFC-017 2.6); the address is the
 	// configured internal value, carried through unchanged.
@@ -192,11 +201,44 @@ func buildMessage(from string, to []string, subject, body string) []byte {
 	fmt.Fprintf(&b, "To: %s\r\n", strings.Join(to, ", "))
 	fmt.Fprintf(&b, "Subject: %s\r\n", subject)
 	b.WriteString("MIME-Version: 1.0\r\n")
-	b.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")
+
+	if html == "" {
+		b.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")
+		b.WriteString("\r\n")
+		// Normalize line endings to CRLF for the body.
+		b.WriteString(strings.ReplaceAll(body, "\n", "\r\n"))
+		return []byte(b.String())
+	}
+
+	fmt.Fprintf(&b, "Content-Type: multipart/alternative; boundary=\"%s\"\r\n", multipartBoundary)
 	b.WriteString("\r\n")
-	// Normalize line endings to CRLF for the body.
-	b.WriteString(strings.ReplaceAll(body, "\n", "\r\n"))
+
+	writePart := func(contentType, content string) {
+		fmt.Fprintf(&b, "--%s\r\n", multipartBoundary)
+		fmt.Fprintf(&b, "Content-Type: %s; charset=\"utf-8\"\r\n", contentType)
+		b.WriteString("Content-Transfer-Encoding: base64\r\n")
+		b.WriteString("\r\n")
+		b.WriteString(base64Wrapped(content))
+		b.WriteString("\r\n")
+	}
+	writePart("text/plain", body)
+	writePart("text/html", html)
+	fmt.Fprintf(&b, "--%s--\r\n", multipartBoundary)
 	return []byte(b.String())
+}
+
+// base64Wrapped base64-encodes s and wraps it to 76-character lines with CRLF, as
+// MIME expects for a base64 part.
+func base64Wrapped(s string) string {
+	enc := base64.StdEncoding.EncodeToString([]byte(s))
+	var b strings.Builder
+	for len(enc) > 76 {
+		b.WriteString(enc[:76])
+		b.WriteString("\r\n")
+		enc = enc[76:]
+	}
+	b.WriteString(enc)
+	return b.String()
 }
 
 // realSMTPSend is the production transport. It dials the server, sets up TLS or

@@ -19,12 +19,15 @@ type Mailer interface {
 	Send(ctx context.Context, msg Mail) error
 }
 
-// Mail is one transactional message. Body is plain text; the invite email is plain
-// text on purpose so there is no HTML/render dependency for the seam.
+// Mail is one transactional message. Body is the plain-text part (always set, so
+// there is a readable fallback and the token-carrying links stay greppable). HTML
+// is the optional branded part; when it is set the message goes out as
+// multipart/alternative and the client shows the HTML.
 type Mail struct {
 	To      string
 	Subject string
 	Body    string
+	HTML    string
 }
 
 // LogMailer is the dev/no-op mailer: it logs the message (including the accept URL
@@ -54,6 +57,29 @@ type SMTPMailerConfig struct {
 	From     string
 	// TLSMode is starttls | implicit | none (defaults to starttls).
 	TLSMode string
+}
+
+// NewMailerFromConfig picks the platform mailer from SMTP settings: a real SMTPMailer
+// when host is set, else a LogMailer that logs the message (so a self-host without
+// SMTP still completes the invite flow and the operator sees the link). Both the api
+// (invitation email) and the notifier (the Team email channel) call it, so the choice
+// lives in one place. It takes plain fields, not a config struct, so this package
+// stays free of an internal/config import.
+func NewMailerFromConfig(host, port, username, password, from, tlsMode string, log *slog.Logger) Mailer {
+	if host == "" {
+		if log != nil {
+			log.Warn("no SMTP configured: platform emails will be logged, not sent")
+		}
+		return LogMailer{Log: log}
+	}
+	return NewSMTPMailer(SMTPMailerConfig{
+		Host:     host,
+		Port:     port,
+		Username: username,
+		Password: password,
+		From:     from,
+		TLSMode:  tlsMode,
+	})
 }
 
 // SMTPMailer sends transactional email over the configured SMTP server. It reuses
@@ -91,6 +117,6 @@ func (m *SMTPMailer) Send(ctx context.Context, msg Mail) error {
 		auth = smtp.PlainAuth("", m.cfg.Username, m.cfg.Password, m.cfg.Host)
 	}
 	addr := net.JoinHostPort(m.cfg.Host, m.cfg.Port)
-	raw := buildMessage(m.cfg.From, to, msg.Subject, msg.Body)
+	raw := buildMessage(m.cfg.From, to, msg.Subject, msg.Body, msg.HTML)
 	return smtpSend(ctx, addr, m.cfg.Host, auth, m.cfg.From, to, raw, strings.EqualFold(m.cfg.TLSMode, "implicit"))
 }
