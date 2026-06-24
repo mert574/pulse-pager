@@ -92,6 +92,72 @@ type AuditEvent struct {
 	OccurredAt time.Time         `json:"occurred_at"`
 }
 
+// EmailIntentType discriminates an email.events payload (RFC-019). The notifier
+// switches on it to pick the template, the recipient, and the From category. No
+// usable credential ever rides these payloads: the notifier mints the magic-link /
+// invite token at send time (RFC-019 section 5), so the bus log holds nothing worth
+// stealing.
+type EmailIntentType string
+
+const (
+	EmailMagicLink   EmailIntentType = "magic_link"   // passwordless sign-in link
+	EmailInvitation  EmailIntentType = "invitation"   // org invite (first send or resend)
+	EmailChannelTest EmailIntentType = "channel_test" // one-off "this channel works" test
+)
+
+// EmailIntent is the email.events envelope (key: org_id when set, else email),
+// carrying a semantic intent the notifier turns into one email (RFC-019 section 3/4).
+// Type selects which payload is set; exactly one is non-nil. Locale is the render
+// language for whichever email this is (empty falls back to English), kept at the
+// envelope level since every email type renders in some locale. The api used to send
+// these inline; now it publishes the intent and the notifier is the only sender.
+type EmailIntent struct {
+	Type        EmailIntentType       `json:"type"`
+	Locale      string                `json:"locale,omitempty"`
+	OccurredAt  time.Time             `json:"occurred_at"`
+	MagicLink   *MagicLinkRequested   `json:"magic_link,omitempty"`
+	Invitation  *InvitationRequested  `json:"invitation,omitempty"`
+	ChannelTest *ChannelTestRequested `json:"channel_test,omitempty"`
+}
+
+// MagicLinkRequested asks the notifier to mint a one-time sign-in token, store its
+// hash in the shared magic-link Redis record the api's Verify reads, and email the
+// verify link to Email (RFC-019 section 5.1). The api publishes this for any address
+// it is handed, so the flow stays enumeration-safe; the notifier just sends the link.
+type MagicLinkRequested struct {
+	Email string `json:"email"`
+}
+
+// InvitationRequested asks the notifier to mint a fresh invite token, write its hash
+// to the still-pending invitation row (under WithOrg), and email the accept link
+// (RFC-019 section 5.2). One intent covers both the first send and a resend: the
+// notifier action is identical (mint, set-hash-where-pending, send). The render
+// fields (OrgName, Inviter, Role) ride along because the api already holds them and
+// none is secret; the notifier reads the row only to set the token and confirm the
+// invite is still pending. Inviter is a display string like "Jane Doe (jane@acme.com)"
+// and may be empty, in which case the copy falls back to its passive phrasing.
+type InvitationRequested struct {
+	InvitationID int64  `json:"invitation_id"`
+	OrgID        int64  `json:"org_id"`
+	OrgName      string `json:"org_name"`
+	Inviter      string `json:"inviter"`
+	Role         string `json:"role"`
+	Email        string `json:"email"`
+}
+
+// ChannelTestRequested asks the notifier to send a one-off "this channel works" test
+// to the person who clicked Test only (RequestedByEmail), never the whole channel
+// (RFC-019 section 3). It is published only for the Team-email channel, the one test
+// that uses the platform mailer; other channel types test synchronously in the api
+// against their own destination. ChannelName is carried for the copy so the notifier
+// renders without a channel read; ChannelID and OrgID are for logs and scoping.
+type ChannelTestRequested struct {
+	ChannelID        int64  `json:"channel_id"`
+	ChannelName      string `json:"channel_name"`
+	OrgID            int64  `json:"org_id"`
+	RequestedByEmail string `json:"requested_by_email"`
+}
+
 // MonitorChangedEvent is produced by the api onto monitor.changed (key: org_id)
 // when a monitor is created, updated, enabled, disabled, or deleted, so the
 // scheduler picks up the live config change instead of waiting for its next full

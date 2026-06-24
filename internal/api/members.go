@@ -2,8 +2,6 @@ package api
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"strconv"
@@ -18,7 +16,7 @@ import (
 	"pulse/internal/crypto"
 	"pulse/internal/domain"
 	"pulse/internal/entitlements"
-	"pulse/internal/notify"
+	"pulse/internal/events"
 	"pulse/internal/store"
 )
 
@@ -330,10 +328,6 @@ func (s *Server) CreateInvitation(ctx context.Context, req apigen.CreateInvitati
 		return nil, err
 	}
 
-	rawToken, err := newInviteToken()
-	if err != nil {
-		return nil, err
-	}
 	locale := org.DefaultLocale
 	if req.Body.Locale != nil && *req.Body.Locale != "" {
 		locale = *req.Body.Locale
@@ -342,11 +336,13 @@ func (s *Server) CreateInvitation(ctx context.Context, req apigen.CreateInvitati
 		locale = "en"
 	}
 	creator := p.UserID
+	// The row is created token-less (token_hash NULL); the notifier mints the token
+	// when it sends the invite email (RFC-019). The invitee has no link until the email
+	// lands, which is invisible to them.
 	inv := &domain.Invitation{
 		OrgID:     p.OrgID,
 		Email:     email,
 		Role:      role,
-		TokenHash: crypto.HashToken(rawToken),
 		Locale:    locale,
 		CreatedBy: &creator,
 		ExpiresAt: time.Now().Add(inviteTTL),
@@ -357,8 +353,8 @@ func (s *Server) CreateInvitation(ctx context.Context, req apigen.CreateInvitati
 		}
 		return nil, err
 	}
-	s.sendInviteEmail(ctx, inv, org.Name, rawToken)
 	inv.State = domain.InvitePending
+	s.publishInviteEmail(ctx, inv, org.Name)
 	return apigen.CreateInvitation201JSONResponse(invitationDTO(inv)), nil
 }
 
@@ -418,12 +414,8 @@ func (s *Server) ResendInvitation(ctx context.Context, req apigen.ResendInvitati
 	if inv.State != domain.InvitePending {
 		return apigen.ResendInvitation409JSONResponse{ConflictJSONResponse: conflict("invitation is no longer pending")}, nil
 	}
-	rawToken, err := newInviteToken()
-	if err != nil {
-		return nil, err
-	}
 	newExpiry := time.Now().Add(inviteTTL)
-	affected, err := s.store.ResendInvitation(ctx, p.OrgID, inviteID, crypto.HashToken(rawToken), newExpiry)
+	affected, err := s.store.ResendInvitation(ctx, p.OrgID, inviteID, newExpiry)
 	if err != nil {
 		return nil, err
 	}
@@ -435,7 +427,7 @@ func (s *Server) ResendInvitation(ctx context.Context, req apigen.ResendInvitati
 		return nil, err
 	}
 	inv.ExpiresAt = newExpiry
-	s.sendInviteEmail(ctx, inv, org.Name, rawToken)
+	s.publishInviteEmail(ctx, inv, org.Name)
 	return apigen.ResendInvitation200JSONResponse(invitationDTO(inv)), nil
 }
 
@@ -560,14 +552,26 @@ func (s *Server) seatUsage(ctx context.Context, orgID int64) (entitlements.SeatU
 	return entitlements.SeatUsage{Used: members + pending, Cap: cap}, nil
 }
 
-// sendInviteEmail builds the localized invite email with the tokenized accept link
-// and hands it to the mailer. A send failure is logged-and-swallowed (the no-op
-// mailer always succeeds); the invitation row is already created, so the owner can
-// resend. The accept link points at the FE route ${APP_BASE_URL}/invitations/{token}.
-func (s *Server) sendInviteEmail(ctx context.Context, inv *domain.Invitation, orgName, rawToken string) {
-	acceptURL := s.appBaseURL + "/invitations/" + rawToken
-	subject, body, html := notify.InviteEmail(orgName, s.inviterDisplay(ctx, inv), string(inv.Role), acceptURL, inv.Locale)
-	_ = s.mailer.Send(ctx, notify.Mail{To: inv.Email, Subject: subject, Body: body, HTML: html})
+// publishInviteEmail publishes the invite intent; the notifier mints the accept token
+// and sends the localized email (RFC-019). Keyed by org so an org's intents stay in
+// order. Best-effort: the row is already created/refreshed, so a publish failure is
+// swallowed (the owner can resend). A nil publisher (dev/test without a bus) is a no-op.
+func (s *Server) publishInviteEmail(ctx context.Context, inv *domain.Invitation, orgName string) {
+	if s.email == nil {
+		return
+	}
+	_ = s.email.PublishEmail(ctx, strconv.FormatInt(inv.OrgID, 10), events.EmailIntent{
+		Type:   events.EmailInvitation,
+		Locale: inv.Locale,
+		Invitation: &events.InvitationRequested{
+			InvitationID: inv.ID,
+			OrgID:        inv.OrgID,
+			OrgName:      orgName,
+			Inviter:      s.inviterDisplay(ctx, inv),
+			Role:         string(inv.Role),
+			Email:        inv.Email,
+		},
+	})
 }
 
 // inviterDisplay resolves who sent the invite into a display string for the email,
@@ -665,16 +669,4 @@ func isLastOwnerDBError(err error) bool {
 // duplicate pending invite, I7).
 func isUniqueViolation(err error) bool {
 	return store.IsUniqueViolation(err)
-}
-
-// newInviteToken mints the raw invitation token (PRD-001 6.1). It is high-entropy
-// and unguessable; only its SHA-256 hash is stored, and the raw value rides the
-// email accept link. 32 random bytes, base64url, matches the refresh/api-key
-// generator (RFC-003 1.4).
-func newInviteToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
 }

@@ -13,6 +13,18 @@ import (
 	"fmt"
 )
 
+// NewOpaqueToken returns 32 random bytes, base64url-encoded: a high-entropy bearer
+// token whose SHA-256 (HashToken) is what gets stored. It is the shared generator for
+// the magic-link and invitation tokens the notifier mints (RFC-019 section 5); the
+// raw value rides the email link only and is never persisted in clear.
+func NewOpaqueToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
 // HashToken returns the SHA-256 of an opaque secret token, hex-encoded. This is
 // what we store for refresh tokens, invitation tokens, and API keys (RFC-003 5.2):
 // the token is high-entropy random, so a fast one-way hash is enough and there is

@@ -49,6 +49,26 @@ func main() {
 		svc.Log.Error("connect kafka consumer", "err", err)
 		os.Exit(1)
 	}
+	// The notifier is also the only sender of transactional email (magic-link, invite,
+	// Team-email test): it consumes the semantic intents on email.events in its own
+	// group, mints the token at send time, and sends (RFC-019).
+	emailCons, err := svc.ConnectBusConsumer("notifier-email", bus.TopicEmailEvents)
+	if err != nil {
+		svc.Log.Error("connect email consumer", "err", err)
+		os.Exit(1)
+	}
+
+	// From routing for reputation segmentation (RFC-019 section 6): account mail from
+	// the account subdomain, alert mail from the alerts subdomain, each falling back to
+	// the single From when its specific address is unset.
+	fromAccount := svc.Cfg.SMTP.FromAccount
+	if fromAccount == "" {
+		fromAccount = svc.Cfg.SMTP.From
+	}
+	fromAlerts := svc.Cfg.SMTP.FromAlerts
+	if fromAlerts == "" {
+		fromAlerts = svc.Cfg.SMTP.From
+	}
 
 	// Reuse the proven Manager + default registry for delivery; the Runner adds the
 	// consume loop, dedup, channel loading, and outcome recording around it. The same
@@ -59,21 +79,33 @@ func main() {
 	// Wire the Team email channel's deps: the platform mailer (real SMTP when
 	// PULSE_SMTP_* is set, else a logging dev mailer) and the member-email resolver
 	// (the pool, which resolves member ids to addresses scoped to the event's org).
+	// The mailer's default From is the alerts address: the Team-email alert path leaves
+	// Mail.From unset and so sends from there, while the email-intent path below sets
+	// From per category.
 	mailer := notify.NewMailerFromConfig(
 		svc.Cfg.SMTP.Host, svc.Cfg.SMTP.Port, svc.Cfg.SMTP.Username,
-		svc.Cfg.SMTP.Password, svc.Cfg.SMTP.From, svc.Cfg.SMTP.TLSMode, svc.Log,
+		svc.Cfg.SMTP.Password, fromAlerts, svc.Cfg.SMTP.TLSMode, svc.Log,
 	)
 	mgr.SetEmailDeps(mailer, pg)
 	// The alert/test emails link the recipient to their channels page; the notifier
 	// builds those emails, so it needs the SPA origin from config.
 	notify.SetAppBaseURL(svc.Cfg.AppBaseURL)
 	runner := notify.NewRunner(mgr, registry, pg, rd, cons, svc.Log, notify.WithWebhooks(pg))
+	// The email-intent consumer: the only sender of magic-link / invite / Team-email
+	// test mail. It mints tokens (Redis record for magic-link, invitation row for
+	// invite) at send time, so nothing usable rides the bus (RFC-019 section 5).
+	emailRunner := notify.NewEmailRunner(emailCons, mailer, rd, pg, fromAccount, fromAlerts, svc.Log)
 
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func() {
 		if err := runner.Run(runCtx); err != nil {
 			svc.Log.Error("notifier runner stopped", "err", err)
+		}
+	}()
+	go func() {
+		if err := emailRunner.Run(runCtx); err != nil {
+			svc.Log.Error("notifier email runner stopped", "err", err)
 		}
 	}()
 

@@ -19,6 +19,7 @@ const (
 	TopicMonitorChanged = "monitor.changed" // key: org_id
 	TopicCheckResults   = "check.results"   // key: monitor_id
 	TopicNotifyEvents   = "notify.events"   // key: monitor_id
+	TopicEmailEvents    = "email.events"    // key: org_id (else email); RFC-019 transactional intents
 	TopicAuditEvents    = "audit.events"    // key: org_id
 	TopicBillingEvents  = "billing.events"  // key: org_id
 	TopicRegionHealth   = "region.health"   // key: region

@@ -12,6 +12,7 @@ import (
 	"pulse/internal/authz"
 	"pulse/internal/domain"
 	"pulse/internal/entitlements"
+	"pulse/internal/events"
 	"pulse/internal/notify"
 )
 
@@ -206,6 +207,31 @@ func (s *Server) TestChannel(ctx context.Context, req apigen.TestChannelRequestO
 			return apigen.TestChannel404JSONResponse{NotFoundJSONResponse: notFound("channel not found")}, nil
 		}
 		return nil, err
+	}
+	// The Team-email test uses the platform mailer, which only the notifier holds, so
+	// route it through email.events and send to the person who clicked, not the whole
+	// channel (RFC-019). It is async: success once the intent is published. Every other
+	// channel type tests synchronously against its own destination, keeping the instant
+	// pass/fail that makes a test useful there. The clicker is the signed-in user's
+	// email; an API-key actor has no human inbox, so there is no one to send the test to.
+	if ch.Type == domain.ChannelEmail {
+		if p.Email == "" {
+			return apigen.TestChannel422JSONResponse{ValidationFailedJSONResponse: validationFailed("a Team email test can only be sent by a signed-in user")}, nil
+		}
+		if s.email != nil {
+			if err := s.email.PublishEmail(ctx, strconv.FormatInt(p.OrgID, 10), events.EmailIntent{
+				Type: events.EmailChannelTest,
+				ChannelTest: &events.ChannelTestRequested{
+					ChannelID:        ch.ID,
+					ChannelName:      ch.Name,
+					OrgID:            p.OrgID,
+					RequestedByEmail: p.Email,
+				},
+			}); err != nil {
+				return apigen.TestChannel422JSONResponse{ValidationFailedJSONResponse: validationFailed("could not queue test message")}, nil
+			}
+		}
+		return apigen.TestChannel204Response{}, nil
 	}
 	if err := s.tester.Test(ctx, ch); err != nil {
 		return apigen.TestChannel422JSONResponse{ValidationFailedJSONResponse: validationFailed("could not deliver test message: " + err.Error())}, nil

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"pulse/internal/notify"
+	"pulse/internal/events"
 )
 
 // Magic-link (passwordless) email login (RFC-003), alongside OAuth. Two hand-wired
@@ -15,11 +15,10 @@ import (
 // neutral JSON body and a GET that redirects, not part of the JSON resource
 // contract:
 //
-//   - POST /auth/email/start: takes an email, rate-limits, mints a one-time token,
-//     stores only its hash in Redis (15-min TTL), and emails the verify link. It
-//     ALWAYS returns the same neutral success so it never reveals whether the email
-//     has an account (enumeration-safe), and it swallows mailer errors like the
-//     invite path does.
+//   - POST /auth/email/start: takes an email, rate-limits, and publishes a
+//     MagicLinkRequested intent; the notifier mints the one-time token, stores its hash
+//     in Redis, and sends the link (RFC-019). It ALWAYS returns the same neutral success
+//     so it never reveals whether the email has an account (enumeration-safe).
 //   - GET /auth/email/verify: consumes the token (single-use via Redis GETDEL),
 //     finds-or-creates the user, mints the session cookies, and redirects into the
 //     SPA (new users to /onboarding, the same as the OAuth callback).
@@ -62,13 +61,16 @@ func (s *Server) handleEmailStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mint and store the token. A storage error is swallowed into the neutral response
-	// too, so the edge never leaks an internal failure on this path. With no magic-link
-	// service wired (dev/test), we still answer neutrally.
-	if s.magic != nil {
-		if raw, err := s.magic.Start(r.Context(), email); err == nil {
-			s.sendMagicLinkEmail(r, email, raw)
-		}
+	// Publish the intent; the notifier mints the token and sends the link (RFC-019). A
+	// publish error is swallowed into the neutral response, so the edge never leaks an
+	// internal failure. With no publisher wired (dev/test without a bus), we still answer
+	// neutrally. The key is the email (no org context for a sign-in link).
+	if s.email != nil {
+		_ = s.email.PublishEmail(r.Context(), email, events.EmailIntent{
+			Type:      events.EmailMagicLink,
+			Locale:    magicLinkLocale(r),
+			MagicLink: &events.MagicLinkRequested{Email: email},
+		})
 	}
 
 	writeEnvelope(w, http.StatusOK, "ok", magicLinkNeutralMessage)
@@ -131,16 +133,6 @@ func (s *Server) overLimit(r *http.Request, key string, limit int, window time.D
 		_ = s.redis.Expire(r.Context(), key, window)
 	}
 	return n > int64(limit)
-}
-
-// sendMagicLinkEmail builds the localized email with the HTTPS verify link and hands
-// it to the mailer. A send failure is swallowed (matching sendInviteEmail), so the
-// start handler stays neutral. The link points at the server's GET /auth/email/verify
-// on the app base origin, carrying the raw token.
-func (s *Server) sendMagicLinkEmail(r *http.Request, email, rawToken string) {
-	verifyURL := s.appBaseURL + "/auth/email/verify?token=" + rawToken
-	subject, body, html := notify.MagicLinkEmail(verifyURL, magicLinkLocale(r))
-	_ = s.mailer.Send(r.Context(), notify.Mail{To: email, Subject: subject, Body: body, HTML: html})
 }
 
 // magicLinkLocale picks the email locale from the Accept-Language header, falling

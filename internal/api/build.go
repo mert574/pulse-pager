@@ -123,6 +123,15 @@ func Build(ctx context.Context, d Deps) (*Server, http.Handler, error) {
 		auditPub = &busAuditPublisher{prod: d.Producer, log: d.Log}
 	}
 
+	// Email publisher for transactional intents (invite, magic-link, Team-email test);
+	// the notifier consumes email.events and is the only sender (RFC-019). Nil when no
+	// producer is wired (dev/test), in which case the triggering action still succeeds
+	// without an email.
+	var emailPub EmailPublisher
+	if d.Producer != nil {
+		emailPub = &busEmailPublisher{prod: d.Producer, log: d.Log}
+	}
+
 	// The "send test" channel email is built in this process by the Manager, so it
 	// needs the SPA origin to link the recipient back to their channels page.
 	notify.SetAppBaseURL(ic.AppBaseURL)
@@ -168,13 +177,9 @@ func Build(ctx context.Context, d Deps) (*Server, http.Handler, error) {
 		// connects Redis, so this is non-nil in production; it survives api restarts
 		// because it lives in Redis, not in process memory.
 		CheckNow: d.Redis,
-		// Mailer: real SMTP when configured, else a dev mailer that logs the accept
-		// link so the invite flow still completes (PRD-001 6.1). The same platform
-		// mailer the notifier uses for the Team email channel.
-		Mailer: notify.NewMailerFromConfig(
-			d.Cfg.SMTP.Host, d.Cfg.SMTP.Port, d.Cfg.SMTP.Username,
-			d.Cfg.SMTP.Password, d.Cfg.SMTP.From, d.Cfg.SMTP.TLSMode, d.Log,
-		),
+		// Email: publishes invite / magic-link / Team-email-test intents to the notifier,
+		// which mints the token and sends (RFC-019). Nil when no producer (dev/test).
+		Email: emailPub,
 		// PlatformAdmins: the email allowlist for the operator admin panel
 		// (PULSE_PLATFORM_ADMINS). Empty means the panel is closed.
 		PlatformAdmins: ic.PlatformAdmins,
@@ -254,6 +259,30 @@ func (b *busAuditPublisher) Audit(ctx context.Context, ev events.AuditEvent) err
 	}
 	if err := b.prod.Produce(ctx, bus.TopicAuditEvents, strconv.FormatInt(ev.OrgID, 10), payload); err != nil {
 		b.log.Warn("audit emit failed", "action", ev.Action, "org_id", ev.OrgID, "err", err)
+		return err
+	}
+	return nil
+}
+
+// busEmailPublisher publishes a transactional email intent onto email.events for the
+// notifier (RFC-019). It stamps OccurredAt and produces under the given key (org_id,
+// else the recipient email). It implements EmailPublisher. A failure is logged, not
+// surfaced: the triggering action (invite created, link requested) already succeeded.
+type busEmailPublisher struct {
+	prod *bus.Producer
+	log  *slog.Logger
+}
+
+// PublishEmail stamps the time and produces the intent. The body never carries a token
+// (RFC-019 section 5); the notifier mints at send time.
+func (b *busEmailPublisher) PublishEmail(ctx context.Context, key string, intent events.EmailIntent) error {
+	intent.OccurredAt = time.Now().UTC()
+	payload, err := json.Marshal(intent)
+	if err != nil {
+		return err
+	}
+	if err := b.prod.Produce(ctx, bus.TopicEmailEvents, key, payload); err != nil {
+		b.log.Warn("email intent publish failed", "type", intent.Type, "err", err)
 		return err
 	}
 	return nil

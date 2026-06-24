@@ -22,9 +22,12 @@ type Mailer interface {
 // Mail is one transactional message. Body is the plain-text part (always set, so
 // there is a readable fallback and the token-carrying links stay greppable). HTML
 // is the optional branded part; when it is set the message goes out as
-// multipart/alternative and the client shows the HTML.
+// multipart/alternative and the client shows the HTML. From overrides the mailer's
+// configured From when set, so the sender can pick the reputation subdomain per
+// message (RFC-019 section 6: account mail vs alert mail); empty uses the default.
 type Mail struct {
 	To      string
+	From    string
 	Subject string
 	Body    string
 	HTML    string
@@ -41,7 +44,7 @@ type LogMailer struct {
 // Send logs the mail at info level.
 func (m LogMailer) Send(_ context.Context, msg Mail) error {
 	if m.Log != nil {
-		m.Log.Info("dev mailer: would send email", "to", msg.To, "subject", msg.Subject, "body", msg.Body)
+		m.Log.Info("dev mailer: would send email", "to", msg.To, "from", msg.From, "subject", msg.Subject, "body", msg.Body)
 	}
 	return nil
 }
@@ -112,11 +115,17 @@ func (m *SMTPMailer) Send(ctx context.Context, msg Mail) error {
 		return fmt.Errorf("mailer: missing recipient")
 	}
 	to := []string{msg.To}
+	// Per-message From override (RFC-019 section 6) picks the reputation subdomain;
+	// empty falls back to the mailer's configured From.
+	from := m.cfg.From
+	if msg.From != "" {
+		from = msg.From
+	}
 	var auth smtp.Auth
 	if m.cfg.Username != "" {
 		auth = smtp.PlainAuth("", m.cfg.Username, m.cfg.Password, m.cfg.Host)
 	}
 	addr := net.JoinHostPort(m.cfg.Host, m.cfg.Port)
-	raw := buildMessage(m.cfg.From, to, msg.Subject, msg.Body, msg.HTML)
-	return smtpSend(ctx, addr, m.cfg.Host, auth, m.cfg.From, to, raw, strings.EqualFold(m.cfg.TLSMode, "implicit"))
+	raw := buildMessage(from, to, msg.Subject, msg.Body, msg.HTML)
+	return smtpSend(ctx, addr, m.cfg.Host, auth, from, to, raw, strings.EqualFold(m.cfg.TLSMode, "implicit"))
 }

@@ -20,10 +20,16 @@ const inviteColumns = `id, org_id, email, role, state, token_hash, locale,
 func scanInvite(row pgx.Row) (*domain.Invitation, error) {
 	var inv domain.Invitation
 	var role, state string
-	err := row.Scan(&inv.ID, &inv.OrgID, &inv.Email, &role, &state, &inv.TokenHash,
+	// token_hash is nullable (RFC-019): a row exists briefly with no token between the
+	// api INSERT and the notifier minting it. A NULL scans as the empty TokenHash.
+	var tokenHash *string
+	err := row.Scan(&inv.ID, &inv.OrgID, &inv.Email, &role, &state, &tokenHash,
 		&inv.Locale, &inv.CreatedBy, &inv.CreatedAt, &inv.ExpiresAt, &inv.AcceptedAt)
 	if err != nil {
 		return nil, err
+	}
+	if tokenHash != nil {
+		inv.TokenHash = *tokenHash
 	}
 	inv.Role = domain.Role(role)
 	inv.State = domain.InvitationState(state)
@@ -43,9 +49,12 @@ func (p *Pool) CreateInvitation(ctx context.Context, inv *domain.Invitation) (in
 	}
 	var id int64
 	err := p.WithOrg(ctx, inv.OrgID, func(tx pgx.Tx) error {
+		// NULLIF stores NULL when the caller passes no token (RFC-019: the api creates
+		// the row token-less and the notifier mints later). A seed caller that does set
+		// a hash keeps it.
 		return tx.QueryRow(ctx, `
 			INSERT INTO invitations (org_id, email, role, token_hash, locale, created_by, expires_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7)
+			VALUES ($1,$2,$3,NULLIF($4,''),$5,$6,$7)
 			RETURNING id`,
 			inv.OrgID, inv.Email, string(inv.Role), inv.TokenHash, inv.Locale, inv.CreatedBy, inv.ExpiresAt,
 		).Scan(&id)
@@ -132,16 +141,44 @@ func (p *Pool) GetInvitation(ctx context.Context, orgID, inviteID int64) (*domai
 	return inv, nil
 }
 
-// ResendInvitation refreshes a pending invitation's token and expiry in place
-// (PRD-001 6.2: same row, new token, refreshed 7-day clock; seat reservation is
-// unchanged). Returns rows affected so a no-op (already terminal) is distinguishable.
-func (p *Pool) ResendInvitation(ctx context.Context, orgID, inviteID int64, tokenHash string, expiresAt time.Time) (int64, error) {
+// ResendInvitation refreshes a pending invitation's 7-day expiry in place (PRD-001
+// 6.2: same row, refreshed clock; the seat reservation is unchanged). The new token is
+// minted by the notifier when it re-sends (RFC-019): it overwrites the row's token_hash
+// via SetInvitationToken, so the old link keeps working until the new one is minted and
+// then stops, with no window where the invite has no valid link. Returns rows affected
+// so a no-op (already terminal) is distinguishable.
+func (p *Pool) ResendInvitation(ctx context.Context, orgID, inviteID int64, expiresAt time.Time) (int64, error) {
 	var affected int64
 	err := p.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx, `
-			UPDATE invitations SET token_hash = $3, expires_at = $4
+			UPDATE invitations SET expires_at = $3
 			WHERE id = $1 AND org_id = $2 AND state = 'pending'`,
-			inviteID, orgID, tokenHash, expiresAt)
+			inviteID, orgID, expiresAt)
+		if err != nil {
+			return err
+		}
+		affected = tag.RowsAffected()
+		return nil
+	})
+	return affected, err
+}
+
+// SetInvitationToken writes a freshly minted invite token hash to a still-pending
+// invitation (RFC-019 section 5.2). The notifier mints the token at send time and
+// calls this under the org scope, then emails the link. It overwrites any existing
+// hash on purpose: on an at-least-once redelivery the notifier re-mints and the link
+// it emails always matches the stored hash, so a send that failed before is retried
+// rather than lost (a rare redelivery after a successful send just supersedes the
+// first link). The "state = pending" guard means a revoke/accept that landed first
+// wins: affected == 0, and the notifier skips the send. A resend follows the same
+// path (bump expiry, publish, re-mint here). Returns rows affected.
+func (p *Pool) SetInvitationToken(ctx context.Context, orgID, inviteID int64, tokenHash string) (int64, error) {
+	var affected int64
+	err := p.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `
+			UPDATE invitations SET token_hash = $3
+			WHERE id = $1 AND org_id = $2 AND state = 'pending'`,
+			inviteID, orgID, tokenHash)
 		if err != nil {
 			return err
 		}

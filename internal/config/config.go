@@ -100,6 +100,12 @@ type SMTPConfig struct {
 	Username string
 	Password string
 	From     string
+	// FromAccount and FromAlerts are the per-category From addresses for reputation
+	// segmentation (RFC-019 section 6): sign-in / invitation mail from the account
+	// subdomain, alert / channel-test mail from the alerts subdomain. Each falls back
+	// to From when unset, so a small deploy runs on one address and the split is opt-in.
+	FromAccount string
+	FromAlerts  string
 	// TLSMode is starttls | implicit | none (defaults to starttls in the mailer).
 	TLSMode string
 }
@@ -309,12 +315,14 @@ func loadBilling() (BillingConfig, error) {
 // links, the Team email channel send fails clearly). Shared by the api and notifier.
 func loadSMTP() SMTPConfig {
 	return SMTPConfig{
-		Host:     os.Getenv("PULSE_SMTP_HOST"),
-		Port:     os.Getenv("PULSE_SMTP_PORT"),
-		Username: os.Getenv("PULSE_SMTP_USERNAME"),
-		Password: os.Getenv("PULSE_SMTP_PASSWORD"),
-		From:     os.Getenv("PULSE_SMTP_FROM"),
-		TLSMode:  os.Getenv("PULSE_SMTP_TLS_MODE"),
+		Host:        os.Getenv("PULSE_SMTP_HOST"),
+		Port:        os.Getenv("PULSE_SMTP_PORT"),
+		Username:    os.Getenv("PULSE_SMTP_USERNAME"),
+		Password:    os.Getenv("PULSE_SMTP_PASSWORD"),
+		From:        os.Getenv("PULSE_SMTP_FROM"),
+		FromAccount: os.Getenv("PULSE_SMTP_FROM_ACCOUNT"),
+		FromAlerts:  os.Getenv("PULSE_SMTP_FROM_ALERTS"),
+		TLSMode:     os.Getenv("PULSE_SMTP_TLS_MODE"),
 	}
 }
 

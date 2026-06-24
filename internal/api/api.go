@@ -27,6 +27,7 @@ import (
 	"pulse/internal/checkstate"
 	"pulse/internal/domain"
 	"pulse/internal/entitlements"
+	"pulse/internal/events"
 	"pulse/internal/kv"
 	"pulse/internal/notify"
 	"pulse/internal/store"
@@ -80,9 +81,11 @@ type Server struct {
 	// changed publishes monitor.changed so the live schedule tracks a create/update/
 	// enable/disable/delete (RFC-002, PRD-006 5). Nil = skip (dev/test without a bus).
 	changed MonitorPublisher
-	// mailer sends the invite email with the tokenized accept link. Nil falls back
-	// to a no-op so the flow still completes (the link is logged).
-	mailer notify.Mailer
+	// email publishes transactional email intents (invite, magic-link, Team-email test)
+	// onto email.events; the notifier is the only sender and mints the token at send
+	// time (RFC-019). Nil skips the publish (no bus, dev/test), so the triggering action
+	// still succeeds without an email.
+	email EmailPublisher
 
 	// registry is the channel-type registry the channel CRUD reads: it builds the
 	// type catalog, validates config, and tells the store which config keys are
@@ -127,6 +130,14 @@ type Server struct {
 	audit AuditPublisher
 }
 
+// EmailPublisher publishes a transactional email intent onto email.events for the
+// notifier to send (RFC-019). key is the partition key (org_id, else the recipient
+// email). A nil publisher on the Server skips the publish: the triggering action still
+// succeeds, just with no email (dev/test without a bus).
+type EmailPublisher interface {
+	PublishEmail(ctx context.Context, key string, intent events.EmailIntent) error
+}
+
 // Config is what the caller (cmd/api) passes to build the Server.
 type Config struct {
 	Store      *store.Pool
@@ -145,9 +156,11 @@ type Config struct {
 	// DevLogin registers the guarded dev-login route (POST /auth/dev/login). Dev-only,
 	// default false; must stay false in production so the route does not exist.
 	DevLogin bool
-	// Seats and Mailer are optional; New fills sane defaults when they are nil.
-	Seats  entitlements.SeatResolver
-	Mailer notify.Mailer
+	// Seats is optional; New fills a sane default when it is nil.
+	Seats entitlements.SeatResolver
+	// Email publishes transactional email intents (invite, magic-link, Team-email test)
+	// to the notifier (RFC-019). Optional; nil skips the publish (no email sent).
+	Email EmailPublisher
 	// Monitors, Ents, and Changed are optional; New fills sane defaults when they are
 	// nil (the monitor handlers run with the default plan limits, all features on, and
 	// no scheduler publish).
@@ -178,10 +191,6 @@ func New(cfg Config) *Server {
 	seats := cfg.Seats
 	if seats == nil {
 		seats = entitlements.DefaultSeats{}
-	}
-	mailer := cfg.Mailer
-	if mailer == nil {
-		mailer = notify.LogMailer{}
 	}
 	monitors := cfg.Monitors
 	if monitors == nil {
@@ -217,7 +226,7 @@ func New(cfg Config) *Server {
 		jobs:           cfg.Jobs,
 		state:          cfg.State,
 		changed:        cfg.Changed,
-		mailer:         mailer,
+		email:          cfg.Email,
 		registry:       reg,
 		tester:         notify.NewManager(nil, nil),
 		cooldown:       cfg.CheckNow,
