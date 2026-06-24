@@ -442,6 +442,18 @@ func (c *memCache) DelCache(_ context.Context, key string) error {
 	return nil
 }
 
+// GetDelCache reads and removes a key in one step, the single-use consume the
+// magic-link verify relies on (mirrors *kv.Client's GETDEL-backed helper).
+func (c *memCache) GetDelCache(_ context.Context, key string) (string, bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok := c.m[key]
+	if ok {
+		delete(c.m, key)
+	}
+	return v, ok, nil
+}
+
 // SetIfAbsent mimics Redis SET NX: it sets the key only if absent and reports
 // whether it was newly set. Used by the notifier dedup test as the Redis fast path.
 func (c *memCache) SetIfAbsent(_ context.Context, key, value string, _ time.Duration) (bool, error) {

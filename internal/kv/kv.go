@@ -143,3 +143,18 @@ func (c *Client) SetCache(ctx context.Context, key, value string, ttl time.Durat
 func (c *Client) DelCache(ctx context.Context, key string) error {
 	return c.Del(ctx, key).Err()
 }
+
+// GetDelCache reads a key and deletes it in one atomic Redis GETDEL, returning
+// the value and whether it was present. This is the single-use consume the
+// magic-link verify needs (RFC-003): two concurrent verifies of the same token
+// can't both win because only one GETDEL sees the value, the other finds it gone.
+func (c *Client) GetDelCache(ctx context.Context, key string) (string, bool, error) {
+	v, err := c.GetDel(ctx, key).Result()
+	if err == goredis.Nil {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return v, true, nil
+}

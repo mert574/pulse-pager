@@ -66,6 +66,9 @@ func Build(ctx context.Context, d Deps) (*Server, http.Handler, error) {
 	loginSvc := authn.NewLoginService(providers, d.Redis, d.Store)
 	refreshSvc := authn.NewRefreshService(d.Store)
 	keyVerifier := authn.NewAPIKeyVerifier(d.Store, d.Redis)
+	// Passwordless email login (RFC-003): the one-time link token lives in Redis, the
+	// find-or-create reuses the same store seam as OAuth/dev-login.
+	magicSvc := authn.NewMagicLinkService(d.Redis, d.Store)
 
 	// Wire the secret-field cipher so secret monitor headers are encrypted at rest
 	// (PRD-002 2.2, master 13). The key is validated at config load; LoadKey here
@@ -137,6 +140,9 @@ func Build(ctx context.Context, d Deps) (*Server, http.Handler, error) {
 		Auth:       auth,
 		Keys:       keyVerifier,
 		AppBaseURL: ic.AppBaseURL,
+		// Magic: passwordless email login; Redis backs its rate-limit counters.
+		Magic: magicSvc,
+		Redis: d.Redis,
 		// DevLogin exposes POST /auth/dev/login for local sign-in without OAuth. Off in
 		// production (PULSE_DEV_LOGIN unset/false), so the route is simply not registered.
 		DevLogin: ic.DevLogin,
@@ -159,8 +165,12 @@ func Build(ctx context.Context, d Deps) (*Server, http.Handler, error) {
 		// because it lives in Redis, not in process memory.
 		CheckNow: d.Redis,
 		// Mailer: real SMTP when configured, else a dev mailer that logs the accept
-		// link so the invite flow still completes (PRD-001 6.1).
-		Mailer: buildMailer(ic, d.Log),
+		// link so the invite flow still completes (PRD-001 6.1). The same platform
+		// mailer the notifier uses for the Team email channel.
+		Mailer: notify.NewMailerFromConfig(
+			d.Cfg.SMTP.Host, d.Cfg.SMTP.Port, d.Cfg.SMTP.Username,
+			d.Cfg.SMTP.Password, d.Cfg.SMTP.From, d.Cfg.SMTP.TLSMode, d.Log,
+		),
 		// PlatformAdmins: the email allowlist for the operator admin panel
 		// (PULSE_PLATFORM_ADMINS). Empty means the panel is closed.
 		PlatformAdmins: ic.PlatformAdmins,
@@ -203,24 +213,6 @@ func buildProviders(ctx context.Context, ic config.IdentityConfig) ([]authn.Prov
 		}))
 	}
 	return providers, nil
-}
-
-// buildMailer picks the transactional mailer for invitation email. With an SMTP
-// host configured it sends for real; otherwise it logs the accept link (so a
-// self-host without SMTP still completes the flow and the operator sees the link).
-func buildMailer(ic config.IdentityConfig, log *slog.Logger) notify.Mailer {
-	if ic.SMTPHost == "" {
-		log.Warn("no SMTP configured: invitation emails will be logged, not sent")
-		return notify.LogMailer{Log: log}
-	}
-	return notify.NewSMTPMailer(notify.SMTPMailerConfig{
-		Host:     ic.SMTPHost,
-		Port:     ic.SMTPPort,
-		Username: ic.SMTPUsername,
-		Password: ic.SMTPPassword,
-		From:     ic.SMTPFrom,
-		TLSMode:  ic.SMTPTLSMode,
-	})
 }
 
 // busMonitorPublisher publishes monitor.changed onto the bus, keyed by org_id so a

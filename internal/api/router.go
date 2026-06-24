@@ -52,6 +52,12 @@ func (s *Server) Router() http.Handler {
 	mux.HandleFunc("GET /auth/jwks", s.handleJWKS)
 	// Link-start needs a session, so it runs behind Identify.
 	mux.Handle("GET /auth/{provider}/link", identify(http.HandlerFunc(s.handleLinkStart)))
+	// Passwordless email login (RFC-003): start emails a one-time link, verify
+	// consumes the token and mints the session. Both are unauthenticated like the
+	// rest of the auth-plane: start is enumeration-safe and rate-limited, verify is
+	// a single-use token from the email.
+	mux.HandleFunc("POST /auth/email/start", s.handleEmailStart)
+	mux.HandleFunc("GET /auth/email/verify", s.handleEmailVerify)
 
 	// dev-login (local/dev only): registered ONLY when DevLogin is on. In production
 	// it is off, so the route is absent and a request gets a 404. It signs a developer

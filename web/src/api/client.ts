@@ -270,6 +270,18 @@ export const client = {
   logout(): Promise<void> {
     return request<void>("/auth/logout", { method: "POST", noRetry: true });
   },
+
+  // Passwordless email login: ask the server to email a one-time sign-in link
+  // (RFC-003). The server is enumeration-safe, so this always resolves the same way
+  // whether or not the email has an account; the caller just shows a neutral "check
+  // your email" message. noRetry because there is no session to refresh here.
+  startEmailLogin(email: string): Promise<void> {
+    return request<void>("/auth/email/start", {
+      method: "POST",
+      body: { email },
+      noRetry: true,
+    });
+  },
   logoutAll(): Promise<void> {
     return request<void>(`${API_V1}/account/logout-all`, { method: "POST" });
   },

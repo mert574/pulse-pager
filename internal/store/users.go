@@ -122,11 +122,17 @@ type FirstSignIn struct {
 
 // CreateUserWithPersonalOrg runs the first-sign-in transaction (PRD-001 3.2,
 // RFC-003 2.3): in one Postgres transaction it creates the user from the verified
-// provider profile, links the identity, creates a personal Organization on the Free
-// plan, and makes the user its owner. If any step fails the whole thing rolls back,
-// so a user is never left with no org (PRD-001 I2). The membership insert sets
-// app.current_org in the same transaction so the org RLS policy lets it through.
-// orgName/orgSlug are derived by the caller from the user's name or email.
+// provider profile, optionally links a social identity, creates a personal
+// Organization on the Free plan, and makes the user its owner. If any step fails the
+// whole thing rolls back, so a user is never left with no org (PRD-001 I2). The
+// membership insert sets app.current_org in the same transaction so the org RLS
+// policy lets it through. orgName/orgSlug are derived by the caller from the user's
+// name or email.
+//
+// idn is optional: OAuth and dev-login pass an identity to link, but passwordless
+// magic-link sign-up passes nil, since its sign-in handle is the verified email
+// (GetUserByEmail) and there is no social identity to record. A nil idn skips the
+// user_identities insert.
 func (p *Pool) CreateUserWithPersonalOrg(ctx context.Context, u *domain.User, idn *domain.UserIdentity, orgName, orgSlug string) (*FirstSignIn, error) {
 	if u.Locale == "" {
 		u.Locale = "en"
@@ -143,12 +149,14 @@ func (p *Pool) CreateUserWithPersonalOrg(ctx context.Context, u *domain.User, id
 		).Scan(&out.UserID); err != nil {
 			return err
 		}
-		if err := tx.QueryRow(ctx, `
-			INSERT INTO user_identities (user_id, provider, provider_user_id)
-			VALUES ($1,$2,$3) RETURNING id`,
-			out.UserID, string(idn.Provider), idn.ProviderUserID,
-		).Scan(&out.IdentityID); err != nil {
-			return err
+		if idn != nil {
+			if err := tx.QueryRow(ctx, `
+				INSERT INTO user_identities (user_id, provider, provider_user_id)
+				VALUES ($1,$2,$3) RETURNING id`,
+				out.UserID, string(idn.Provider), idn.ProviderUserID,
+			).Scan(&out.IdentityID); err != nil {
+				return err
+			}
 		}
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO organizations (name, slug) VALUES ($1,$2) RETURNING id`,
@@ -171,8 +179,10 @@ func (p *Pool) CreateUserWithPersonalOrg(ctx context.Context, u *domain.User, id
 		return nil, err
 	}
 	u.ID = out.UserID
-	idn.ID = out.IdentityID
-	idn.UserID = out.UserID
+	if idn != nil {
+		idn.ID = out.IdentityID
+		idn.UserID = out.UserID
+	}
 	return &out, nil
 }
 

@@ -27,6 +27,7 @@ import (
 	"pulse/internal/checkstate"
 	"pulse/internal/domain"
 	"pulse/internal/entitlements"
+	"pulse/internal/kv"
 	"pulse/internal/notify"
 	"pulse/internal/store"
 )
@@ -42,6 +43,14 @@ type Server struct {
 	refresh *authn.RefreshService
 	cookies authn.CookieConfig
 	auth    *authn.Authenticator
+	// magic is the passwordless email-login service (RFC-003): it mints/consumes the
+	// one-time link token in Redis and finds-or-creates the user. Nil disables the
+	// /auth/email/* routes' work (they still answer neutrally), for dev/test without
+	// Redis.
+	magic *authn.MagicLinkService
+	// redis backs the magic-link start handler's rate-limit counters (per email, per
+	// IP). Nil = no limiting (dev/test).
+	redis *kv.Client
 	// keys verifies API keys; the revoke handler calls InvalidateAPIKey on it so a
 	// revoked key misses the cache and the next request sees the revoked row.
 	keys *authn.APIKeyVerifier
@@ -128,6 +137,11 @@ type Config struct {
 	Auth       *authn.Authenticator
 	Keys       *authn.APIKeyVerifier
 	AppBaseURL string
+	// Magic is the passwordless email-login service; Redis backs its rate-limit
+	// counters. Both optional: nil disables magic-link work (the routes still answer
+	// neutrally) and rate-limiting (dev/test).
+	Magic *authn.MagicLinkService
+	Redis *kv.Client
 	// DevLogin registers the guarded dev-login route (POST /auth/dev/login). Dev-only,
 	// default false; must stay false in production so the route does not exist.
 	DevLogin bool
@@ -194,6 +208,8 @@ func New(cfg Config) *Server {
 		cookies:        cfg.Cookies,
 		auth:           cfg.Auth,
 		keys:           cfg.Keys,
+		magic:          cfg.Magic,
+		redis:          cfg.Redis,
 		seats:          seats,
 		monitors:       monitors,
 		statusPages:    statusPages,

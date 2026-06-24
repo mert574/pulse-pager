@@ -80,7 +80,9 @@ func (f *fakeUserStore) CreateUserWithPersonalOrg(_ context.Context, u *domain.U
 	u.ID = uid
 	f.users[uid] = u
 	f.byEmail[u.Email] = uid
-	f.identities[identityKey(idn.Provider, idn.ProviderUserID)] = uid
+	if idn != nil {
+		f.identities[identityKey(idn.Provider, idn.ProviderUserID)] = uid
+	}
 	f.orgs[uid] = orgID
 	return &store.FirstSignIn{UserID: uid, OrgID: orgID, MembershipID: 1, IdentityID: 1}, nil
 }
