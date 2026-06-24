@@ -23,10 +23,10 @@ func TestLoadKey_Valid(t *testing.T) {
 
 func TestLoadKey_Rejects(t *testing.T) {
 	cases := map[string]string{
-		"empty":         "",
-		"not base64":    "!!!not base64!!!",
-		"too short":     base64.StdEncoding.EncodeToString(make([]byte, 16)),
-		"too long":      base64.StdEncoding.EncodeToString(make([]byte, 33)),
+		"empty":      "",
+		"not base64": "!!!not base64!!!",
+		"too short":  base64.StdEncoding.EncodeToString(make([]byte, 16)),
+		"too long":   base64.StdEncoding.EncodeToString(make([]byte, 33)),
 	}
 	for name, key := range cases {
 		t.Run(name, func(t *testing.T) {

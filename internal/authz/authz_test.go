@@ -14,8 +14,8 @@ func TestMatrix(t *testing.T) {
 
 	// expected[action][role] = allowed. Transcribed from PRD-001 7.2 / RFC-003 7.2.
 	expected := map[Action]map[domain.Role]bool{
-		ActionViewMonitoring:    {domain.RoleOwner: true, domain.RoleAdmin: true, domain.RoleMember: true, domain.RoleViewer: true},
-		ActionViewMembers:       {domain.RoleOwner: true, domain.RoleAdmin: true, domain.RoleMember: true, domain.RoleViewer: true},
+		ActionViewMonitoring:     {domain.RoleOwner: true, domain.RoleAdmin: true, domain.RoleMember: true, domain.RoleViewer: true},
+		ActionViewMembers:        {domain.RoleOwner: true, domain.RoleAdmin: true, domain.RoleMember: true, domain.RoleViewer: true},
 		ActionCreateOrganization: {domain.RoleOwner: true, domain.RoleAdmin: true, domain.RoleMember: true, domain.RoleViewer: true},
 
 		ActionManageMonitors:    {domain.RoleOwner: true, domain.RoleAdmin: true, domain.RoleMember: true, domain.RoleViewer: false},

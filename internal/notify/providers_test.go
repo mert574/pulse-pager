@@ -67,10 +67,10 @@ func TestPagerDutyTriggerAndResolveShareDedupKey(t *testing.T) {
 
 func TestOpsgenieCreateAndCloseShareAlias(t *testing.T) {
 	type req struct {
-		path   string
-		query  string
-		auth   string
-		body   map[string]any
+		path  string
+		query string
+		auth  string
+		body  map[string]any
 	}
 	var reqs []req
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -224,10 +224,10 @@ func TestTwilioSend(t *testing.T) {
 
 func TestProviderValidate(t *testing.T) {
 	cases := []struct {
-		name    string
-		p       Provider
-		good    map[string]any
-		bad     map[string]any
+		name string
+		p    Provider
+		good map[string]any
+		bad  map[string]any
 	}{
 		{"pagerduty", &pagerdutyProvider{}, map[string]any{"routing_key": "x"}, map[string]any{}},
 		{"opsgenie", &opsgenieProvider{}, map[string]any{"api_key": "x"}, map[string]any{}},

@@ -117,10 +117,10 @@ func newFakeOIDC(t *testing.T) *fakeOIDC {
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
 		base := f.server.URL
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"issuer":                 base,
-			"authorization_endpoint": base + "/authorize",
-			"token_endpoint":         base + "/token",
-			"jwks_uri":               base + "/jwks",
+			"issuer":                                base,
+			"authorization_endpoint":                base + "/authorize",
+			"token_endpoint":                        base + "/token",
+			"jwks_uri":                              base + "/jwks",
 			"id_token_signing_alg_values_supported": []string{"RS256"},
 		})
 	})

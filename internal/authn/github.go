@@ -68,7 +68,7 @@ func NewGitHubProvider(cfg OAuth2Config) Provider {
 
 func (g *githubProvider) Name() domain.IdentityProvider { return domain.ProviderGitHub }
 
-func (g *githubProvider) AuthCodeURL(state, _ , challenge string) string {
+func (g *githubProvider) AuthCodeURL(state, _, challenge string) string {
 	// GitHub has no OIDC nonce; PKCE still adds code-interception protection.
 	return g.oauth.AuthCodeURL(state,
 		oauth2.SetAuthURLParam("code_challenge", challenge),

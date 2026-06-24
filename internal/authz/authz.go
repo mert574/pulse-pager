@@ -102,7 +102,7 @@ type Decision struct {
 	Reason  string // empty when allowed
 }
 
-func allow() Decision            { return Decision{Allowed: true} }
+func allow() Decision             { return Decision{Allowed: true} }
 func deny(reason string) Decision { return Decision{Allowed: false, Reason: reason} }
 
 // roleActions is the permission-set-per-role table (RFC-003 7.2). A role's set is

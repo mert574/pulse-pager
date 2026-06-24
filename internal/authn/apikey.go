@@ -23,7 +23,7 @@ import (
 const APIKeyPrefix = "pulse_sk_"
 
 const (
-	apiKeyCacheTTL = 5 * time.Minute // positive cache (RFC-003 5.3)
+	apiKeyCacheTTL = 5 * time.Minute  // positive cache (RFC-003 5.3)
 	apiKeyNegTTL   = 30 * time.Second // negative cache to blunt scans
 )
 

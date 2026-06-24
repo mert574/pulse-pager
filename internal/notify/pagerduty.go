@@ -13,8 +13,10 @@ import (
 // resolves the same dedup_key, so PagerDuty pairs them into one incident.
 //
 // API verified June 2026 against:
-//   https://developer.pagerduty.com/api-reference/368ae3d938c9e-send-an-event-to-pager-duty
-//   https://developer.pagerduty.com/docs/events-api-v2/trigger-events/
+//
+//	https://developer.pagerduty.com/api-reference/368ae3d938c9e-send-an-event-to-pager-duty
+//	https://developer.pagerduty.com/docs/events-api-v2/trigger-events/
+//
 // Endpoint: POST https://events.pagerduty.com/v2/enqueue, application/json,
 // routing_key in the body (no Authorization header).
 type pagerdutyProvider struct {
