@@ -30,52 +30,64 @@ import (
 
 	"pulse/internal/api"
 	"pulse/internal/authn"
+	"pulse/internal/crypto"
 	"pulse/internal/entitlements"
-	"pulse/internal/notify"
+	"pulse/internal/events"
 	"pulse/internal/store"
 )
 
-// captureMailer records the invite emails so the test can read the tokenized
-// accept link out of the body. The accept URL is "${AppBaseURL}/invitations/<token>".
-type captureMailer struct {
-	mu  sync.Mutex
-	all []notify.Mail
+// captureEmail records the email intents the api publishes (RFC-019). The api no
+// longer sends mail or mints tokens; it publishes a semantic intent and the notifier
+// is the only sender. These tests act as the notifier: for an invitation, tokenFor
+// mints a known token on the (still-pending) row and returns the raw value so the test
+// can accept with it, exactly as the notifier's SetInvitationToken would. It is shared
+// by every api integration test that needs to accept an invite for setup.
+type captureEmail struct {
+	mu    sync.Mutex
+	store *store.Pool
+	all   []events.EmailIntent
 }
 
-func (m *captureMailer) Send(_ context.Context, msg notify.Mail) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.all = append(m.all, msg)
+func (c *captureEmail) PublishEmail(_ context.Context, _ string, in events.EmailIntent) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.all = append(c.all, in)
 	return nil
 }
 
-// tokenFor returns the raw invite token from the most recent mail sent to email.
-func (m *captureMailer) tokenFor(t *testing.T, email string) string {
+// tokenFor acts as the notifier for the most recent invitation intent to email: it
+// mints a known token hash on the still-pending row and returns the raw token, so the
+// caller can drive the accept flow. A missing intent is a fatal test error.
+func (c *captureEmail) tokenFor(t *testing.T, email string) string {
 	t.Helper()
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	const marker = "/invitations/"
-	for i := len(m.all) - 1; i >= 0; i-- {
-		msg := m.all[i]
-		if msg.To != email {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := len(c.all) - 1; i >= 0; i-- {
+		in := c.all[i]
+		if in.Type != events.EmailInvitation || in.Invitation == nil || in.Invitation.Email != email {
 			continue
 		}
-		idx := strings.Index(msg.Body, marker)
-		if idx < 0 {
-			t.Fatalf("invite mail to %s has no accept link: %q", email, msg.Body)
+		raw := fmt.Sprintf("itest-invite-%d", in.Invitation.InvitationID)
+		if _, err := c.store.SetInvitationToken(context.Background(), in.Invitation.OrgID, in.Invitation.InvitationID, crypto.HashToken(raw)); err != nil {
+			t.Fatalf("mint invite token for %s: %v", email, err)
 		}
-		rest := msg.Body[idx+len(marker):]
-		// the token runs until the first whitespace or end of body
-		if cut := strings.IndexAny(rest, " \t\r\n"); cut >= 0 {
-			rest = rest[:cut]
-		}
-		if rest == "" {
-			t.Fatalf("empty invite token in mail to %s", email)
-		}
-		return rest
+		return raw
 	}
-	t.Fatalf("no invite mail captured for %s", email)
+	t.Fatalf("no invite intent captured for %s", email)
 	return ""
+}
+
+// magicRequested reports whether a magic-link intent was published for email (the api's
+// job now; the notifier does the minting and sending).
+func (c *captureEmail) magicRequested(email string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, in := range c.all {
+		if in.Type == events.EmailMagicLink && in.MagicLink != nil && in.MagicLink.Email == email {
+			return true
+		}
+	}
+	return false
 }
 
 func TestAPIMembers(t *testing.T) {
@@ -138,7 +150,7 @@ func TestAPIMembers(t *testing.T) {
 	refreshSvc := authn.NewRefreshService(app)
 	keyVerifier := authn.NewAPIKeyVerifier(app, cache)
 	auth := authn.NewAuthenticator(jwtIssuer, keyVerifier, app, cache)
-	mailer := &captureMailer{}
+	emailPub := &captureEmail{store: app}
 
 	mkServer := func(cap int) *httptest.Server {
 		srv := api.New(api.Config{
@@ -150,7 +162,7 @@ func TestAPIMembers(t *testing.T) {
 			Auth:       auth,
 			AppBaseURL: "http://app.test",
 			Seats:      entitlements.FixedSeats{Cap: cap},
-			Mailer:     mailer,
+			Email:      emailPub,
 		})
 		return httptest.NewServer(srv.Router())
 	}
@@ -216,7 +228,7 @@ func TestAPIMembers(t *testing.T) {
 		if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 			t.Fatalf("invite: want 200/201, got %d", resp.StatusCode)
 		}
-		token := mailer.tokenFor(t, "invitee@example.com")
+		token := emailPub.tokenFor(t, "invitee@example.com")
 
 		inviteeClient, _ := login(t, "invitee-sub", "invitee@example.com")
 		acc, err := inviteeClient.Post(ts.URL+"/api/v1/invitations/"+token+"/accept", "application/json", nil)
@@ -264,7 +276,7 @@ func TestAPIMembers(t *testing.T) {
 		if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 			t.Fatalf("invite stranger: want 200/201, got %d", resp.StatusCode)
 		}
-		token := mailer.tokenFor(t, "stranger@example.com")
+		token := emailPub.tokenFor(t, "stranger@example.com")
 
 		// invitee@ (a different verified email) tries to accept the stranger invite.
 		inviteeClient, _ := login(t, "invitee-sub", "invitee@example.com")

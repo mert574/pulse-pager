@@ -294,18 +294,19 @@ var apiRatePerMin = map[Plan]int{
 }
 
 // channelTypesAllowed is the notification channel types a plan may use (PRD-006 3).
-// The v1 channels (Slack/Discord/webhook, email-over-SMTP, and the Team email
-// channel that sends through the platform mailer to org members) are on every tier;
-// the phased PagerDuty/Opsgenie/Telegram/Teams/Twilio types are not modeled here yet
-// (they arrive with the channel roadmap, master 7 / 15). The type strings are the
-// notify descriptor types and the OpenAPI ChannelType enum, so "smtp" is the
-// bring-your-own SMTP channel and "email" is the Team email channel.
+// Discord, bring-your-own SMTP ("smtp"), and Telegram are on every tier. Slack starts
+// at tier2; the generic webhook starts at tier3. The Team email channel ("email"),
+// which sends through our platform mailer to org members, starts at tier2: the
+// platform mailer is a cost we carry, so the free tier brings its own SMTP server
+// instead. The on-call/incident tools (PagerDuty/Opsgenie/Teams) and Twilio unlock up
+// the ladder (master 7 / 15). The type strings are the notify descriptor types and the
+// OpenAPI ChannelType enum.
 var channelTypesAllowed = map[Plan][]string{
-	// The four basics (chat, generic webhook, email) on every plan; the integrations
-	// unlock up the ladder. Starter adds Telegram, Team adds the on-call/incident tools
-	// plus Microsoft Teams, Business adds Twilio SMS/voice and so includes them all.
-	PlanTier1:      {"slack", "discord", "webhook", "smtp", "email"},
-	PlanTier2:      {"slack", "discord", "webhook", "smtp", "email", "telegram"},
+	// tier1: Discord, bring-your-own SMTP, and Telegram. tier2 adds Slack, our Team
+	// email channel. tier3 adds the generic webhook plus the on-call/incident tools and
+	// Microsoft Teams. Custom adds Twilio SMS/voice and so includes them all.
+	PlanTier1:      {"discord", "smtp", "telegram"},
+	PlanTier2:      {"slack", "discord", "smtp", "email", "telegram"},
 	PlanTier3:      {"slack", "discord", "webhook", "smtp", "email", "telegram", "pagerduty", "opsgenie", "teams"},
 	PlanTierCustom: {"slack", "discord", "webhook", "smtp", "email", "telegram", "pagerduty", "opsgenie", "teams", "twilio"},
 }

@@ -6,10 +6,11 @@
 // store (testcontainers, so RLS is in force), with NO OAuth provider configured.
 // It proves:
 //
-//   - POST /auth/email/start {email} returns the neutral 200 and emails a link;
-//     following GET /auth/email/verify?token=... sets the session cookies and
-//     GET /api/v1/me then returns the real user with their personal org (owner)
-//     read FROM POSTGRES;
+//   - POST /auth/email/start {email} returns the neutral 200 and publishes a
+//     magic-link intent (the notifier mints + sends, RFC-019); the test acts as the
+//     notifier (mints the record) and following GET /auth/email/verify?token=... sets
+//     the session cookies and GET /api/v1/me then returns the real user with their
+//     personal org (owner) read FROM POSTGRES;
 //   - the start response is the SAME neutral body for an unknown email (the
 //     handler never reveals whether the email exists);
 //   - a second verify of the same token fails (single-use), so it does not sign in.
@@ -24,36 +25,15 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"pulse/internal/api"
 	"pulse/internal/authn"
-	"pulse/internal/notify"
+	"pulse/internal/maglink"
 	"pulse/internal/store"
 )
-
-// recordingMailer captures the last sent mail so the test can pull the verify link
-// out of the body (the LogMailer logs it; here we read it directly).
-type recordingMailer struct {
-	mu   sync.Mutex
-	last notify.Mail
-}
-
-func (m *recordingMailer) Send(_ context.Context, msg notify.Mail) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.last = msg
-	return nil
-}
-
-func (m *recordingMailer) body() string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.last.Body
-}
 
 func TestAPIMagicLink(t *testing.T) {
 	ctx := context.Background()
@@ -107,7 +87,7 @@ func TestAPIMagicLink(t *testing.T) {
 	keyVerifier := authn.NewAPIKeyVerifier(app, cache)
 	auth := authn.NewAuthenticator(jwtIssuer, keyVerifier, app, cache)
 	magicSvc := authn.NewMagicLinkService(cache, app)
-	mailer := &recordingMailer{}
+	emailPub := &captureEmail{store: app}
 
 	srv := api.New(api.Config{
 		Store:      app,
@@ -118,21 +98,11 @@ func TestAPIMagicLink(t *testing.T) {
 		Auth:       auth,
 		AppBaseURL: "", // verify link is then a bare /auth/email/verify path, hit on this server
 		Magic:      magicSvc,
-		Mailer:     mailer,
+		Email:      emailPub,
 		// Redis left nil: this test does not exercise the rate-limit counters.
 	})
 	ts := httptest.NewServer(srv.Router())
 	defer ts.Close()
-
-	// verifyPath pulls the /auth/email/verify?token=... line out of the email body.
-	verifyPath := func() string {
-		for _, line := range strings.Split(mailer.body(), "\n") {
-			if strings.Contains(line, "/auth/email/verify?token=") {
-				return strings.TrimSpace(line)
-			}
-		}
-		return ""
-	}
 
 	const email = "magic.link@example.com"
 
@@ -157,10 +127,17 @@ func TestAPIMagicLink(t *testing.T) {
 			t.Fatalf("email start: want 200, got %d", resp.StatusCode)
 		}
 
-		link := verifyPath()
-		if link == "" {
-			t.Fatal("no verify link was emailed")
+		// The api published a magic-link intent (it no longer mints or sends, RFC-019).
+		// Act as the notifier: mint the one-time record in the same store the api's
+		// Verify reads, then follow the link it would have emailed.
+		if !emailPub.magicRequested(email) {
+			t.Fatal("start should publish a magic-link intent for the email")
 		}
+		raw, err := maglink.Mint(ctx, cache, email)
+		if err != nil {
+			t.Fatalf("mint magic link: %v", err)
+		}
+		link := "/auth/email/verify?token=" + raw
 
 		// GET the verify link -> 302 into the app, sets the session cookies.
 		vresp, err := client.Get(ts.URL + link)

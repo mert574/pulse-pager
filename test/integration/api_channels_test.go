@@ -124,7 +124,7 @@ func TestChannelsManagement(t *testing.T) {
 	refreshSvc := authn.NewRefreshService(app)
 	keyVerifier := authn.NewAPIKeyVerifier(app, cache)
 	auth := authn.NewAuthenticator(jwtIssuer, keyVerifier, app, cache)
-	mailer := &captureMailer{}
+	emailPub := &captureEmail{store: app}
 
 	srv := api.New(api.Config{
 		Store:      app,
@@ -136,7 +136,7 @@ func TestChannelsManagement(t *testing.T) {
 		Keys:       keyVerifier,
 		AppBaseURL: "http://app.test",
 		Seats:      entitlements.FixedSeats{Cap: 5},
-		Mailer:     mailer,
+		Email:      emailPub,
 	})
 	ts := httptest.NewServer(srv.Router())
 	defer ts.Close()
@@ -211,14 +211,17 @@ func TestChannelsManagement(t *testing.T) {
 		for _, e := range cat.ChannelTypes {
 			avail[e.Type] = e.Available
 		}
-		for _, want := range []string{"slack", "discord", "webhook", "smtp"} {
+		// tier1 (the default) includes Discord, bring-your-own SMTP, and Telegram.
+		for _, want := range []string{"discord", "smtp", "telegram"} {
 			if !avail[want] {
-				t.Fatalf("expected %q available on plan, catalog: %+v", want, avail)
+				t.Fatalf("expected %q available on tier1, catalog: %+v", want, avail)
 			}
 		}
-		for _, want := range []string{"telegram", "pagerduty", "opsgenie", "teams", "twilio"} {
+		// Slack (tier2+), the generic webhook (tier3+), the Team email channel (tier2+,
+		// RFC-019), and the phased on-call/SMS types are not available on tier1.
+		for _, want := range []string{"slack", "webhook", "email", "pagerduty", "opsgenie", "teams", "twilio"} {
 			if avail[want] {
-				t.Fatalf("expected phased type %q NOT available on plan, catalog: %+v", want, avail)
+				t.Fatalf("expected %q NOT available on tier1, catalog: %+v", want, avail)
 			}
 		}
 		// The webhook url field is declared required + secret.
@@ -266,6 +269,16 @@ func TestChannelsManagement(t *testing.T) {
 			}
 		}
 	})
+
+	// The CRUD subtests below create webhook and Team-email channels, which need a
+	// higher tier (webhook is tier3+, email is tier2+, RFC-019). Move the org to tier3
+	// for the rest of this test; the catalog + gating subtests above intentionally ran
+	// on the default tier1.
+	var orgIDInt int64
+	fmt.Sscan(orgID, &orgIDInt)
+	if _, err := admin.Exec(ctx, "UPDATE organizations SET plan='tier3' WHERE id=$1", orgIDInt); err != nil {
+		t.Fatalf("set plan tier3: %v", err)
+	}
 
 	t.Run("owner_creates_channel_secret_redacted", func(t *testing.T) {
 		plaintextURL = okTarget.URL
@@ -356,8 +369,9 @@ func TestChannelsManagement(t *testing.T) {
 	})
 
 	t.Run("plan_gating_and_unknown_type_422", func(t *testing.T) {
-		// telegram is a known type but not in the Free plan's allowed set.
-		gated := post(t, ownerClient, base, `{"name":"tg","type":"telegram","enabled":true,"config":{"bot_token":"x","chat_id":"y"}}`)
+		// twilio is a known type but not in this plan's (tier3) allowed set; only Custom
+		// has it. The plan gate is a 422 on the type field.
+		gated := post(t, ownerClient, base, `{"name":"sms","type":"twilio","enabled":true,"config":{}}`)
 		_ = gated.Body.Close()
 		if gated.StatusCode != http.StatusUnprocessableEntity {
 			t.Fatalf("plan-gated type: want 422, got %d", gated.StatusCode)
@@ -371,10 +385,11 @@ func TestChannelsManagement(t *testing.T) {
 	})
 
 	t.Run("email_channel_member_guard", func(t *testing.T) {
-		// The Team email channel ("email") config holds member user ids. The save-time
-		// guard rejects an id that is not an active member of the org (422 on members)
-		// and accepts the owner's own id (which is a member). This is the save-time half
-		// of "can't email outside the org"; the send-time half is the resolver join.
+		// The org is on tier3 here (set above), which includes the Team email channel
+		// (tier2+, RFC-019). Its config holds member user ids: the save-time guard rejects
+		// an id that is not an active member of the org (422 on members) and accepts the
+		// owner's own id (which is a member). This is the save-time half of "can't email
+		// outside the org"; the send-time half is the resolver join.
 		emailBase := base
 		// A bogus member id is not a member of this org: reject.
 		bad := post(t, ownerClient, emailBase, `{"name":"team mail","type":"email","enabled":true,"config":{"members":["999999"]}}`)
@@ -421,7 +436,7 @@ func TestChannelsManagement(t *testing.T) {
 			}
 		}
 		accept := func(c *http.Client, email string) {
-			token := mailer.tokenFor(t, email)
+			token := emailPub.tokenFor(t, email)
 			acc, err := c.Post(ts.URL+"/api/v1/invitations/"+token+"/accept", "application/json", nil)
 			if err != nil {
 				t.Fatal(err)

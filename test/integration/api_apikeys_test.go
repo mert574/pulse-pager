@@ -3,9 +3,9 @@
 // API-key management HTTP API integration test. It exercises the REAL handlers in
 // internal/api wired to the REAL authn services (JWT + the API-key verifier) and the
 // REAL Postgres store (testcontainers, RLS in force), a FAKE Google OIDC IdP, and a
-// capturing Mailer so an invited member can be created and used for the role tests.
-// It reuses the helpers from api_identity_test.go and the captureMailer from
-// api_members_test.go (same package).
+// capturing email publisher so an invited member can be created and used for the role
+// tests. It reuses the helpers from api_identity_test.go and the captureEmail helper
+// from api_members_test.go (same package).
 //
 // Covers: owner creates a key (response carries the full pulse_sk_ secret once plus
 // metadata); list shows metadata but never the secret; the created key authenticates
@@ -110,7 +110,7 @@ func TestAPIKeys(t *testing.T) {
 	refreshSvc := authn.NewRefreshService(app)
 	keyVerifier := authn.NewAPIKeyVerifier(app, cache)
 	auth := authn.NewAuthenticator(jwtIssuer, keyVerifier, app, cache)
-	mailer := &captureMailer{}
+	emailPub := &captureEmail{store: app}
 
 	srv := api.New(api.Config{
 		Store:      app,
@@ -122,7 +122,7 @@ func TestAPIKeys(t *testing.T) {
 		Keys:       keyVerifier,
 		AppBaseURL: "http://app.test",
 		Seats:      entitlements.FixedSeats{Cap: 5},
-		Mailer:     mailer,
+		Email:      emailPub,
 	})
 	ts := httptest.NewServer(srv.Router())
 	defer ts.Close()
@@ -318,7 +318,7 @@ func TestAPIKeys(t *testing.T) {
 		if inv.StatusCode != http.StatusCreated && inv.StatusCode != http.StatusOK {
 			t.Fatalf("invite member: want 200/201, got %d", inv.StatusCode)
 		}
-		token := mailer.tokenFor(t, "member@example.com")
+		token := emailPub.tokenFor(t, "member@example.com")
 
 		memberClient, _ := login(t, "member-sub", "member@example.com")
 		acc, err := memberClient.Post(ts.URL+"/api/v1/invitations/"+token+"/accept", "application/json", nil)

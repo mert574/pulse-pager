@@ -121,7 +121,7 @@ func TestAPIEntitlements(t *testing.T) {
 	refreshSvc := authn.NewRefreshService(app)
 	keyVerifier := authn.NewAPIKeyVerifier(app, cache)
 	auth := authn.NewAuthenticator(jwtIssuer, keyVerifier, app, cache)
-	mailer := &captureMailer{}
+	emailPub := &captureEmail{store: app}
 
 	// Generous resolvers so creating a few monitors, inviting a member, and creating a
 	// status page are not blocked by the Free caps; the entitlements read echoes these
@@ -141,7 +141,7 @@ func TestAPIEntitlements(t *testing.T) {
 		Seats:       entitlements.FixedSeats{Cap: 5},
 		Monitors:    entitlements.FixedMonitors{Limits: monLimits},
 		StatusPages: entitlements.FixedStatusPages{Cap: 3},
-		Mailer:      mailer,
+		Email:       emailPub,
 	})
 	ts := httptest.NewServer(srv.Router())
 	defer ts.Close()
@@ -290,7 +290,7 @@ func TestAPIEntitlements(t *testing.T) {
 	// --- a member is 403; an admin reads ---
 	t.Run("authz_member_403_admin_reads", func(t *testing.T) {
 		// the teammate accepts the invite and becomes a member.
-		token := mailer.tokenFor(t, "teammate@example.com")
+		token := emailPub.tokenFor(t, "teammate@example.com")
 		memberClient, _ := login(t, "ent-teammate", "teammate@example.com")
 		acc, err := memberClient.Post(ts.URL+"/api/v1/invitations/"+token+"/accept", "application/json", nil)
 		if err != nil {

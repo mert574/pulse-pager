@@ -115,7 +115,7 @@ func TestOutboundWebhooksManagement(t *testing.T) {
 	refreshSvc := authn.NewRefreshService(app)
 	keyVerifier := authn.NewAPIKeyVerifier(app, cache)
 	auth := authn.NewAuthenticator(jwtIssuer, keyVerifier, app, cache)
-	mailer := &captureMailer{}
+	emailPub := &captureEmail{store: app}
 
 	srv := api.New(api.Config{
 		Store:      app,
@@ -127,7 +127,7 @@ func TestOutboundWebhooksManagement(t *testing.T) {
 		Keys:       keyVerifier,
 		AppBaseURL: "http://app.test",
 		Seats:      entitlements.FixedSeats{Cap: 5},
-		Mailer:     mailer,
+		Email:      emailPub,
 	})
 	ts := httptest.NewServer(srv.Router())
 	defer ts.Close()
@@ -315,7 +315,7 @@ func TestOutboundWebhooksManagement(t *testing.T) {
 			}
 		}
 		accept := func(c *http.Client, email string) {
-			token := mailer.tokenFor(t, email)
+			token := emailPub.tokenFor(t, email)
 			acc, err := c.Post(ts.URL+"/api/v1/invitations/"+token+"/accept", "application/json", nil)
 			if err != nil {
 				t.Fatal(err)
