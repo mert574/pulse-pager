@@ -42,6 +42,9 @@ func TestStubVerifyWebhook_valid(t *testing.T) {
 	if ev.Provider != "stub" {
 		t.Fatalf("provider: %q", ev.Provider)
 	}
+	if ev.Kind != EventKindSubscription {
+		t.Fatalf("kind: got %v want EventKindSubscription", ev.Kind)
+	}
 	if ev.Plan != "tier3" || ev.Cycle != "monthly" || ev.Status != "active" {
 		t.Fatalf("plan/cycle/status: %q %q %q", ev.Plan, ev.Cycle, ev.Status)
 	}

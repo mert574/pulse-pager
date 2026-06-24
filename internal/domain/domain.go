@@ -3,7 +3,10 @@
 // the stable vocabulary every other package speaks.
 package domain
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Method string // "GET","POST","PUT","PATCH","DELETE","HEAD"
 
@@ -494,6 +497,21 @@ type Payment struct {
 	HostedInvoiceURL  string
 	RefundedAmount    int64 // minor units
 	CreatedAt         time.Time
+}
+
+// PlanPrice maps a catalog plan + cycle to a billing provider price (RFC-018 6), so
+// checkout knows which price to charge. TrialDays is the native provider trial (for
+// display); CustomData is the provider's price metadata kept as a jsonb passthrough.
+type PlanPrice struct {
+	ID              int64
+	Provider        string
+	Plan            string // tier2 | tier3
+	Cycle           string // monthly | annual
+	ProviderPriceID string
+	TrialDays       int
+	CustomData      json.RawMessage
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // Role is a user's role inside one org (PRD-001 7).

@@ -88,6 +88,7 @@ func (s *Stub) VerifyWebhook(payload []byte, sig string) (Event, error) {
 	ev := Event{
 		ID:                     env.ID,
 		Type:                   env.Type,
+		Kind:                   stubEventKind(env.Type),
 		Provider:               s.Name(),
 		OrgID:                  env.CustomData.OrgID,
 		ProviderCustomerID:     env.Data.CustomerID,
@@ -114,6 +115,36 @@ func (s *Stub) VerifyWebhook(payload []byte, sig string) (Event, error) {
 
 // ErrBadSignature is returned when the webhook signature is missing or does not match.
 var ErrBadSignature = errors.New("billing: bad webhook signature")
+
+// The stub mirrors Paddle's event vocabulary so tests are realistic. Exact sets, matched
+// exactly (no prefixes): a type not in either set is EventKindUnknown (stored only).
+var stubSubscriptionEvents = map[string]bool{
+	"subscription.created":   true,
+	"subscription.activated": true,
+	"subscription.updated":   true,
+	"subscription.canceled":  true,
+	"subscription.past_due":  true,
+	"subscription.paused":    true,
+	"subscription.resumed":   true,
+	"subscription.trialing":  true,
+	"subscription.imported":  true,
+}
+
+var stubPaymentEvents = map[string]bool{
+	"transaction.completed": true,
+	"transaction.paid":      true,
+}
+
+func stubEventKind(eventType string) EventKind {
+	switch {
+	case stubSubscriptionEvents[eventType]:
+		return EventKindSubscription
+	case stubPaymentEvents[eventType]:
+		return EventKindPayment
+	default:
+		return EventKindUnknown
+	}
+}
 
 // parseStubSig reads the "ts=<unix>;h1=<hex>" header into its parts. A missing or
 // malformed header is a bad signature (the ingest answers 401), never a pass.

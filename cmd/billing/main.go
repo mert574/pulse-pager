@@ -34,12 +34,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Pick the provider adapter. The stub carries Phase 1 (no provider account); paddle
-	// is the skeleton the real Billing API client fills in later.
+	// Pick the provider adapter. The stub is the default (no provider account); paddle
+	// is the real adapter, with its price map loaded from plan_prices.
 	var provider billing.Provider
 	switch svc.Cfg.Billing.Provider {
 	case "paddle":
-		provider = paddle.New(svc.Cfg.Billing.PaddleAPIKey, svc.Cfg.Billing.WebhookSecret)
+		prices, err := pg.ListPlanPrices(ctx, "paddle")
+		if err != nil {
+			svc.Log.Error("load plan_prices", "err", err)
+			os.Exit(1)
+		}
+		provider, err = paddle.New(paddle.Config{
+			APIKey:        svc.Cfg.Billing.PaddleAPIKey,
+			BaseURL:       svc.Cfg.Billing.APIBase,
+			WebhookSecret: svc.Cfg.Billing.WebhookSecret,
+			Prices:        paddle.PriceMap(prices),
+		})
+		if err != nil {
+			svc.Log.Error("build paddle adapter", "err", err)
+			os.Exit(1)
+		}
 	default:
 		provider = billing.NewStub(svc.Cfg.Billing.WebhookSecret)
 	}

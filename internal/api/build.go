@@ -92,12 +92,23 @@ func Build(ctx context.Context, d Deps) (*Server, http.Handler, error) {
 	}
 
 	// Billing provider for the operator/self-serve billing endpoints (RFC-018). The api
-	// only makes operator/self-serve calls (not webhook verify), so the stub needs no
+	// only makes operator/self-serve calls (not webhook verify), so it needs no webhook
 	// secret. Defaults to the stub so the api runs without a provider account.
 	var billingProvider billing.Provider
 	switch d.Cfg.Billing.Provider {
 	case "paddle":
-		billingProvider = paddle.New(d.Cfg.Billing.PaddleAPIKey, "")
+		prices, err := d.Store.ListPlanPrices(ctx, "paddle")
+		if err != nil {
+			return nil, nil, fmt.Errorf("load plan_prices: %w", err)
+		}
+		billingProvider, err = paddle.New(paddle.Config{
+			APIKey:  d.Cfg.Billing.PaddleAPIKey,
+			BaseURL: d.Cfg.Billing.APIBase,
+			Prices:  paddle.PriceMap(prices),
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("build paddle adapter: %w", err)
+		}
 	default:
 		billingProvider = billing.NewStub("")
 	}

@@ -43,15 +43,28 @@ type PlanChange struct {
 	Mode  string // prorate_now | next_cycle
 }
 
+// EventKind is how the ingest decides what to do with an event. The adapter sets it by
+// EXACTLY matching the provider's event type against the known set it handles (payment
+// code: no prefix or shape guessing). Anything the adapter does not explicitly classify
+// stays EventKindUnknown and is stored but not acted on.
+type EventKind int
+
+const (
+	EventKindUnknown      EventKind = iota // stored only, no action
+	EventKindSubscription                  // sync the org's subscription + plan
+	EventKindPayment                       // mirror a payment
+)
+
 // Event is the normalized webhook payload every adapter produces from a provider
 // callback. It is the one shape the ingest path understands, so adapters absorb each
 // provider's wire format. OrgID comes from the provider's custom_data when present; a
 // zero OrgID means "resolve via ProviderCustomerID" (a follow-on event that carries
 // only the customer id, RFC-018 Phase 3).
 type Event struct {
-	ID       string // provider event id, the dedup anchor
-	Type     string // e.g. subscription.activated, subscription.canceled, payment.succeeded
-	Provider string // stub | paddle
+	ID       string    // provider event id, the dedup anchor
+	Type     string    // raw provider event type, stored for the audit trail
+	Kind     EventKind // what the ingest acts on; set by the adapter via exact match
+	Provider string    // stub | paddle
 
 	OrgID int64
 

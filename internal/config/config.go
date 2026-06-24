@@ -92,6 +92,9 @@ type BillingConfig struct {
 	// PaddleAPIKey is the Paddle Billing API key, used by the api/billing services to
 	// make provider calls when Provider is "paddle". Empty for the stub.
 	PaddleAPIKey string
+	// APIBase overrides the Paddle API base URL (PULSE_PADDLE_API_BASE). Empty means
+	// production, except a sandbox key (contains "sdbx") auto-selects the sandbox host.
+	APIBase string
 }
 
 // IdentityConfig is the api edge's auth settings (RFC-003 8.1). The JWT signing key
@@ -242,6 +245,7 @@ func Load(service Service) (*Config, error) {
 			return nil, fmt.Errorf("PULSE_BILLING_PROVIDER must be \"stub\" or \"paddle\", got %q", cfg.Billing.Provider)
 		}
 		cfg.Billing.PaddleAPIKey = os.Getenv("PULSE_PADDLE_API_KEY")
+		cfg.Billing.APIBase = paddleAPIBase(cfg.Billing.PaddleAPIKey)
 	}
 
 	// Only the billing service needs the full billing config (incl. webhook secret).
@@ -264,6 +268,7 @@ func loadBilling() (BillingConfig, error) {
 		Addr:         withDefault("PULSE_BILLING_ADDR", ":8082"),
 		PaddleAPIKey: os.Getenv("PULSE_PADDLE_API_KEY"),
 	}
+	bc.APIBase = paddleAPIBase(bc.PaddleAPIKey)
 	if bc.Provider != "stub" && bc.Provider != "paddle" {
 		return bc, fmt.Errorf("PULSE_BILLING_PROVIDER must be \"stub\" or \"paddle\", got %q", bc.Provider)
 	}
@@ -346,6 +351,18 @@ func loadIdentity() (IdentityConfig, error) {
 	}
 
 	return ic, nil
+}
+
+// paddleAPIBase picks the Paddle API base URL: an explicit override, else the sandbox
+// host for a sandbox key (contains "sdbx"), else "" (the adapter defaults to production).
+func paddleAPIBase(key string) string {
+	if b := os.Getenv("PULSE_PADDLE_API_BASE"); b != "" {
+		return b
+	}
+	if strings.Contains(key, "sdbx") {
+		return "https://sandbox-api.paddle.com"
+	}
+	return ""
 }
 
 func required(key string) (string, error) {

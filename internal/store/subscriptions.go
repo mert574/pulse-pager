@@ -51,62 +51,33 @@ func (p *Pool) GetSubscriptionByOrg(ctx context.Context, orgID int64) (*domain.S
 	return sub, nil
 }
 
-// ApplySubscriptionEvent records the webhook idempotently and reconciles state in one
-// transaction (RFC-018 8: dedup and the state change commit together). It inserts the
-// dedup row first; on a conflict the event was already processed and it returns
-// applied=false with no change. Otherwise it upserts the subscription, reconciles
-// organizations.plan (the entitlement resolvers read it), stamps the event processed,
-// and commits. Returns ErrOrgNotFound if the org is gone or soft-deleted.
+// ApplySubscriptionEvent upserts the subscription and reconciles organizations.plan (the
+// entitlement resolvers read it) in one transaction. The webhook inbox
+// (RecordBillingEvent) owns dedup and the raw-payload record; this just makes the state
+// change, so re-running it is harmless (the upsert is idempotent). Returns ErrOrgNotFound
+// if the org is gone or soft-deleted.
 //
 // sub.Plan must already be a canonical tier (the ingest runs it through
 // entitlements.ParsePlan so a bad provider value fails safe to free, never junk).
-func (p *Pool) ApplySubscriptionEvent(ctx context.Context, providerEventID, eventType string, sub *domain.Subscription) (applied bool, err error) {
-	err = p.WithOrg(ctx, sub.OrgID, func(tx pgx.Tx) error {
-		// Dedup first: if the row already exists the event is a redelivery, so commit a
-		// no-op. ON CONFLICT serializes concurrent deliveries of the same event id.
-		tag, derr := tx.Exec(ctx, `
-			INSERT INTO billing_events (provider, provider_event_id, type, received_at)
-			VALUES ($1,$2,$3, now())
-			ON CONFLICT (provider, provider_event_id) DO NOTHING`,
-			sub.Provider, providerEventID, eventType)
-		if derr != nil {
-			return derr
+func (p *Pool) ApplySubscriptionEvent(ctx context.Context, sub *domain.Subscription) error {
+	return p.WithOrg(ctx, sub.OrgID, func(tx pgx.Tx) error {
+		if err := upsertSubscriptionTx(ctx, tx, sub); err != nil {
+			return err
 		}
-		if tag.RowsAffected() == 0 {
-			applied = false
-			return nil
-		}
-
-		if uerr := upsertSubscriptionTx(ctx, tx, sub); uerr != nil {
-			return uerr
-		}
-
 		// Reconcile the org's plan from the subscription. organizations is not under
 		// RLS, so this UPDATE runs fine inside the org-scoped tx. Only an active org is
 		// touched; a missing/deleted org is a permanent error (the caller acks it).
-		ptag, perr := tx.Exec(ctx,
+		tag, err := tx.Exec(ctx,
 			`UPDATE organizations SET plan = $2 WHERE id = $1 AND deleted_at IS NULL`,
 			sub.OrgID, sub.Plan)
-		if perr != nil {
-			return perr
+		if err != nil {
+			return err
 		}
-		if ptag.RowsAffected() == 0 {
+		if tag.RowsAffected() == 0 {
 			return ErrOrgNotFound
 		}
-
-		if _, merr := tx.Exec(ctx,
-			`UPDATE billing_events SET processed_at = now()
-			 WHERE provider = $1 AND provider_event_id = $2`,
-			sub.Provider, providerEventID); merr != nil {
-			return merr
-		}
-		applied = true
 		return nil
 	})
-	if err != nil {
-		return false, err
-	}
-	return applied, nil
 }
 
 // UpdateSubscriptionPlan switches the plan/cycle/price on an org's subscription after

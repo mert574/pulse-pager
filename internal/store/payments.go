@@ -25,27 +25,13 @@ func scanPayment(row pgx.Row) (*domain.Payment, error) {
 	return &p, nil
 }
 
-// ApplyPaymentEvent records a payment webhook idempotently in one transaction, the
-// same shape as ApplySubscriptionEvent: dedup-insert into billing_events first, then
-// upsert the payment by (provider, provider_payment_id) so a payment.succeeded then a
-// payment.refunded for the same payment update the one row (refunded_amount, status).
-// Returns applied=false when the event was already processed. ErrOrgNotFound if the org
-// is gone.
-func (p *Pool) ApplyPaymentEvent(ctx context.Context, providerEventID, eventType string, pay *domain.Payment) (applied bool, err error) {
-	err = p.WithOrg(ctx, pay.OrgID, func(tx pgx.Tx) error {
-		tag, derr := tx.Exec(ctx, `
-			INSERT INTO billing_events (provider, provider_event_id, type, received_at)
-			VALUES ($1,$2,$3, now())
-			ON CONFLICT (provider, provider_event_id) DO NOTHING`,
-			pay.Provider, providerEventID, eventType)
-		if derr != nil {
-			return derr
-		}
-		if tag.RowsAffected() == 0 {
-			applied = false
-			return nil
-		}
-
+// ApplyPaymentEvent upserts the payment mirror by (provider, provider_payment_id), so a
+// payment.succeeded then a refund for the same payment update the one row (refunded_amount,
+// status). Dedup and the raw-payload record are owned by the webhook inbox
+// (RecordBillingEvent); the upsert here is idempotent, so re-running is harmless. Returns
+// ErrOrgNotFound if the org is gone.
+func (p *Pool) ApplyPaymentEvent(ctx context.Context, pay *domain.Payment) error {
+	return p.WithOrg(ctx, pay.OrgID, func(tx pgx.Tx) error {
 		// Guard the org exists / is active before mirroring (the payments FK would also
 		// fail, but this gives the caller a clean permanent error to ack).
 		var exists bool
@@ -57,7 +43,7 @@ func (p *Pool) ApplyPaymentEvent(ctx context.Context, providerEventID, eventType
 			return err
 		}
 
-		if _, err := tx.Exec(ctx, `
+		_, err := tx.Exec(ctx, `
 			INSERT INTO payments (org_id, provider, provider_payment_id, amount, currency,
 				status, period, hosted_invoice_url, refunded_amount)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
@@ -69,23 +55,9 @@ func (p *Pool) ApplyPaymentEvent(ctx context.Context, providerEventID, eventType
 				hosted_invoice_url = EXCLUDED.hosted_invoice_url,
 				refunded_amount = EXCLUDED.refunded_amount`,
 			pay.OrgID, pay.Provider, pay.ProviderPaymentID, pay.Amount, pay.Currency,
-			pay.Status, pay.Period, pay.HostedInvoiceURL, pay.RefundedAmount); err != nil {
-			return err
-		}
-
-		if _, err := tx.Exec(ctx,
-			`UPDATE billing_events SET processed_at = now()
-			 WHERE provider = $1 AND provider_event_id = $2`,
-			pay.Provider, providerEventID); err != nil {
-			return err
-		}
-		applied = true
-		return nil
+			pay.Status, pay.Period, pay.HostedInvoiceURL, pay.RefundedAmount)
+		return err
 	})
-	if err != nil {
-		return false, err
-	}
-	return applied, nil
 }
 
 // ListPayments returns an org's payments, newest first, for the billing screen.

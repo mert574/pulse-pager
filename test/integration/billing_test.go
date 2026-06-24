@@ -16,7 +16,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -211,9 +213,9 @@ func TestBillingWebhookSyncPath(t *testing.T) {
 	// this also exercises the provider_customer_id -> org lookup (cus_a is org A's).
 	t.Run("payment event mirrors a payment", func(t *testing.T) {
 		body := []byte(`{
-			"id":"evt_pay1","type":"payment.succeeded",
+			"id":"evt_pay1","type":"transaction.completed",
 			"data":{"customer_id":"cus_a"},
-			"payment":{"payment_id":"pay_1","amount":1900,"currency":"USD","status":"paid","period":"2026-06","hosted_invoice_url":"https://inv/1"}
+			"payment":{"payment_id":"pay_1","amount":1900,"currency":"USD","status":"completed","period":"2026-06","hosted_invoice_url":"https://inv/1"}
 		}`)
 		sig := billing.SignStubWebhook(billingSecret, "1700000100", body)
 		if code := post(sig, body); code != http.StatusOK {
@@ -231,9 +233,11 @@ func TestBillingWebhookSyncPath(t *testing.T) {
 		}
 	})
 
-	t.Run("refund event updates the same payment row", func(t *testing.T) {
+	t.Run("a later payment event upserts the same payment row", func(t *testing.T) {
+		// Same payment id, new event id: the mirror upserts the one row rather than
+		// inserting a duplicate (here it also records a refunded amount).
 		body := []byte(`{
-			"id":"evt_pay2","type":"payment.refunded",
+			"id":"evt_pay2","type":"transaction.paid",
 			"data":{"customer_id":"cus_a"},
 			"payment":{"payment_id":"pay_1","amount":1900,"currency":"USD","status":"refunded","refunded_amount":1900}
 		}`)
@@ -246,10 +250,10 @@ func TestBillingWebhookSyncPath(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(pays) != 1 {
-			t.Fatalf("refund must upsert the same row, got %d payments", len(pays))
+			t.Fatalf("must upsert the same row, got %d payments", len(pays))
 		}
 		if pays[0].RefundedAmount != 1900 || pays[0].Status != "refunded" {
-			t.Fatalf("after refund: refunded=%d status=%q", pays[0].RefundedAmount, pays[0].Status)
+			t.Fatalf("after upsert: refunded=%d status=%q", pays[0].RefundedAmount, pays[0].Status)
 		}
 	})
 
@@ -285,6 +289,31 @@ func TestBillingWebhookSyncPath(t *testing.T) {
 		}
 		if usd == nil || usd.Gross != 1900 || usd.Refunded != 1900 || usd.Payments != 1 {
 			t.Fatalf("USD revenue: %+v want gross=1900 refunded=1900 payments=1", usd)
+		}
+	})
+
+	// Every verified event is stored raw, even a type we don't act on (RFC-018 8).
+	t.Run("stores raw payload for an unhandled event type", func(t *testing.T) {
+		body := []byte(`{"id":"evt_other","type":"address.updated","data":{"customer_id":"cus_a"}}`)
+		if code := post(billing.SignStubWebhook(billingSecret, "1700000300", body), body); code != http.StatusOK {
+			t.Fatalf("status: got %d want 200 (every type is acknowledged)", code)
+		}
+		var typ, payload string
+		var processed *time.Time
+		err := admin.QueryRow(ctx,
+			"SELECT type, payload::text, processed_at FROM billing_events WHERE provider_event_id='evt_other'").
+			Scan(&typ, &payload, &processed)
+		if err != nil {
+			t.Fatalf("raw event not stored: %v", err)
+		}
+		if typ != "address.updated" {
+			t.Fatalf("type: got %q want address.updated", typ)
+		}
+		if !strings.Contains(payload, "address.updated") {
+			t.Fatalf("raw payload not saved: %q", payload)
+		}
+		if processed == nil {
+			t.Fatalf("an acknowledged event should be marked processed")
 		}
 	})
 }
