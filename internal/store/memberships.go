@@ -112,6 +112,88 @@ func (p *Pool) RemoveMember(ctx context.Context, orgID, userID int64) (int64, er
 	return affected, err
 }
 
+// ActiveMemberEmails returns the email addresses of the given user ids that are
+// active members of the org. It is the send-time half of the Team email channel's
+// org scoping (RFC-007a): the channel config holds only member ids, and this join
+// turns them into addresses, dropping any id that is not an active member of THIS
+// org. So a tampered config can't email outside the org, and a member removed after
+// the channel was saved is silently dropped on the next send. memberships is
+// RLS-scoped by WithOrg (app.current_org), so the join only sees this org's rows;
+// users is the global account table joined on it for the address. An active member
+// is one whose user row status is 'active' (not deletion-pending or deleted). An
+// empty userIDs returns no rows.
+func (p *Pool) ActiveMemberEmails(ctx context.Context, orgID int64, userIDs []int64) ([]string, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	var out []string
+	err := p.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT u.email
+			FROM memberships m
+			JOIN users u ON u.id = m.user_id
+			WHERE m.org_id = $1 AND m.user_id = ANY($2) AND u.status = 'active'
+			ORDER BY u.email`, orgID, userIDs)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var email string
+			if err := rows.Scan(&email); err != nil {
+				return err
+			}
+			out = append(out, email)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// AreActiveMembers reports whether every id in userIDs is an active member of the
+// org. It is the save-time half of the Team email channel's org scoping (RFC-007a):
+// channel create/update calls it to reject a member id that does not belong to the
+// org before the channel is stored. The check runs through WithOrg so memberships
+// RLS confines the count to this org. An empty userIDs is false (an email channel
+// with no recipients is not a valid config; the provider's Validate also rejects it).
+func (p *Pool) AreActiveMembers(ctx context.Context, orgID int64, userIDs []int64) (bool, error) {
+	if len(userIDs) == 0 {
+		return false, nil
+	}
+	var matched int
+	err := p.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
+			SELECT count(DISTINCT m.user_id)
+			FROM memberships m
+			JOIN users u ON u.id = m.user_id
+			WHERE m.org_id = $1 AND m.user_id = ANY($2) AND u.status = 'active'`,
+			orgID, userIDs).Scan(&matched)
+	})
+	if err != nil {
+		return false, err
+	}
+	return matched == len(dedupeIDs(userIDs)), nil
+}
+
+// dedupeIDs returns userIDs with duplicates removed, preserving first-seen order. It
+// lets AreActiveMembers compare the matched count against the number of distinct ids
+// asked about, so a config that repeats an id is not counted twice.
+func dedupeIDs(userIDs []int64) []int64 {
+	seen := make(map[int64]struct{}, len(userIDs))
+	out := make([]int64, 0, len(userIDs))
+	for _, id := range userIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
 // CountMembers returns how many memberships an org has. The seat meter counts
 // accepted members plus reserved pending invites (PRD-001 5.1); this is the
 // accepted-member half.

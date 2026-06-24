@@ -56,6 +56,14 @@ func main() {
 	// signed per-webhook (PRD-005 7); the pool is the webhook store.
 	registry := notify.Default()
 	mgr := notify.NewManager(nil, svc.Log)
+	// Wire the Team email channel's deps: the platform mailer (real SMTP when
+	// PULSE_SMTP_* is set, else a logging dev mailer) and the member-email resolver
+	// (the pool, which resolves member ids to addresses scoped to the event's org).
+	mailer := notify.NewMailerFromConfig(
+		svc.Cfg.SMTP.Host, svc.Cfg.SMTP.Port, svc.Cfg.SMTP.Username,
+		svc.Cfg.SMTP.Password, svc.Cfg.SMTP.From, svc.Cfg.SMTP.TLSMode, svc.Log,
+	)
+	mgr.SetEmailDeps(mailer, pg)
 	runner := notify.NewRunner(mgr, registry, pg, rd, cons, svc.Log, notify.WithWebhooks(pg))
 
 	runCtx, cancel := context.WithCancel(ctx)

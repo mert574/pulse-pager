@@ -112,6 +112,11 @@ const (
 	ChannelDiscord ChannelType = "discord"
 	ChannelWebhook ChannelType = "webhook"
 	ChannelSMTP    ChannelType = "smtp"
+	// ChannelEmail sends through the platform mailer to a multi-select of the org's
+	// active members (their addresses are resolved server-side at send time, so the
+	// config only ever holds member user ids). Distinct from ChannelSMTP, which is a
+	// bring-your-own SMTP server with free-typed recipient addresses.
+	ChannelEmail ChannelType = "email"
 	// Phased types (PRD-003 section 8), plan-gated. Additive to the attach model.
 	ChannelPagerDuty ChannelType = "pagerduty"
 	ChannelOpsgenie  ChannelType = "opsgenie"

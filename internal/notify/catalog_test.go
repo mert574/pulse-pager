@@ -34,8 +34,9 @@ func TestCatalogCoversAllTypes(t *testing.T) {
 	cat := Default().Catalog(nil)
 	want := []domain.ChannelType{
 		domain.ChannelSlack, domain.ChannelDiscord, domain.ChannelWebhook,
-		domain.ChannelSMTP, domain.ChannelPagerDuty, domain.ChannelOpsgenie,
-		domain.ChannelTelegram, domain.ChannelTeams, domain.ChannelTwilio,
+		domain.ChannelSMTP, domain.ChannelEmail, domain.ChannelPagerDuty,
+		domain.ChannelOpsgenie, domain.ChannelTelegram, domain.ChannelTeams,
+		domain.ChannelTwilio,
 	}
 	if len(cat) != len(want) {
 		t.Fatalf("catalog has %d entries, want %d", len(cat), len(want))

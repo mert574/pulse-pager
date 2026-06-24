@@ -1,4 +1,4 @@
-import { html, type TemplateResult } from "lit";
+import { html, nothing, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { consume } from "@lit/context";
 import { AppElement } from "./base.js";
@@ -14,6 +14,7 @@ import type {
   ChannelInput,
   ChannelType,
   ChannelTypeCatalogEntry,
+  Member,
 } from "../api/types.js";
 
 import "./form-field.js";
@@ -58,6 +59,10 @@ export class ChannelFormView extends AppElement {
   private ctx!: AppContext;
 
   @state() private catalog: ChannelTypeCatalogEntry[] = [];
+  // The org's active members, for the Team-email channel's recipient picker. A
+  // memberlist field stores selected user ids; only members can be picked, so a
+  // channel can never email outside the org (the server re-checks on save + send).
+  @state() private members: Member[] = [];
   @state() private selectedType: ChannelType | null = null;
   @state() private name = "";
   @state() private enabled = true;
@@ -102,11 +107,13 @@ export class ChannelFormView extends AppElement {
     try {
       // There is no GET /channels/{id} in the spec, so edit mode loads the org's
       // channels and finds this one by id (the catalog is needed regardless).
-      const [catalog, channels] = await Promise.all([
+      const [catalog, channels, members] = await Promise.all([
         client.getChannelTypes(orgId),
         this.isEdit ? client.listChannels(orgId) : Promise.resolve(null),
+        client.listMembers(orgId),
       ]);
       this.catalog = catalog.channel_types;
+      this.members = members;
       if (channels) {
         const channel = channels.find((c) => c.id === this.channelId);
         if (!channel) throw new ApiError(404, { code: "not_found", message: t("state.notFound") });
@@ -133,7 +140,7 @@ export class ChannelFormView extends AppElement {
     for (const field of entry?.config_fields ?? []) {
       if (field.secret) {
         configured[field.key] = secretIsConfigured(config, field.key);
-        values[field.key] = field.type === "stringlist" ? [] : "";
+        values[field.key] = (field.type === "stringlist" || field.type === "memberlist") ? [] : "";
         continue;
       }
       values[field.key] = this.coerceLoaded(field, config[field.key]);
@@ -144,7 +151,7 @@ export class ChannelFormView extends AppElement {
 
   // Turn a loaded config value into the field's editable form value.
   private coerceLoaded(field: CatalogField, raw: unknown): FieldValue {
-    if (field.type === "stringlist") {
+    if ((field.type === "stringlist" || field.type === "memberlist")) {
       return Array.isArray(raw) ? raw.map((v) => String(v)) : [];
     }
     if (field.type === "bool") return raw === true ? "true" : "false";
@@ -154,7 +161,7 @@ export class ChannelFormView extends AppElement {
 
   // Initial editable value for a field in create mode (or when a type is picked).
   private initialValue(field: CatalogField): FieldValue {
-    if (field.type === "stringlist") return [];
+    if ((field.type === "stringlist" || field.type === "memberlist")) return [];
     if (field.type === "bool") return field.default ?? "false";
     return field.default ?? "";
   }
@@ -193,7 +200,7 @@ export class ChannelFormView extends AppElement {
         // blank and not cleared: omit, so the API keeps the stored secret
         continue;
       }
-      if (field.type === "stringlist") {
+      if ((field.type === "stringlist" || field.type === "memberlist")) {
         config[field.key] = Array.isArray(value) ? value.filter((v) => v !== "") : [];
       } else if (field.type === "bool") {
         config[field.key] = value === "true";
@@ -217,7 +224,7 @@ export class ChannelFormView extends AppElement {
         continue;
       const value = this.values[field.key];
       const empty =
-        field.type === "stringlist"
+        (field.type === "stringlist" || field.type === "memberlist")
           ? !Array.isArray(value) || value.filter((v) => v !== "").length === 0
           : (typeof value === "string" ? value.trim() : "") === "";
       if (empty) errs[field.key] = t("channelForm.errRequired");
@@ -455,9 +462,48 @@ export class ChannelFormView extends AppElement {
         return this.intControl(field);
       case "stringlist":
         return this.stringListControl(field);
+      case "memberlist":
+        return this.memberListControl(field);
       default:
         return this.stringControl(field);
     }
+  }
+
+  // memberListControl renders a checklist of the org's active members. The stored
+  // value is the list of selected user ids; the labels show name + email. Only
+  // listed members can be picked, so the recipient set can never include an address
+  // outside the org (the server validates the ids again on save and at send).
+  private memberListControl(field: CatalogField): TemplateResult {
+    const selected = Array.isArray(this.values[field.key])
+      ? (this.values[field.key] as string[])
+      : [];
+    if (this.members.length === 0) {
+      return html`<p class="text-base-content/60 text-sm" id=${field.key}>
+        ${t("channelForm.memberListEmpty")}
+      </p>`;
+    }
+    const toggle = (id: string, on: boolean) =>
+      this.setValue(
+        field.key,
+        on ? [...selected, id] : selected.filter((v) => v !== id),
+      );
+    return html`<div class="flex flex-col gap-1.5" id=${field.key}>
+      ${this.members.map(
+        (m) => html`<label class="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            class="checkbox checkbox-sm"
+            .checked=${selected.includes(m.user_id)}
+            @change=${(e: Event) =>
+              toggle(m.user_id, (e.target as HTMLInputElement).checked)}
+          />
+          <span>${m.name || m.email}</span>
+          ${m.name
+            ? html`<span class="text-base-content/50">${m.email}</span>`
+            : nothing}
+        </label>`,
+      )}
+    </div>`;
   }
 
   private stringControl(field: CatalogField): TemplateResult {

@@ -34,6 +34,11 @@ type Event struct {
 	Test bool
 	// ChannelName is the channel's display name, used in the test message text.
 	ChannelName string
+	// OrgID is the org this event belongs to. The Team email channel reads it to
+	// resolve member ids to addresses scoped to that org at send time (RFC-007a), so
+	// it is impossible to email anyone outside the channel's org. The Runner stamps
+	// it from the wire event; other providers ignore it.
+	OrgID int64
 }
 
 const (
@@ -70,6 +75,29 @@ type clientAware interface {
 	setClient(*http.Client)
 }
 
+// MemberEmailResolver turns member user ids into the email addresses of the ones
+// that are active members of the org. *store.Pool satisfies it structurally (its
+// ActiveMemberEmails has the same signature), so notify never imports store and
+// there is no package cycle. The same seam style as DeliveryRecorder in service.go.
+// The resolver is what keeps the Team email channel inside its org: it returns
+// addresses only for ids that belong to orgID, so a tampered config can't reach out.
+type MemberEmailResolver interface {
+	ActiveMemberEmails(ctx context.Context, orgID int64, userIDs []int64) ([]string, error)
+}
+
+// mailerAware is implemented by providers that need the platform Mailer (the Team
+// email channel). The Manager injects its mailer when it builds the provider, the
+// same way it injects the http client into clientAware providers.
+type mailerAware interface {
+	setMailer(Mailer)
+}
+
+// resolverAware is implemented by providers that need the member-email resolver (the
+// Team email channel). The Manager injects its resolver when it builds the provider.
+type resolverAware interface {
+	setResolver(MemberEmailResolver)
+}
+
 // Manager owns the registry and runs the dispatch loop.
 type Manager struct {
 	registry   *Registry
@@ -77,6 +105,12 @@ type Manager struct {
 	logger     *slog.Logger
 	maxRetries int
 	backoff    func(attempt int) time.Duration
+	// mailer and resolver back the Team email channel: the platform mailer it sends
+	// through and the member-id-to-address resolver scoped to the event's org. Both
+	// are nil for a Manager built without them (other channel types do not use them);
+	// the email provider's Validate/Send fail clearly when its deps are missing.
+	mailer   Mailer
+	resolver MemberEmailResolver
 }
 
 // defaultBackoff sleeps 1s, 4s, 9s ... (attempt squared seconds), capped at 30s.
@@ -128,8 +162,18 @@ func (mgr *Manager) SetRetryPolicy(attempts int, backoff func(attempt int) time.
 	}
 }
 
+// SetEmailDeps wires the platform mailer and the member-email resolver the Team
+// email channel needs. The notifier calls it after building the Manager (it owns
+// the pgx pool and the mailer); a Manager without them still serves every other
+// channel type. Mirrors SetRetryPolicy: an explicit setter, not a constructor arg,
+// so the existing NewManager callers are unchanged.
+func (mgr *Manager) SetEmailDeps(mailer Mailer, resolver MemberEmailResolver) {
+	mgr.mailer = mailer
+	mgr.resolver = resolver
+}
+
 // provider builds a fresh Provider for a channel type and injects the Manager's
-// http client if the provider wants one.
+// http client, mailer, and member-email resolver into the providers that want them.
 func (mgr *Manager) provider(t domain.ChannelType) (Provider, bool) {
 	d, ok := mgr.registry.Get(t)
 	if !ok {
@@ -138,6 +182,12 @@ func (mgr *Manager) provider(t domain.ChannelType) (Provider, bool) {
 	p := d.Factory()
 	if ca, ok := p.(clientAware); ok {
 		ca.setClient(mgr.client)
+	}
+	if ma, ok := p.(mailerAware); ok {
+		ma.setMailer(mgr.mailer)
+	}
+	if ra, ok := p.(resolverAware); ok {
+		ra.setResolver(mgr.resolver)
 	}
 	return p, true
 }
@@ -204,7 +254,9 @@ func (mgr *Manager) Test(ctx context.Context, ch *domain.Channel) error {
 	if !ok {
 		return fmt.Errorf("notify: no provider for channel type %q", ch.Type)
 	}
-	ev := Event{Test: true, ChannelName: ch.Name, SentAt: time.Now()}
+	// OrgID lets the Team email channel resolve its members for a test send, scoped to
+	// the channel's own org; other providers ignore it.
+	ev := Event{Test: true, ChannelName: ch.Name, SentAt: time.Now(), OrgID: ch.OrgID}
 	return p.Send(ctx, ch.Config, ev)
 }
 

@@ -294,18 +294,20 @@ var apiRatePerMin = map[Plan]int{
 }
 
 // channelTypesAllowed is the notification channel types a plan may use (PRD-006 3).
-// All v1 channels (Slack/Discord/webhook/email-over-SMTP) are on every tier; the
-// phased PagerDuty/Opsgenie/Telegram/Teams/Twilio types are not modeled here yet
+// The v1 channels (Slack/Discord/webhook, email-over-SMTP, and the Team email
+// channel that sends through the platform mailer to org members) are on every tier;
+// the phased PagerDuty/Opsgenie/Telegram/Teams/Twilio types are not modeled here yet
 // (they arrive with the channel roadmap, master 7 / 15). The type strings are the
-// notify descriptor types and the OpenAPI ChannelType enum, so "smtp" (not "email").
+// notify descriptor types and the OpenAPI ChannelType enum, so "smtp" is the
+// bring-your-own SMTP channel and "email" is the Team email channel.
 var channelTypesAllowed = map[Plan][]string{
 	// The four basics (chat, generic webhook, email) on every plan; the integrations
 	// unlock up the ladder. Starter adds Telegram, Team adds the on-call/incident tools
 	// plus Microsoft Teams, Business adds Twilio SMS/voice and so includes them all.
-	PlanTier1:      {"slack", "discord", "webhook", "smtp"},
-	PlanTier2:      {"slack", "discord", "webhook", "smtp", "telegram"},
-	PlanTier3:      {"slack", "discord", "webhook", "smtp", "telegram", "pagerduty", "opsgenie", "teams"},
-	PlanTierCustom: {"slack", "discord", "webhook", "smtp", "telegram", "pagerduty", "opsgenie", "teams", "twilio"},
+	PlanTier1:      {"slack", "discord", "webhook", "smtp", "email"},
+	PlanTier2:      {"slack", "discord", "webhook", "smtp", "email", "telegram"},
+	PlanTier3:      {"slack", "discord", "webhook", "smtp", "email", "telegram", "pagerduty", "opsgenie", "teams"},
+	PlanTierCustom: {"slack", "discord", "webhook", "smtp", "email", "telegram", "pagerduty", "opsgenie", "teams", "twilio"},
 }
 
 // ChannelTypesAllowed returns the notification channel types a plan may use (the

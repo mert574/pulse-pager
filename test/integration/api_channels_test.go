@@ -370,6 +370,47 @@ func TestChannelsManagement(t *testing.T) {
 		}
 	})
 
+	t.Run("email_channel_member_guard", func(t *testing.T) {
+		// The Team email channel ("email") config holds member user ids. The save-time
+		// guard rejects an id that is not an active member of the org (422 on members)
+		// and accepts the owner's own id (which is a member). This is the save-time half
+		// of "can't email outside the org"; the send-time half is the resolver join.
+		emailBase := base
+		// A bogus member id is not a member of this org: reject.
+		bad := post(t, ownerClient, emailBase, `{"name":"team mail","type":"email","enabled":true,"config":{"members":["999999"]}}`)
+		defer bad.Body.Close()
+		if bad.StatusCode != http.StatusUnprocessableEntity {
+			t.Fatalf("email with non-member id: want 422, got %d", bad.StatusCode)
+		}
+
+		// The owner's own user id IS an active member: accept.
+		good := post(t, ownerClient, emailBase, fmt.Sprintf(`{"name":"team mail","type":"email","enabled":true,"config":{"members":[%q]}}`, ownerMe.UserID))
+		defer good.Body.Close()
+		if good.StatusCode != http.StatusCreated {
+			body, _ := io.ReadAll(good.Body)
+			t.Fatalf("email with owner member id: want 201, got %d (%s)", good.StatusCode, body)
+		}
+		var ch channelDTO
+		if err := json.NewDecoder(good.Body).Decode(&ch); err != nil {
+			t.Fatalf("decode email channel: %v", err)
+		}
+		if ch.Type != "email" {
+			t.Fatalf("created channel type = %q, want email", ch.Type)
+		}
+		// Update that channel to a non-member id: the same guard rejects it.
+		upd := put(t, ownerClient, emailBase+"/"+ch.ID, `{"name":"team mail","type":"email","enabled":true,"config":{"members":["888888"]}}`)
+		defer upd.Body.Close()
+		if upd.StatusCode != http.StatusUnprocessableEntity {
+			t.Fatalf("email update with non-member id: want 422, got %d", upd.StatusCode)
+		}
+		// Clean up so the later list/count assertions are unaffected.
+		req, _ := http.NewRequest(http.MethodDelete, ts.URL+emailBase+"/"+ch.ID, nil)
+		dr, _ := ownerClient.Do(req)
+		if dr != nil {
+			_ = dr.Body.Close()
+		}
+	})
+
 	t.Run("member_can_manage_viewer_cannot", func(t *testing.T) {
 		invite := func(email, role string) {
 			body := fmt.Sprintf(`{"email":%q,"role":%q}`, email, role)

@@ -32,6 +32,7 @@ var channelMinPlan = map[domain.ChannelType]apigen.Plan{
 	domain.ChannelDiscord:   apigen.Tier1,
 	domain.ChannelWebhook:   apigen.Tier1,
 	domain.ChannelSMTP:      apigen.Tier1,
+	domain.ChannelEmail:     apigen.Tier1,
 	domain.ChannelPagerDuty: apigen.Tier3,
 	domain.ChannelOpsgenie:  apigen.Tier3,
 	domain.ChannelTelegram:  apigen.TierCustom,

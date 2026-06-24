@@ -16,6 +16,12 @@ const (
 	FieldBool       FieldType = "bool"
 	FieldEnum       FieldType = "enum"
 	FieldStringList FieldType = "stringlist"
+	// FieldMemberList is a multi-select of the org's active members. The stored value
+	// is a list of member user ids (strings/numbers), never addresses; the frontend
+	// renders it as a member picker fed by GET /orgs/{orgId}/members. Schema-level it
+	// validates like a list; the real org-membership check is org-scoped and lives in
+	// the api layer (it needs the DB), not here.
+	FieldMemberList FieldType = "memberlist"
 )
 
 // ConfigField describes one field of a channel's config. Everything the system

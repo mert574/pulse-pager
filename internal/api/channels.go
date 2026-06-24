@@ -245,8 +245,75 @@ func (s *Server) channelFromInput(ctx context.Context, orgID int64, in apigen.Ch
 		for k, v := range s.validateChannelConfig(typ, cfg) {
 			errs[k] = v
 		}
+		// Team email channel: the "members" config holds member ids, and every id must
+		// be an active member of this org. This is the save-time half of the org-scoping
+		// guard (the send-time half is the resolver join in the notifier). It runs here,
+		// not in the registry, because it needs the DB and the org id. A bad id is a
+		// per-field 422 on "members", matching how the descriptor validator reports.
+		if typ == domain.ChannelEmail {
+			if msg := s.validateEmailMembers(ctx, orgID, cfg); msg != "" {
+				errs["members"] = msg
+			}
+		}
 	}
 	return name, typ, cfg, errs
+}
+
+// validateEmailMembers checks that the Team email channel's selected member ids are
+// all active members of the org. It returns a per-field message on failure, "" when
+// every id is a valid active member. An empty selection is left to the descriptor
+// validator's "required" / the provider's Validate; this only adds the org-membership
+// check when there are ids to check.
+func (s *Server) validateEmailMembers(ctx context.Context, orgID int64, cfg map[string]any) string {
+	ids := parseMemberIDs(cfg["members"])
+	if len(ids) == 0 {
+		return ""
+	}
+	ok, err := s.store.AreActiveMembers(ctx, orgID, ids)
+	if err != nil {
+		return "could not verify members"
+	}
+	if !ok {
+		return "one or more selected members are not active members of this org"
+	}
+	return ""
+}
+
+// parseMemberIDs reads a config value as a list of member user ids, accepting the
+// JSON shapes a config map holds: a list of numbers or strings (the API member ids
+// are strings, RFC-012). Anything that does not parse to an id is skipped.
+func parseMemberIDs(raw any) []int64 {
+	if raw == nil {
+		return nil
+	}
+	var out []int64
+	add := func(v any) {
+		switch t := v.(type) {
+		case string:
+			if id, err := strconv.ParseInt(t, 10, 64); err == nil {
+				out = append(out, id)
+			}
+		case float64:
+			out = append(out, int64(t))
+		case int64:
+			out = append(out, t)
+		case int:
+			out = append(out, int64(t))
+		}
+	}
+	switch t := raw.(type) {
+	case []any:
+		for _, v := range t {
+			add(v)
+		}
+	case []string:
+		for _, v := range t {
+			add(v)
+		}
+	default:
+		add(raw)
+	}
+	return out
 }
 
 // validateChannelConfig runs the registry's schema + provider validation for a type

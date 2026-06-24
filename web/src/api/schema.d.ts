@@ -1034,7 +1034,7 @@ export interface components {
          */
         MonitorType: "http" | "ssl";
         /** @enum {string} */
-        ChannelType: "slack" | "discord" | "webhook" | "smtp" | "pagerduty" | "opsgenie" | "telegram" | "teams" | "twilio";
+        ChannelType: "slack" | "discord" | "webhook" | "smtp" | "email" | "pagerduty" | "opsgenie" | "telegram" | "teams" | "twilio";
         /** @enum {string} */
         FailureReason: "connection_error" | "timeout" | "status_mismatch" | "latency_exceeded" | "body_assertion_failed" | "blocked_target" | "cert_expired" | "cert_expiring_soon" | "cert_invalid";
         /** @enum {string} */

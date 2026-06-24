@@ -108,6 +108,13 @@ func validateField(f ConfigField, cfg map[string]any) error {
 		if !isListLike(raw) {
 			return fmt.Errorf("field %q must be a list", f.Key)
 		}
+	case FieldMemberList:
+		// A member multi-select is a list of member ids at the schema level; the
+		// org-membership check (every id is an active member of the org) is org-scoped
+		// and runs in the api layer where the DB is reachable.
+		if !isListLike(raw) {
+			return fmt.Errorf("field %q must be a list", f.Key)
+		}
 	case FieldString:
 		// any non-empty value is accepted; cfgString coerces on read.
 	}

@@ -380,6 +380,9 @@ func (r *Runner) buildEvent(ev events.NotifyEvent) Event {
 		Check:           ev.Check,
 		DurationSeconds: ev.DurationSeconds,
 		SentAt:          sentAt,
+		// OrgID lets the Team email channel resolve member ids to addresses scoped to
+		// this org at send time, so it can never email outside the org (RFC-007a).
+		OrgID: ev.OrgID,
 	}
 }
 
@@ -401,6 +404,10 @@ func (r *Runner) recordingManager(col *collector) *Manager {
 	// injected Manager would (tests can inject small settings to stay fast).
 	m.maxRetries = r.mgr.maxRetries
 	m.backoff = r.mgr.backoff
+	// Carry the email deps (platform mailer + member-email resolver) so the Team email
+	// channel works on the recording path too, not just a bare Manager.Dispatch.
+	m.mailer = r.mgr.mailer
+	m.resolver = r.mgr.resolver
 	return m
 }
 
@@ -463,6 +470,23 @@ func (p *recordingProvider) Send(ctx context.Context, cfg map[string]any, ev Eve
 
 func (p *recordingProvider) Validate(cfg map[string]any) error {
 	return p.inner.Validate(stripChannelID(cfg))
+}
+
+// setMailer and setResolver forward the platform-email deps to the inner provider.
+// The Manager injects these onto whatever provider value it builds, which on the
+// recording path is this wrapper, so without forwarding the real Team email provider
+// would never receive its mailer/resolver and would refuse to send. Providers that
+// don't need them simply don't implement the inner interface, so this is a no-op.
+func (p *recordingProvider) setMailer(m Mailer) {
+	if ma, ok := p.inner.(mailerAware); ok {
+		ma.setMailer(m)
+	}
+}
+
+func (p *recordingProvider) setResolver(r MemberEmailResolver) {
+	if ra, ok := p.inner.(resolverAware); ok {
+		ra.setResolver(r)
+	}
 }
 
 // channelIDFromCfg reads the sentinel channel id the Runner stamped in.
