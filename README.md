@@ -24,9 +24,9 @@ within your plan's limits.
 
 What works:
 
-- **Auth and orgs**: Google/GitHub OAuth, JWT sessions with refresh,
-  API keys, multi-tenant orgs with roles (owner/admin/member/viewer) and
-  invitations. Postgres row-level security means one org can never read another's
+- **Auth and orgs**: Google/GitHub OAuth and passwordless magic-link email login,
+  JWT sessions with refresh, API keys, multi-tenant orgs with roles
+  (owner/admin/member/viewer) and email invitations. Postgres row-level security means one org can never read another's
   rows, even if an app-level filter is missed.
 - **Monitors and checks**: HTTP checks (method, headers, optional expected status
   codes, latency and body assertions) and SSL-certificate checks that warn 7, 3,
@@ -35,11 +35,17 @@ What works:
   grouped one row per run.
 - **Pipeline**: scheduler then worker then alerting then
   notifier, over the event bus. Workers run per region, alerting opens and closes
-  incidents, the notifier delivers. The bus is pluggable (`PULSE_BUS`): Kafka by
-  default, or Redis Streams for a single-node setup with no separate broker.
-- **Channels**: nine integrations (Slack, Discord, webhook,
-  email/SMTP, Telegram, PagerDuty, Opsgenie, Microsoft Teams, Twilio), each with
-  a config schema and a test-send. Secret config is encrypted at rest.
+  incidents, and the notifier is the only thing that sends mail: alert channels plus
+  transactional invite and magic-link email, which the api hands off as intents on the
+  bus (the notifier mints the token at send time, so no token rides the bus). The bus
+  is pluggable (`PULSE_BUS`): Kafka by default, or Redis Streams for a single-node
+  setup with no separate broker.
+- **Channels**: ten channel types (Slack, Discord, generic webhook, bring-your-own
+  SMTP, Team email to selected org members, Telegram, PagerDuty, Opsgenie, Microsoft
+  Teams, Twilio), each with a config schema and a test-send. Secret config is encrypted
+  at rest. For platform email, the notifier can split account mail (sign-in, invites)
+  and alert mail across separate From subdomains for reputation
+  (`PULSE_SMTP_FROM_ACCOUNT` / `PULSE_SMTP_FROM_ALERTS`).
 - **Plans and entitlements**: Free/Hobby/Professional/Custom with monitor
   caps, interval floors, region sets, seat caps, status-page caps, and per-plan
   channel access, all enforced server-side, plus a usage-vs-caps screen.
