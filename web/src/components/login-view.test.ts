@@ -115,7 +115,7 @@ describe("login-view", () => {
         "neutral confirmation shown",
       );
       const status = el.querySelector('[role="status"]')!;
-      expect(status.textContent).to.contain("we sent");
+      expect(status.textContent).to.contain("sign-in link");
       // it POSTed to the start endpoint with the typed email
       const start = calls.find((c) => c.url.includes("/auth/email/start"));
       expect(start).to.not.be.undefined;

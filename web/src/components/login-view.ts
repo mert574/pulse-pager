@@ -158,11 +158,11 @@ export class LoginView extends AppElement {
                 </div>`
               : nothing}
 
-            <!-- Consent first: it gates every sign-in method below. -->
-            <label class="flex items-start gap-2 text-xs text-base-content/70 cursor-pointer">
+            <!-- Consent gates every sign-in method below. Centered with its label. -->
+            <label class="flex items-center gap-2 text-xs text-base-content/70 cursor-pointer">
               <input
                 type="checkbox"
-                class="checkbox checkbox-xs mt-0.5"
+                class="checkbox checkbox-xs"
                 data-agree
                 .checked=${this.agreed}
                 @change=${(e: Event) =>
@@ -172,19 +172,6 @@ export class LoginView extends AppElement {
             </label>
 
             <div class="flex flex-col gap-3">
-              <button
-                class="btn btn-block gap-2"
-                data-provider="github"
-                ?disabled=${!this.agreed}
-                @click=${() => this.signInGithub()}
-              >
-                ${icon("github", "size-5")} ${t("login.github")}
-              </button>
-
-              <div class="divider my-0 text-xs text-base-content/50">
-                ${t("login.emailOr")}
-              </div>
-
               ${this.emailSent
                 ? html`<div
                     role="status"
@@ -220,15 +207,28 @@ export class LoginView extends AppElement {
                     </button>
                   </form>`}
 
-              ${import.meta.env.DEV
-                ? html`<button
-                    class="btn btn-ghost btn-sm btn-block"
-                    @click=${() => this.devSignIn()}
-                  >
-                    ${t("login.dev")}
-                  </button>`
-                : nothing}
+              <div class="divider my-0 text-xs text-base-content/50">
+                ${t("login.emailOr")}
+              </div>
+
+              <button
+                class="btn btn-block gap-2"
+                data-provider="github"
+                ?disabled=${!this.agreed}
+                @click=${() => this.signInGithub()}
+              >
+                ${icon("github", "size-5")} ${t("login.github")}
+              </button>
             </div>
+
+            ${import.meta.env.DEV
+              ? html`<button
+                  class="btn btn-ghost btn-sm btn-block"
+                  @click=${() => this.devSignIn()}
+                >
+                  ${t("login.dev")}
+                </button>`
+              : nothing}
           </div>
         </div>
       </div>

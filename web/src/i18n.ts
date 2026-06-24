@@ -27,7 +27,7 @@ const en = {
   "login.emailSubmit": "Email me a link",
   "login.emailSending": "Sending…",
   "login.emailSent":
-    "If that email has an account, we sent a sign-in link. Check your inbox.",
+    "We sent a sign-in link to your email. Check your inbox.",
 
   // org switcher
   "org.switch": "Switch organization",
@@ -787,7 +787,7 @@ const es: Record<MessageKey, string> = {
   "login.emailSubmit": "Enviarme un enlace",
   "login.emailSending": "Enviando…",
   "login.emailSent":
-    "Si esa cuenta existe, enviamos un enlace de acceso. Revisa tu bandeja de entrada.",
+    "Enviamos un enlace de acceso a tu correo. Revisa tu bandeja de entrada.",
   "org.switch": "Cambiar de organización",
   "org.create": "Crear organización…",
   "org.id": "ID",
@@ -1505,7 +1505,7 @@ const de: Record<MessageKey, string> = {
   "login.emailSubmit": "Link zusenden",
   "login.emailSending": "Wird gesendet…",
   "login.emailSent":
-    "Falls ein Konto zu dieser E-Mail existiert, haben wir einen Anmeldelink gesendet. Schau in dein Postfach.",
+    "Wir haben einen Anmeldelink an deine E-Mail gesendet. Schau in dein Postfach.",
   "org.switch": "Organisation wechseln",
   "org.create": "Organisation erstellen…",
   "org.id": "ID",
