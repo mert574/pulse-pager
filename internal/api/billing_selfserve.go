@@ -1,0 +1,113 @@
+package api
+
+import (
+	"context"
+	"errors"
+	"strconv"
+
+	"pulse/internal/apigen"
+	"pulse/internal/authz"
+	"pulse/internal/billing"
+	"pulse/internal/domain"
+	"pulse/internal/entitlements"
+)
+
+// Self-serve billing (RFC-018 6): two thin endpoints that hand back a provider-hosted
+// URL. Checkout buys a paid plan; the portal manages card / invoices / self-cancel.
+// Both are org-scoped and owner/admin only (ActionManageBilling). The subscription
+// itself lands via the provider webhook, not here.
+
+// CreateBillingCheckout returns a hosted-checkout URL for a paid plan. Custom is never
+// self-serve (RFC-018 7), so only tier2/tier3 are accepted.
+func (s *Server) CreateBillingCheckout(ctx context.Context, req apigen.CreateBillingCheckoutRequestObject) (apigen.CreateBillingCheckoutResponseObject, error) {
+	p, ok := s.humanInOrg(ctx)
+	if !ok {
+		return apigen.CreateBillingCheckout401JSONResponse{UnauthorizedJSONResponse: unauthorized("sign in required")}, nil
+	}
+	if d := authz.Can(p.Actor(), authz.ActionManageBilling, authz.Resource{OrgID: p.OrgID}); !d.Allowed {
+		return apigen.CreateBillingCheckout403JSONResponse{ForbiddenJSONResponse: forbidden(d.Reason)}, nil
+	}
+	if req.Body == nil {
+		return apigen.CreateBillingCheckout422JSONResponse{ValidationFailedJSONResponse: validationFailed("plan and cycle are required")}, nil
+	}
+	plan := string(req.Body.Plan)
+	if plan != string(entitlements.PlanTier2) && plan != string(entitlements.PlanTier3) {
+		return apigen.CreateBillingCheckout422JSONResponse{ValidationFailedJSONResponse: validationFailed("only tier2 or tier3 can be bought self-serve")}, nil
+	}
+	if s.billing == nil {
+		return apigen.CreateBillingCheckout422JSONResponse{ValidationFailedJSONResponse: validationFailed("billing is not configured")}, nil
+	}
+
+	url, err := s.billing.Checkout(ctx, p.OrgID, plan, string(req.Body.Cycle))
+	if err != nil {
+		if errors.Is(err, billing.ErrNotImplemented) {
+			return apigen.CreateBillingCheckout422JSONResponse{ValidationFailedJSONResponse: validationFailed("checkout is not available yet")}, nil
+		}
+		return nil, err
+	}
+	return apigen.CreateBillingCheckout200JSONResponse{Url: url}, nil
+}
+
+// CreateBillingPortal returns the provider customer-portal URL for the org.
+func (s *Server) CreateBillingPortal(ctx context.Context, req apigen.CreateBillingPortalRequestObject) (apigen.CreateBillingPortalResponseObject, error) {
+	p, ok := s.humanInOrg(ctx)
+	if !ok {
+		return apigen.CreateBillingPortal401JSONResponse{UnauthorizedJSONResponse: unauthorized("sign in required")}, nil
+	}
+	if d := authz.Can(p.Actor(), authz.ActionManageBilling, authz.Resource{OrgID: p.OrgID}); !d.Allowed {
+		return apigen.CreateBillingPortal403JSONResponse{ForbiddenJSONResponse: forbidden(d.Reason)}, nil
+	}
+	if s.billing == nil {
+		return apigen.CreateBillingPortal422JSONResponse{ValidationFailedJSONResponse: validationFailed("billing is not configured")}, nil
+	}
+
+	url, err := s.billing.PortalURL(ctx, p.OrgID)
+	if err != nil {
+		if errors.Is(err, billing.ErrNotImplemented) {
+			return apigen.CreateBillingPortal422JSONResponse{ValidationFailedJSONResponse: validationFailed("the customer portal is not available yet")}, nil
+		}
+		return nil, err
+	}
+	return apigen.CreateBillingPortal200JSONResponse{Url: url}, nil
+}
+
+// ListBillingPayments returns the org's mirrored payments for the billing screen
+// (RFC-018 4). Owner/admin only (ActionViewBilling), like the entitlements read.
+func (s *Server) ListBillingPayments(ctx context.Context, _ apigen.ListBillingPaymentsRequestObject) (apigen.ListBillingPaymentsResponseObject, error) {
+	p, ok := s.humanInOrg(ctx)
+	if !ok {
+		return apigen.ListBillingPayments401JSONResponse{UnauthorizedJSONResponse: unauthorized("sign in required")}, nil
+	}
+	if d := authz.Can(p.Actor(), authz.ActionViewBilling, authz.Resource{OrgID: p.OrgID}); !d.Allowed {
+		return apigen.ListBillingPayments403JSONResponse{ForbiddenJSONResponse: forbidden(d.Reason)}, nil
+	}
+	payments, err := s.store.ListPayments(ctx, p.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]apigen.Payment, 0, len(payments))
+	for _, pay := range payments {
+		out = append(out, paymentDTO(pay))
+	}
+	return apigen.ListBillingPayments200JSONResponse(out), nil
+}
+
+// paymentDTO maps a stored payment to the wire shape.
+func paymentDTO(p *domain.Payment) apigen.Payment {
+	dto := apigen.Payment{
+		Id:             strconv.FormatInt(p.ID, 10),
+		Provider:       p.Provider,
+		Amount:         p.Amount,
+		Currency:       p.Currency,
+		Status:         p.Status,
+		RefundedAmount: p.RefundedAmount,
+		CreatedAt:      p.CreatedAt,
+	}
+	if p.Period != "" {
+		dto.Period = &p.Period
+	}
+	if p.HostedInvoiceURL != "" {
+		dto.HostedInvoiceUrl = &p.HostedInvoiceURL
+	}
+	return dto
+}

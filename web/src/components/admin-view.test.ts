@@ -51,9 +51,21 @@ interface Call {
   method: string;
 }
 
-// Routes the two admin GETs the view makes on load: metrics and orgs.
+const BILLING = {
+  paid_orgs: 2,
+  subscriptions_by_status: [
+    { status: "active", count: 2 },
+    { status: "past_due", count: 1 },
+  ],
+  revenue_by_currency: [
+    { currency: "USD", gross: 5700, refunded: 1900, payments: 3 },
+  ],
+};
+
+// Routes the admin GETs the view makes on load: metrics, orgs, and billing.
 function adminLoad(c: Call): Response {
   if (c.url.endsWith("/admin/orgs")) return json(200, ORGS);
+  if (c.url.endsWith("/admin/billing")) return json(200, BILLING);
   return json(200, METRICS);
 }
 
@@ -116,6 +128,25 @@ describe("admin-view", () => {
       expect(el.textContent).to.contain("24");
       // signup trend totals (2 + 3 new users)
       expect(el.textContent).to.contain("5");
+    } finally {
+      restore();
+    }
+  });
+
+  it("renders the billing section with paid orgs, sub statuses, and revenue", async () => {
+    const { el, calls, restore } = await mount(adminLoad);
+    try {
+      await waitUntil(
+        () => el.textContent?.includes("Billing") ?? false,
+        "billing section renders",
+      );
+      expect(calls.some((c) => c.url.endsWith("/admin/billing"))).to.be.true;
+      // paid orgs and active-subscription cards
+      expect(el.textContent).to.contain("Paid orgs");
+      expect(el.textContent).to.contain("Active subs");
+      // revenue row: 5700 cents -> 57.00 USD, refunded 1900 -> 19.00 USD
+      expect(el.textContent).to.contain("57.00 USD");
+      expect(el.textContent).to.contain("19.00 USD");
     } finally {
       restore();
     }

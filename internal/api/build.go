@@ -12,6 +12,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"pulse/internal/authn"
+	"pulse/internal/billing"
+	"pulse/internal/billing/paddle"
 	"pulse/internal/bus"
 	"pulse/internal/config"
 	"pulse/internal/crypto"
@@ -89,6 +91,24 @@ func Build(ctx context.Context, d Deps) (*Server, http.Handler, error) {
 		cfAccess = authn.NewCFAccessVerifier(ic.CFAccessTeamDomain, ic.CFAccessAUD)
 	}
 
+	// Billing provider for the operator/self-serve billing endpoints (RFC-018). The api
+	// only makes operator/self-serve calls (not webhook verify), so the stub needs no
+	// secret. Defaults to the stub so the api runs without a provider account.
+	var billingProvider billing.Provider
+	switch d.Cfg.Billing.Provider {
+	case "paddle":
+		billingProvider = paddle.New(d.Cfg.Billing.PaddleAPIKey, "")
+	default:
+		billingProvider = billing.NewStub("")
+	}
+
+	// Audit publisher for operator billing actions (RFC-018 8). Emits to audit.events;
+	// nil when no producer is wired (dev/test), in which case the action still happens.
+	var auditPub AuditPublisher
+	if d.Producer != nil {
+		auditPub = &busAuditPublisher{prod: d.Producer, log: d.Log}
+	}
+
 	// The Authenticator writes 401/403 using the localizable envelope so an auth
 	// failure reads the same as a handler-level failure.
 	auth := authn.NewAuthenticator(jwt, keyVerifier, d.Store, d.Redis,
@@ -136,6 +156,10 @@ func Build(ctx context.Context, d Deps) (*Server, http.Handler, error) {
 		// CFAccess: verifies the Cloudflare Access token on the admin endpoint when
 		// both the team domain and AUD are configured; nil otherwise (local/dev).
 		CFAccess: cfAccess,
+		// Billing: the payment provider for operator/self-serve billing (RFC-018).
+		Billing: billingProvider,
+		// Audit: emits audit.events for operator billing actions (nil when no producer).
+		Audit: auditPub,
 	})
 
 	handler := chain(srv.Router(), d.Log, newHTTPMetrics(d.Reg))
@@ -205,6 +229,27 @@ func (b *busMonitorPublisher) MonitorChanged(ctx context.Context, orgID, monitor
 		return err
 	}
 	return b.prod.Produce(ctx, bus.TopicMonitorChanged, strconv.FormatInt(orgID, 10), payload)
+}
+
+// busAuditPublisher emits audit.events onto the bus, keyed by org_id so a consumer
+// sees an org's actions in order (RFC-018 8). It implements AuditPublisher. There is no
+// consumer yet; the emit is best-effort so the trail exists for the future audit log.
+type busAuditPublisher struct {
+	prod *bus.Producer
+	log  *slog.Logger
+}
+
+// Audit emits one audit event; a failure is logged, not surfaced (the action happened).
+func (b *busAuditPublisher) Audit(ctx context.Context, ev events.AuditEvent) error {
+	payload, err := json.Marshal(ev)
+	if err != nil {
+		return err
+	}
+	if err := b.prod.Produce(ctx, bus.TopicAuditEvents, strconv.FormatInt(ev.OrgID, 10), payload); err != nil {
+		b.log.Warn("audit emit failed", "action", ev.Action, "org_id", ev.OrgID, "err", err)
+		return err
+	}
+	return nil
 }
 
 // busCheckJobPublisher enqueues a check job onto check.jobs.<region>, keyed by monitor

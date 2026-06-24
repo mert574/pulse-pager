@@ -525,6 +525,78 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /orgs/{orgId}/billing/checkout:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    post:
+      operationId: createBillingCheckout
+      tags: [account]
+      summary: Start a hosted checkout to buy a paid plan (owner/admin).
+      description: >
+        Returns a provider-hosted checkout URL for the chosen paid plan and cycle
+        (RFC-018 6). The customer is redirected there to pay; the subscription lands
+        via the provider webhook. Manage billing is owner/admin only. Custom is not
+        self-serve (use Contact us), so only tier2/tier3 are accepted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BillingCheckoutRequest" }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BillingRedirect" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /orgs/{orgId}/billing/payments:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      operationId: listBillingPayments
+      tags: [account]
+      summary: The org's payments (invoices), newest first (owner/admin).
+      description: >
+        Read-only mirror of the org's provider payments for the billing screen
+        (RFC-018 4): amount, currency, status, period, hosted invoice URL, and how
+        much has been refunded. Viewable by owner and admin only (PRD-006 9).
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Payment" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /orgs/{orgId}/billing/portal:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    post:
+      operationId: createBillingPortal
+      tags: [account]
+      summary: Open the provider customer portal (owner/admin).
+      description: >
+        Returns a provider-hosted customer-portal URL where the customer manages
+        their card, sees invoices, and can self-cancel or self-upgrade (RFC-018 6).
+        Manage billing is owner/admin only.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BillingRedirect" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
   /plans:
     get:
       operationId: listPlans
@@ -560,6 +632,26 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AdminMetrics" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/billing:
+    get:
+      operationId: getAdminBilling
+      tags: [admin]
+      summary: Cross-org billing summary (platform admins only).
+      description: >
+        Billing totals for the operator admin panel (RFC-018): how many orgs are on a
+        paid plan, subscriptions grouped by status, and mirrored revenue grouped by
+        currency (gross and refunded, in minor units). Aggregates only, never per-org
+        rows. Gated by the PULSE_PLATFORM_ADMINS allowlist; a signed-in non-admin gets
+        a 403. Not org-scoped.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminBilling" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -606,6 +698,63 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AdminOrg" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/orgs/{orgId}/subscription/cancel:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    post:
+      operationId: cancelAdminOrgSubscription
+      tags: [admin]
+      summary: Cancel an organization's subscription (platform admins only).
+      description: >
+        Operator cancellation of an org's paid subscription (RFC-018 5.2). Tells the
+        provider to cancel immediately or at period end; the org drops to Free when the
+        provider webhook confirms. Default period_end. Gated by the
+        PULSE_PLATFORM_ADMINS allowlist; a signed-in non-admin gets a 403. 404 if the
+        org has no subscription.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminSubscriptionCancel" }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminSubscription" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /admin/orgs/{orgId}/refund:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    post:
+      operationId: refundAdminOrgPayment
+      tags: [admin]
+      summary: Refund an org's payment (platform admins only).
+      description: >
+        Operator refund of a payment, full or partial (RFC-018 5.3). Irreversible:
+        treat like a destructive action. With a Merchant of Record the refund also
+        reverses tax. Gated by the PULSE_PLATFORM_ADMINS allowlist; a signed-in
+        non-admin gets a 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminRefundRequest" }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminRefund" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1379,6 +1528,150 @@ components:
       required: [plan]
       properties:
         plan: { $ref: "#/components/schemas/Plan" }
+        mode:
+          type: string
+          enum: [prorate_now, next_cycle]
+          description: >
+            how a change to an org that already has a paid subscription takes effect;
+            default next_cycle. Ignored for an org with no subscription (override only).
+        cycle:
+          type: string
+          enum: [monthly, annual]
+          description: billing cycle for the new plan (paid moves and Custom)
+        custom_amount:
+          type: integer
+          format: int64
+          nullable: true
+          description: >
+            tierCustom only: the negotiated recurring amount in minor units (cents). The
+            backend creates a per-org provider price for it (RFC-018 7). Omit for a
+            comp/$0 Custom (operator override, no provider price).
+        custom_currency:
+          type: string
+          nullable: true
+          description: ISO 4217 currency for custom_amount (e.g. USD)
+    AdminBilling:
+      type: object
+      description: Cross-org billing totals for the admin panel (RFC-018).
+      required: [paid_orgs, subscriptions_by_status, revenue_by_currency]
+      properties:
+        paid_orgs:
+          type: integer
+          description: active orgs on a paid plan (plan != tier1)
+        subscriptions_by_status:
+          type: array
+          items: { $ref: "#/components/schemas/AdminSubscriptionStatusCount" }
+        revenue_by_currency:
+          type: array
+          items: { $ref: "#/components/schemas/AdminCurrencyRevenue" }
+    AdminSubscriptionStatusCount:
+      type: object
+      required: [status, count]
+      properties:
+        status: { type: string }
+        count: { type: integer }
+    AdminCurrencyRevenue:
+      type: object
+      description: Mirrored revenue in one currency, in minor units (RFC-018 8).
+      required: [currency, gross, refunded, payments]
+      properties:
+        currency: { type: string }
+        gross:
+          type: integer
+          format: int64
+          description: gross paid, in minor units
+        refunded:
+          type: integer
+          format: int64
+          description: total refunded, in minor units
+        payments:
+          type: integer
+          description: number of payments
+    AdminSubscription:
+      type: object
+      description: An org's subscription as the admin panel sees it (RFC-018 4).
+      required: [org_id, plan, status, billing_cycle, provider, cancel_at_period_end]
+      properties:
+        org_id: { type: string }
+        plan: { $ref: "#/components/schemas/Plan" }
+        status:
+          type: string
+          enum: [trialing, active, past_due, canceled]
+        billing_cycle:
+          type: string
+          enum: [monthly, annual]
+        provider: { type: string }
+        cancel_at_period_end: { type: boolean }
+        current_period_end:
+          type: string
+          format: date-time
+          nullable: true
+    AdminSubscriptionCancel:
+      type: object
+      properties:
+        when:
+          type: string
+          enum: [immediate, period_end]
+          description: when the cancellation takes effect; default period_end
+    AdminRefundRequest:
+      type: object
+      required: [payment_id]
+      properties:
+        payment_id: { type: string }
+        amount:
+          type: integer
+          format: int64
+          nullable: true
+          description: partial refund amount in minor units; omit for a full refund
+        currency:
+          type: string
+          nullable: true
+          description: ISO 4217 currency for a partial amount
+        reason:
+          type: string
+          nullable: true
+    AdminRefund:
+      type: object
+      description: Acknowledgement that a refund was requested at the provider.
+      required: [payment_id, status]
+      properties:
+        payment_id: { type: string }
+        status: { type: string }
+    BillingCheckoutRequest:
+      type: object
+      description: The paid plan to buy (tier2 or tier3; Custom is not self-serve).
+      required: [plan, cycle]
+      properties:
+        plan: { $ref: "#/components/schemas/Plan" }
+        cycle:
+          type: string
+          enum: [monthly, annual]
+    BillingRedirect:
+      type: object
+      description: A provider-hosted URL the browser is redirected to (RFC-018 6).
+      required: [url]
+      properties:
+        url: { type: string }
+    Payment:
+      type: object
+      description: A mirrored provider payment for the billing screen (RFC-018 4).
+      required: [id, provider, amount, currency, status, refunded_amount, created_at]
+      properties:
+        id: { type: string }
+        provider: { type: string }
+        amount:
+          type: integer
+          format: int64
+          description: amount in minor units (cents), mirrored from the provider
+        currency: { type: string }
+        status: { type: string }
+        period: { type: string }
+        hosted_invoice_url: { type: string }
+        refunded_amount:
+          type: integer
+          format: int64
+          description: total refunded so far in minor units (0 = not refunded)
+        created_at: { type: string, format: date-time }
     MeUpdate:
       type: object
       description: >

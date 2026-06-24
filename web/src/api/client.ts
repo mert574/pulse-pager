@@ -12,9 +12,17 @@
 import { navigate } from "../router.js";
 import { session } from "../state/session.js";
 import type {
+  AdminBilling,
   AdminMetrics,
   AdminOrg,
+  AdminOrgPlanUpdate,
+  AdminRefund,
+  AdminRefundRequest,
+  AdminSubscription,
+  AdminSubscriptionCancel,
   ApiErrorBody,
+  BillingCheckoutRequest,
+  BillingRedirect,
   ApiKey,
   ApiKeyCreated,
   ApiKeyInput,
@@ -45,7 +53,7 @@ import type {
   OrgInput,
   OrgMembership,
   Page,
-  Plan,
+  Payment,
   PlanCatalogEntry,
   ResultsRange,
   StatusPage,
@@ -288,12 +296,62 @@ export const client = {
   listAdminOrgs(): Promise<AdminOrg[]> {
     return request<AdminOrg[]>(`${API_V1}/admin/orgs`);
   },
-  // Set an org's plan by hand (operator override until Stripe lands).
-  setAdminOrgPlan(orgId: string, plan: Plan): Promise<AdminOrg> {
+  // Cross-org billing summary (paid orgs, subscription statuses, revenue).
+  getAdminBilling(): Promise<AdminBilling> {
+    return request<AdminBilling>(`${API_V1}/admin/billing`);
+  },
+  // Move an org's plan (RFC-018 5.1). plan is required; the rest is for a paid move
+  // or a Custom price (cycle, mode, custom_amount/custom_currency). The server only
+  // calls the provider when the org has a subscription; otherwise it is an override.
+  setAdminOrgPlan(
+    orgId: string,
+    body: AdminOrgPlanUpdate,
+  ): Promise<AdminOrg> {
     return request<AdminOrg>(`${API_V1}/admin/orgs/${orgId}/plan`, {
       method: "PUT",
-      body: { plan },
+      body,
     });
+  },
+  // Cancel an org's subscription (RFC-018 5.2). Default period_end on the server.
+  cancelAdminOrgSubscription(
+    orgId: string,
+    when?: AdminSubscriptionCancel["when"],
+  ): Promise<AdminSubscription> {
+    return request<AdminSubscription>(
+      `${API_V1}/admin/orgs/${orgId}/subscription/cancel`,
+      { method: "POST", body: { when } },
+    );
+  },
+  // Refund a payment (RFC-018 5.3). Omit amount for a full refund.
+  refundAdminOrgPayment(
+    orgId: string,
+    body: AdminRefundRequest,
+  ): Promise<AdminRefund> {
+    return request<AdminRefund>(`${API_V1}/admin/orgs/${orgId}/refund`, {
+      method: "POST",
+      body,
+    });
+  },
+
+  // Self-serve billing (RFC-018 6): start a hosted checkout to buy a paid plan, or
+  // open the customer portal. Both return a provider URL the caller redirects to.
+  createBillingCheckout(
+    orgId: string,
+    body: BillingCheckoutRequest,
+  ): Promise<BillingRedirect> {
+    return request<BillingRedirect>(org(orgId, "/billing/checkout"), {
+      method: "POST",
+      body,
+    });
+  },
+  createBillingPortal(orgId: string): Promise<BillingRedirect> {
+    return request<BillingRedirect>(org(orgId, "/billing/portal"), {
+      method: "POST",
+    });
+  },
+  // The org's mirrored payments (invoices) for the billing screen (RFC-018 4).
+  listBillingPayments(orgId: string): Promise<Payment[]> {
+    return request<Payment[]>(org(orgId, "/billing/payments"));
   },
 
   listMonitors(orgId: string): Promise<MonitorListItem[]> {

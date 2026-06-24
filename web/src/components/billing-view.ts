@@ -8,7 +8,12 @@ import { can } from "../state/can.js";
 import { t, tDynamic, type MessageKey } from "../i18n.js";
 import { formatDuration } from "../format.js";
 import { icon } from "../icons.js";
-import type { Entitlements, Plan, PlanCatalogEntry } from "../api/types.js";
+import type {
+  Entitlements,
+  Payment,
+  Plan,
+  PlanCatalogEntry,
+} from "../api/types.js";
 
 // Billing & usage (PRD-006 9, RFC-013). Owner/admin only: a member or viewer who
 // reaches this route sees a "managed by owners/admins" message instead of an
@@ -49,11 +54,65 @@ export class BillingView extends AppElement {
 
   @state() private ent: Entitlements | null = null;
   @state() private plans: PlanCatalogEntry[] | null = null;
+  @state() private payments: Payment[] | null = null;
   @state() private error: string | null = null;
-  // the tier whose upgrade modal is open, or null when the modal is closed
+  // the tier whose upgrade modal is open, or null when the modal is closed. Used only
+  // for tierCustom now (Custom is contact-us, not self-serve, RFC-018 7).
   @state() private upgradeTo: Plan | null = null;
+  // monthly/annual toggle for self-serve checkout (RFC-018 6).
+  @state() private cycle: "monthly" | "annual" = "monthly";
+  // a checkout/portal call is in flight (disables the buttons), and its error.
+  @state() private billingBusy = false;
+  @state() private billingError: string | null = null;
 
   private loadedOrgId: string | null = null;
+
+  private get orgId(): string | null {
+    return this.ctx?.activeOrg?.org_id ?? null;
+  }
+
+  // redirectTo sends the browser to the provider URL. A method (not an inline
+  // window.location assignment) so a test can stub it instead of navigating.
+  protected redirectTo(url: string): void {
+    window.location.href = url;
+  }
+
+  // startCheckout buys a paid plan: it asks the server for a hosted-checkout URL and
+  // redirects there. Custom is not self-serve, so only tier2/tier3 reach here.
+  private async startCheckout(plan: Plan): Promise<void> {
+    const orgId = this.orgId;
+    if (!orgId) return;
+    this.billingBusy = true;
+    this.billingError = null;
+    try {
+      const { url } = await client.createBillingCheckout(orgId, {
+        plan,
+        cycle: this.cycle,
+      });
+      this.redirectTo(url);
+    } catch (err) {
+      this.billingError =
+        err instanceof ApiError ? err.message : t("state.error");
+      this.billingBusy = false;
+    }
+  }
+
+  // openPortal sends the customer to the provider portal to manage card / invoices /
+  // self-cancel.
+  private async openPortal(): Promise<void> {
+    const orgId = this.orgId;
+    if (!orgId) return;
+    this.billingBusy = true;
+    this.billingError = null;
+    try {
+      const { url } = await client.createBillingPortal(orgId);
+      this.redirectTo(url);
+    } catch (err) {
+      this.billingError =
+        err instanceof ApiError ? err.message : t("state.error");
+      this.billingBusy = false;
+    }
+  }
 
   override updated(): void {
     if (!this.hasAccess) return;
@@ -69,16 +128,19 @@ export class BillingView extends AppElement {
     this.loadedOrgId = orgId;
     this.error = null;
     try {
-      const [ent, plans] = await Promise.all([
+      const [ent, plans, payments] = await Promise.all([
         client.entitlements(orgId),
         client.listPlans(),
+        client.listBillingPayments(orgId),
       ]);
       this.ent = ent;
       this.plans = plans;
+      this.payments = payments;
     } catch (err) {
       this.error = err instanceof ApiError ? err.message : t("state.error");
       this.ent = null;
       this.plans = null;
+      this.payments = null;
     }
   }
 
@@ -128,22 +190,102 @@ export class BillingView extends AppElement {
 
     return html`
       ${this.currentPlanSection(this.ent)} ${this.usageSection(this.ent)}
-      ${this.compareSection(this.plans, this.ent.plan)}
+      ${this.invoicesSection()} ${this.compareSection(this.plans, this.ent.plan)}
       ${this.upgradeModal()}
     `;
+  }
+
+  // --- invoices / payments mirror (RFC-018 4) ---
+
+  private invoicesSection() {
+    const payments = this.payments;
+    if (!payments || payments.length === 0) return nothing;
+    return html`
+      <section class="flex flex-col gap-3">
+        <h2 class="text-lg font-semibold">${t("billing.invoices")}</h2>
+        <div class="overflow-x-auto rounded-box border border-base-300">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>${t("billing.invoiceDate")}</th>
+                <th>${t("billing.invoiceAmount")}</th>
+                <th>${t("billing.invoiceStatus")}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${payments.map((p) => this.invoiceRow(p))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    `;
+  }
+
+  private invoiceRow(p: Payment) {
+    const refunded = p.refunded_amount > 0;
+    return html`<tr data-payment=${p.id}>
+      <td>${new Date(p.created_at).toLocaleDateString()}</td>
+      <td class="tabular-nums">
+        ${this.money(p.amount, p.currency)}
+        ${refunded
+          ? html`<span class="text-base-content/60 text-xs ml-1"
+              >(${t("billing.refunded")}
+              ${this.money(p.refunded_amount, p.currency)})</span
+            >`
+          : nothing}
+      </td>
+      <td><span class="badge badge-ghost">${p.status}</span></td>
+      <td class="text-right">
+        ${p.hosted_invoice_url
+          ? html`<a
+              class="link link-primary text-sm"
+              href=${p.hosted_invoice_url}
+              target="_blank"
+              rel="noopener"
+              >${t("billing.invoiceView")}</a
+            >`
+          : nothing}
+      </td>
+    </tr>`;
+  }
+
+  // money formats minor units (cents) as a plain amount + currency. Kept simple and
+  // locale-safe (no Intl currency code validation) since the provider currency is
+  // free-form text in the mirror.
+  private money(minor: number, currency: string): string {
+    return `${(minor / 100).toFixed(2)} ${currency}`;
   }
 
   // --- current plan ---
 
   private currentPlanSection(ent: Entitlements) {
+    // The portal manages an existing paid subscription, so it only shows on a paid
+    // plan (a free org has nothing to manage there yet).
+    const paid = ent.plan !== "tier1";
     return html`
       <section class="flex flex-col gap-3">
         <h2 class="text-lg font-semibold">${t("billing.currentPlan")}</h2>
+        ${this.billingError
+          ? html`<div role="alert" class="alert alert-error">
+              <span>${this.billingError}</span>
+            </div>`
+          : nothing}
         <div
           class="rounded-box border border-base-300 p-5 flex items-center gap-3"
         >
           <span class="badge badge-primary badge-lg">${this.planLabel(ent.plan)}</span>
           <span class="text-base-content/60 text-sm">${t("billing.currentPlanBadge")}</span>
+          ${paid
+            ? html`<button
+                class="btn btn-sm btn-outline ml-auto"
+                data-manage-billing
+                ?disabled=${this.billingBusy}
+                @click=${this.openPortal}
+              >
+                ${t("billing.manage")}
+              </button>`
+            : nothing}
         </div>
       </section>
     `;
@@ -261,9 +403,25 @@ export class BillingView extends AppElement {
     const currentRank = PLAN_ORDER.indexOf(current);
     return html`
       <section class="flex flex-col gap-3">
-        <div>
-          <h2 class="text-lg font-semibold">${t("billing.compare")}</h2>
-          <p class="text-base-content/60 text-sm">${t("billing.compareHint")}</p>
+        <div class="flex items-end justify-between gap-3 flex-wrap">
+          <div>
+            <h2 class="text-lg font-semibold">${t("billing.compare")}</h2>
+            <p class="text-base-content/60 text-sm">${t("billing.compareHint")}</p>
+          </div>
+          <div class="join" role="group" aria-label=${t("billing.cycle")}>
+            <button
+              class=${`btn btn-sm join-item ${this.cycle === "monthly" ? "btn-active" : ""}`}
+              @click=${() => (this.cycle = "monthly")}
+            >
+              ${t("billing.monthly")}
+            </button>
+            <button
+              class=${`btn btn-sm join-item ${this.cycle === "annual" ? "btn-active" : ""}`}
+              @click=${() => (this.cycle = "annual")}
+            >
+              ${t("billing.annual")}
+            </button>
+          </div>
         </div>
         <div class="overflow-x-auto rounded-box border border-base-300">
           <table class="table">
@@ -315,20 +473,36 @@ export class BillingView extends AppElement {
       <td>${tDynamic("billing.colApiRateValue", "", { count: p.api_rate_per_min })}</td>
       <td>${p.channel_types.length}</td>
       <td class="text-right">
-        ${isHigher
-          ? html`<button
-              class="btn btn-sm btn-primary"
-              data-upgrade=${p.plan}
-              @click=${() => (this.upgradeTo = p.plan)}
-            >
-              ${t("billing.upgrade")}
-            </button>`
-          : nothing}
+        ${isHigher ? this.upgradeButton(p.plan) : nothing}
       </td>
     </tr>`;
   }
 
-  // --- upgrade CTA (phased: no real checkout) ---
+  // The upgrade affordance differs by tier: tier2/tier3 are self-serve, so the button
+  // starts a real hosted checkout; tierCustom is contract-negotiated (RFC-018 7), so it
+  // opens the contact modal instead of a checkout.
+  private upgradeButton(plan: Plan) {
+    if (plan === "tierCustom") {
+      return html`<button
+        class="btn btn-sm btn-outline"
+        data-upgrade=${plan}
+        @click=${() => (this.upgradeTo = plan)}
+      >
+        ${t("billing.contactUs")}
+      </button>`;
+    }
+    return html`<button
+      class="btn btn-sm btn-primary"
+      data-upgrade=${plan}
+      data-checkout=${plan}
+      ?disabled=${this.billingBusy}
+      @click=${() => this.startCheckout(plan)}
+    >
+      ${t("billing.upgrade")}
+    </button>`;
+  }
+
+  // --- contact CTA for Custom (contract-negotiated, never self-serve) ---
 
   private upgradeModal() {
     const plan = this.upgradeTo;

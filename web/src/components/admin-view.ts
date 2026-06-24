@@ -6,8 +6,10 @@ import { t, type MessageKey } from "../i18n.js";
 import { icon } from "../icons.js";
 import { formatDuration } from "../format.js";
 import type {
+  AdminBilling,
   AdminMetrics,
   AdminOrg,
+  AdminOrgPlanUpdate,
   MonitorType,
   Plan,
 } from "../api/types.js";
@@ -30,6 +32,12 @@ const PLAN_LABEL: Record<Plan, MessageKey> = {
 // Plan rows render in tier order regardless of the order the API groups them.
 const PLAN_ORDER: Plan[] = ["tier1", "tier2", "tier3", "tierCustom"];
 
+// An operator action that needs a confirm dialog before it hits the provider.
+type AdminAction =
+  | { kind: "cancel"; org: AdminOrg }
+  | { kind: "refund"; org: AdminOrg }
+  | { kind: "custom"; org: AdminOrg };
+
 // Monitor-type rows render in a fixed order, with the SSL split reusing the form's
 // type labels.
 const TYPE_ORDER: MonitorType[] = ["http", "ssl"];
@@ -42,12 +50,25 @@ const TYPE_LABEL: Record<MonitorType, MessageKey> = {
 export class AdminView extends AppElement {
   @state() private metrics: AdminMetrics | null = null;
   @state() private orgs: AdminOrg[] | null = null;
+  @state() private billing: AdminBilling | null = null;
   @state() private error: string | null = null;
   @state() private forbidden = false;
   // id of the org whose plan is being saved right now (disables its select), and
   // a separate error for a failed plan change so it doesn't blow away the panel.
   @state() private savingOrgId: string | null = null;
   @state() private planError: string | null = null;
+
+  // Operator action dialog (cancel / refund / custom-price). One at a time.
+  @state() private action: AdminAction | null = null;
+  @state() private actionBusy = false;
+  @state() private actionError: string | null = null;
+  // Dialog form fields (reset each time a dialog opens).
+  @state() private fCancelWhen: "immediate" | "period_end" = "period_end";
+  @state() private fPaymentId = "";
+  @state() private fRefundAmount = "";
+  @state() private fCustomAmount = "";
+  @state() private fCustomCurrency = "USD";
+  @state() private fCycle: "monthly" | "annual" = "monthly";
 
   override firstUpdated(): void {
     void this.load();
@@ -57,15 +78,18 @@ export class AdminView extends AppElement {
     this.error = null;
     this.forbidden = false;
     try {
-      const [metrics, orgs] = await Promise.all([
+      const [metrics, orgs, billing] = await Promise.all([
         client.getAdminMetrics(),
         client.listAdminOrgs(),
+        client.getAdminBilling(),
       ]);
       this.metrics = metrics;
       this.orgs = orgs;
+      this.billing = billing;
     } catch (err) {
       this.metrics = null;
       this.orgs = null;
+      this.billing = null;
       if (err instanceof ApiError && err.status === 403) {
         this.forbidden = true;
       } else {
@@ -77,19 +101,95 @@ export class AdminView extends AppElement {
   private retry(): void {
     this.metrics = null;
     this.orgs = null;
+    this.billing = null;
     void this.load();
   }
 
-  private async changePlan(orgId: string, plan: Plan): Promise<void> {
+  // changePlan handles the plan dropdown. A move to Custom needs a negotiated price,
+  // so it opens the custom dialog instead of changing in place; every other tier is a
+  // direct override (no provider price). The select reverts on the next render if the
+  // dialog is cancelled, since orgs still holds the old plan.
+  private changePlan(o: AdminOrg, plan: Plan): void {
+    if (plan === "tierCustom") {
+      this.openAction({ kind: "custom", org: o });
+      return;
+    }
+    void this.applyPlan(o.id, { plan });
+  }
+
+  private async applyPlan(
+    orgId: string,
+    body: AdminOrgPlanUpdate,
+  ): Promise<void> {
     this.savingOrgId = orgId;
     this.planError = null;
     try {
-      const updated = await client.setAdminOrgPlan(orgId, plan);
+      const updated = await client.setAdminOrgPlan(orgId, body);
       this.orgs = (this.orgs ?? []).map((o) => (o.id === orgId ? updated : o));
     } catch (err) {
       this.planError = err instanceof ApiError ? err.message : t("state.error");
     } finally {
       this.savingOrgId = null;
+    }
+  }
+
+  // --- operator action dialog ---
+
+  private openAction(a: AdminAction): void {
+    this.action = a;
+    this.actionError = null;
+    this.actionBusy = false;
+    this.fCancelWhen = "period_end";
+    this.fPaymentId = "";
+    this.fRefundAmount = "";
+    this.fCustomAmount = "";
+    this.fCustomCurrency = "USD";
+    this.fCycle = "monthly";
+  }
+
+  private closeAction(): void {
+    this.action = null;
+    // The plan select may show tierCustom from a cancelled custom dialog; re-render
+    // restores it from orgs (which still holds the real plan).
+    this.requestUpdate();
+  }
+
+  private async submitAction(): Promise<void> {
+    const a = this.action;
+    if (!a) return;
+    this.actionBusy = true;
+    this.actionError = null;
+    try {
+      if (a.kind === "cancel") {
+        await client.cancelAdminOrgSubscription(a.org.id, this.fCancelWhen);
+      } else if (a.kind === "refund") {
+        const amount = this.fRefundAmount.trim()
+          ? Number(this.fRefundAmount)
+          : undefined;
+        await client.refundAdminOrgPayment(a.org.id, {
+          payment_id: this.fPaymentId.trim(),
+          amount,
+        });
+      } else {
+        const amount = this.fCustomAmount.trim()
+          ? Number(this.fCustomAmount)
+          : undefined;
+        const updated = await client.setAdminOrgPlan(a.org.id, {
+          plan: "tierCustom",
+          cycle: this.fCycle,
+          custom_amount: amount,
+          custom_currency: amount != null ? this.fCustomCurrency : undefined,
+        });
+        this.orgs = (this.orgs ?? []).map((o) =>
+          o.id === a.org.id ? updated : o,
+        );
+      }
+      this.action = null;
+    } catch (err) {
+      this.actionError =
+        err instanceof ApiError ? err.message : t("state.error");
+    } finally {
+      this.actionBusy = false;
     }
   }
 
@@ -131,9 +231,74 @@ export class AdminView extends AppElement {
     }
     return html`
       ${this.totals(this.metrics)} ${this.activation(this.metrics)}
-      ${this.byPlan(this.metrics)} ${this.orgsTable()}
+      ${this.byPlan(this.metrics)} ${this.billingSection()} ${this.orgsTable()}
       ${this.byType(this.metrics)} ${this.signups(this.metrics)}
     `;
+  }
+
+  // --- billing & paid users (RFC-018): paid orgs, subscription statuses, revenue ---
+
+  private billingSection() {
+    const b = this.billing;
+    if (!b) return nothing;
+    const hasActivity =
+      b.subscriptions_by_status.length > 0 || b.revenue_by_currency.length > 0;
+    return html`
+      <section class="flex flex-col gap-3">
+        <div>
+          <h2 class="text-lg font-semibold">${t("admin.billing")}</h2>
+          <p class="text-base-content/60 text-sm">${t("admin.billingHint")}</p>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          ${this.card(t("admin.paidOrgs"), b.paid_orgs)}
+          ${this.card(t("admin.activeSubs"), this.subCount(b, "active"))}
+          ${this.card(t("admin.pastDueSubs"), this.subCount(b, "past_due"))}
+          ${this.card(t("admin.canceledSubs"), this.subCount(b, "canceled"))}
+        </div>
+        ${b.revenue_by_currency.length > 0
+          ? html`<table class="table border border-base-300 rounded-box">
+              <thead>
+                <tr>
+                  <th>${t("admin.currency")}</th>
+                  <th class="text-right">${t("admin.revenueGross")}</th>
+                  <th class="text-right">${t("admin.revenueRefunded")}</th>
+                  <th class="text-right">${t("admin.revenuePayments")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${b.revenue_by_currency.map(
+                  (r) => html`<tr>
+                    <td>${r.currency}</td>
+                    <td class="text-right tabular-nums">
+                      ${this.money(r.gross, r.currency)}
+                    </td>
+                    <td class="text-right tabular-nums">
+                      ${this.money(r.refunded, r.currency)}
+                    </td>
+                    <td class="text-right tabular-nums">${r.payments}</td>
+                  </tr>`,
+                )}
+              </tbody>
+            </table>`
+          : nothing}
+        ${!hasActivity
+          ? html`<p class="text-base-content/50 text-sm">
+              ${t("admin.billingEmpty")}
+            </p>`
+          : nothing}
+      </section>
+    `;
+  }
+
+  // subCount returns how many subscriptions are in a given status (0 if none).
+  private subCount(b: AdminBilling, status: string): number {
+    return b.subscriptions_by_status.find((s) => s.status === status)?.count ?? 0;
+  }
+
+  // money formats minor units (cents) + currency, plainly (no Intl currency code
+  // validation, since the provider currency is free-form text in the mirror).
+  private money(minor: number, currency: string): string {
+    return `${(minor / 100).toFixed(2)} ${currency}`;
   }
 
   // --- organizations (see and change each org's plan) ---
@@ -155,6 +320,7 @@ export class AdminView extends AppElement {
               <th>${t("admin.orgName")}</th>
               <th>${t("admin.orgSlug")}</th>
               <th>${t("admin.plan")}</th>
+              <th>${t("admin.actions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -171,7 +337,7 @@ export class AdminView extends AppElement {
                       ?disabled=${this.savingOrgId === o.id}
                       @change=${(e: Event) =>
                         this.changePlan(
-                          o.id,
+                          o,
                           (e.target as HTMLSelectElement).value as Plan,
                         )}
                     >
@@ -183,11 +349,153 @@ export class AdminView extends AppElement {
                       )}
                     </select>
                   </td>
+                  <td>
+                    <div class="flex gap-2">
+                      <button
+                        class="btn btn-sm btn-ghost"
+                        @click=${() => this.openAction({ kind: "cancel", org: o })}
+                      >
+                        ${t("admin.cancelSub")}
+                      </button>
+                      <button
+                        class="btn btn-sm btn-ghost text-error"
+                        @click=${() => this.openAction({ kind: "refund", org: o })}
+                      >
+                        ${t("admin.refund")}
+                      </button>
+                    </div>
+                  </td>
                 </tr>`,
             )}
           </tbody>
         </table>
       </section>
+      ${this.actionDialog()}
+    `;
+  }
+
+  // --- operator action dialog (cancel / refund / custom price) ---
+
+  private actionDialog() {
+    const a = this.action;
+    if (!a) return nothing;
+    return html`
+      <div class="modal modal-open" role="dialog" aria-modal="true">
+        <div class="modal-box flex flex-col gap-4">
+          <h3 class="text-lg font-semibold">
+            ${this.dialogTitle(a)} — ${a.org.name}
+          </h3>
+          ${this.dialogBody(a)}
+          ${this.actionError
+            ? html`<div role="alert" class="alert alert-error">
+                <span>${this.actionError}</span>
+              </div>`
+            : nothing}
+          <div class="modal-action">
+            <button
+              class="btn btn-ghost"
+              ?disabled=${this.actionBusy}
+              @click=${this.closeAction}
+            >
+              ${t("admin.dialogCancel")}
+            </button>
+            <button
+              class=${`btn ${a.kind === "refund" ? "btn-error" : "btn-primary"}`}
+              ?disabled=${this.actionBusy || !this.canSubmit(a)}
+              @click=${this.submitAction}
+            >
+              ${this.actionBusy
+                ? html`<span class="loading loading-spinner loading-sm"></span>`
+                : t("admin.confirm")}
+            </button>
+          </div>
+        </div>
+        <div class="modal-backdrop" @click=${this.closeAction}></div>
+      </div>
+    `;
+  }
+
+  private dialogTitle(a: AdminAction): string {
+    if (a.kind === "cancel") return t("admin.cancelSub");
+    if (a.kind === "refund") return t("admin.refund");
+    return t("admin.customPrice");
+  }
+
+  // canSubmit blocks the confirm until the required field is filled.
+  private canSubmit(a: AdminAction): boolean {
+    if (a.kind === "refund") return this.fPaymentId.trim() !== "";
+    return true;
+  }
+
+  private dialogBody(a: AdminAction) {
+    if (a.kind === "cancel") {
+      return html`
+        <p class="text-sm text-base-content/70">${t("admin.cancelHelp")}</p>
+        <select
+          class="select select-bordered w-full"
+          .value=${this.fCancelWhen}
+          @change=${(e: Event) =>
+            (this.fCancelWhen = (e.target as HTMLSelectElement).value as
+              | "immediate"
+              | "period_end")}
+        >
+          <option value="period_end">${t("admin.cancelPeriodEnd")}</option>
+          <option value="immediate">${t("admin.cancelImmediate")}</option>
+        </select>
+      `;
+    }
+    if (a.kind === "refund") {
+      return html`
+        <p class="text-sm text-base-content/70">${t("admin.refundHelp")}</p>
+        <input
+          class="input input-bordered w-full"
+          placeholder=${t("admin.refundPaymentId")}
+          .value=${this.fPaymentId}
+          @input=${(e: Event) =>
+            (this.fPaymentId = (e.target as HTMLInputElement).value)}
+        />
+        <input
+          class="input input-bordered w-full"
+          type="number"
+          min="0"
+          placeholder=${t("admin.refundAmount")}
+          .value=${this.fRefundAmount}
+          @input=${(e: Event) =>
+            (this.fRefundAmount = (e.target as HTMLInputElement).value)}
+        />
+      `;
+    }
+    return html`
+      <p class="text-sm text-base-content/70">${t("admin.customHelp")}</p>
+      <input
+        class="input input-bordered w-full"
+        type="number"
+        min="0"
+        placeholder=${t("admin.customAmount")}
+        .value=${this.fCustomAmount}
+        @input=${(e: Event) =>
+          (this.fCustomAmount = (e.target as HTMLInputElement).value)}
+      />
+      <div class="flex gap-2">
+        <input
+          class="input input-bordered w-24"
+          placeholder=${t("admin.customCurrency")}
+          .value=${this.fCustomCurrency}
+          @input=${(e: Event) =>
+            (this.fCustomCurrency = (e.target as HTMLInputElement).value)}
+        />
+        <select
+          class="select select-bordered flex-1"
+          .value=${this.fCycle}
+          @change=${(e: Event) =>
+            (this.fCycle = (e.target as HTMLSelectElement).value as
+              | "monthly"
+              | "annual")}
+        >
+          <option value="monthly">${t("admin.cycleMonthly")}</option>
+          <option value="annual">${t("admin.cycleAnnual")}</option>
+        </select>
+      </div>
     `;
   }
 

@@ -457,6 +457,45 @@ type Organization struct {
 	DeletedAt       *time.Time
 }
 
+// Subscription is the provider-backed billing state for one org (RFC-018 4). One row
+// per org. Plan is the canonical tier the entitlement resolvers read (reconciled onto
+// organizations.plan by the webhook sync path). The provider_* fields mirror the
+// provider's ids; ProviderPriceID is per-row because a Custom org has its own
+// negotiated price (RFC-018 7). Money never lives here; it is mirrored in payments.
+type Subscription struct {
+	ID                     int64
+	OrgID                  int64
+	Plan                   string // tier1..tierCustom
+	BillingCycle           string // monthly | annual
+	Status                 string // trialing | active | past_due | canceled
+	Provider               string // stub | paddle
+	ProviderCustomerID     string
+	ProviderSubscriptionID string
+	ProviderPriceID        string
+	CurrentPeriodEnd       *time.Time
+	CancelAtPeriodEnd      bool
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
+// Payment is a read-only mirror of one provider payment, for the billing screen and
+// the refund UI (RFC-018 4). Money is mirrored from the provider, never computed here,
+// so amounts are integer minor units (cents) plus a currency. RefundedAmount is the
+// total refunded so far (0 = not refunded).
+type Payment struct {
+	ID                int64
+	OrgID             int64
+	Provider          string
+	ProviderPaymentID string
+	Amount            int64 // minor units
+	Currency          string
+	Status            string
+	Period            string
+	HostedInvoiceURL  string
+	RefundedAmount    int64 // minor units
+	CreatedAt         time.Time
+}
+
 // Role is a user's role inside one org (PRD-001 7).
 type Role string
 

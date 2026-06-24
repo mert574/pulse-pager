@@ -6,6 +6,7 @@ import { appContext, type AppContext } from "../state/context.js";
 import type {
   Entitlements,
   OrgMembership,
+  Payment,
   PlanCatalogEntry,
   Role,
 } from "../api/types.js";
@@ -92,10 +93,25 @@ function json(status: number, body: unknown): Response {
   });
 }
 
-// default handler: entitlements + plans both 200
+const PAYMENTS: Payment[] = [
+  {
+    id: "p1",
+    provider: "stub",
+    amount: 1900,
+    currency: "USD",
+    status: "paid",
+    period: "2026-06",
+    hosted_invoice_url: "https://inv.example/1",
+    refunded_amount: 0,
+    created_at: "2026-06-01T00:00:00Z",
+  },
+];
+
+// default handler: entitlements + plans + payments all 200
 function defaultHandler(c: Call): Response {
   if (c.url.endsWith("/entitlements")) return json(200, ENT);
   if (c.url.endsWith("/plans")) return json(200, PLANS);
+  if (c.url.endsWith("/billing/payments")) return json(200, PAYMENTS);
   return json(404, { error: { code: "not_found", message: "nope" } });
 }
 
@@ -158,8 +174,8 @@ describe("billing-view", () => {
     const { el, restore } = await mount({});
     try {
       await waitUntil(() => el.querySelector("table") !== null, "table renders");
-      // a row per tier from /plans
-      expect(el.querySelectorAll("tbody tr").length).to.equal(4);
+      // a row per tier from /plans (scoped to the compare table, not invoices rows)
+      expect(el.querySelectorAll("tr[data-plan]").length).to.equal(4);
       // the current (team) row is marked current; lower/other rows are not
       const teamRow = el.querySelector<HTMLElement>('tr[data-plan="tier3"]')!;
       expect(teamRow.dataset.current).to.equal("true");
@@ -194,6 +210,86 @@ describe("billing-view", () => {
       expect(link.getAttribute("href")).to.match(/^mailto:/);
       // no checkout request was fired
       expect(calls.some((c) => c.url.includes("checkout"))).to.be.false;
+    } finally {
+      restore();
+    }
+  });
+
+  it("starts a real hosted checkout for a paid higher tier", async () => {
+    // Free org: tier2/tier3 are higher and self-serve, so they get a checkout button.
+    const freeEnt: Entitlements = { ...ENT, plan: "tier1" };
+    const handler = (c: Call): Response => {
+      if (c.url.endsWith("/entitlements")) return json(200, freeEnt);
+      if (c.url.endsWith("/plans")) return json(200, PLANS);
+      if (c.url.endsWith("/billing/payments")) return json(200, []);
+      if (c.url.endsWith("/billing/checkout"))
+        return json(200, { url: "https://stub.billing.local/checkout" });
+      return json(404, { error: { code: "x", message: "x" } });
+    };
+    const { el, calls, restore } = await mount({ handler });
+    try {
+      await waitUntil(() => el.querySelector("table") !== null);
+      let redirected: string | null = null;
+      (el as unknown as { redirectTo: (u: string) => void }).redirectTo = (u) =>
+        (redirected = u);
+      // Custom stays contact-us, not checkout.
+      expect(el.querySelector('[data-checkout="tierCustom"]')).to.be.null;
+      const btn = el.querySelector<HTMLButtonElement>(
+        '[data-checkout="tier2"]',
+      )!;
+      expect(btn).to.not.be.null;
+      btn.click();
+      await waitUntil(
+        () => calls.some((c) => c.url.endsWith("/billing/checkout")),
+        "checkout request fired",
+      );
+      const call = calls.find((c) => c.url.endsWith("/billing/checkout"))!;
+      expect(call.method).to.equal("POST");
+      await waitUntil(() => redirected !== null, "redirected to checkout");
+      expect(redirected).to.equal("https://stub.billing.local/checkout");
+    } finally {
+      restore();
+    }
+  });
+
+  it("opens the customer portal from a paid plan", async () => {
+    const handler = (c: Call): Response =>
+      c.url.endsWith("/billing/portal")
+        ? json(200, { url: "https://stub.billing.local/portal" })
+        : defaultHandler(c);
+    const { el, calls, restore } = await mount({ handler });
+    try {
+      await waitUntil(
+        () => el.querySelector("[data-manage-billing]") !== null,
+        "manage-billing button renders for a paid plan",
+      );
+      let redirected: string | null = null;
+      (el as unknown as { redirectTo: (u: string) => void }).redirectTo = (u) =>
+        (redirected = u);
+      el.querySelector<HTMLButtonElement>("[data-manage-billing]")!.click();
+      await waitUntil(() => redirected !== null, "redirected to portal");
+      expect(redirected).to.equal("https://stub.billing.local/portal");
+      expect(
+        calls.some(
+          (c) => c.url.endsWith("/billing/portal") && c.method === "POST",
+        ),
+      ).to.be.true;
+    } finally {
+      restore();
+    }
+  });
+
+  it("renders the invoices mirror with amount and a view link", async () => {
+    const { el, restore } = await mount({});
+    try {
+      await waitUntil(
+        () => el.querySelector("[data-payment]") !== null,
+        "invoice row renders",
+      );
+      const row = el.querySelector<HTMLElement>('[data-payment="p1"]')!;
+      expect(row.textContent).to.contain("19.00 USD");
+      const link = row.querySelector<HTMLAnchorElement>("a[href]")!;
+      expect(link.getAttribute("href")).to.equal("https://inv.example/1");
     } finally {
       restore();
     }

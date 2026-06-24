@@ -76,10 +76,16 @@ func (s *Server) Router() http.Handler {
 	// Cloudflare Access identity (or falls back to the session in local/dev); the
 	// handler then enforces the PULSE_PLATFORM_ADMINS allowlist and 403s a non-admin.
 	mux.Handle("GET /api/v1/admin/metrics", s.adminAuth(http.HandlerFunc(wrapper.GetAdminMetrics)))
+	// admin: cross-org billing summary (paid orgs, subscription statuses, revenue).
+	mux.Handle("GET /api/v1/admin/billing", s.adminAuth(http.HandlerFunc(wrapper.GetAdminBilling)))
 	// admin: list every org and set an org's plan by hand (operator override until
 	// Stripe lands). Same adminAuth + allowlist as the metrics endpoint.
 	mux.Handle("GET /api/v1/admin/orgs", s.adminAuth(http.HandlerFunc(wrapper.ListAdminOrgs)))
 	mux.Handle("PUT /api/v1/admin/orgs/{orgId}/plan", s.adminAuth(http.HandlerFunc(wrapper.SetAdminOrgPlan)))
+	// admin billing: cancel a subscription and refund a payment (RFC-018 5.2/5.3). Same
+	// adminAuth + allowlist; both call the provider and are audited.
+	mux.Handle("POST /api/v1/admin/orgs/{orgId}/subscription/cancel", s.adminAuth(http.HandlerFunc(wrapper.CancelAdminOrgSubscription)))
+	mux.Handle("POST /api/v1/admin/orgs/{orgId}/refund", s.adminAuth(http.HandlerFunc(wrapper.RefundAdminOrgPayment)))
 
 	// orgs: list/create are per-user (Identify only).
 	mux.Handle("GET /api/v1/orgs", identify(http.HandlerFunc(wrapper.ListOrgs)))
@@ -92,6 +98,14 @@ func (s *Server) Router() http.Handler {
 	// checks membership and stamps the role; the handler runs the authz.Can gate
 	// (view billing = owner/admin, PRD-006 9).
 	mux.Handle("GET /api/v1/orgs/{orgId}/entitlements", identify(requireOrg(http.HandlerFunc(wrapper.GetEntitlements))))
+
+	// self-serve billing: hosted checkout to buy a paid plan and the customer portal to
+	// manage it (RFC-018 6). Org-scoped; the handlers run the ActionManageBilling gate
+	// (owner/admin). Both return a provider-hosted URL the FE redirects to.
+	mux.Handle("POST /api/v1/orgs/{orgId}/billing/checkout", identify(requireOrg(http.HandlerFunc(wrapper.CreateBillingCheckout))))
+	mux.Handle("POST /api/v1/orgs/{orgId}/billing/portal", identify(requireOrg(http.HandlerFunc(wrapper.CreateBillingPortal))))
+	// billing payments mirror for the billing screen (RFC-018 4); owner/admin read.
+	mux.Handle("GET /api/v1/orgs/{orgId}/billing/payments", identify(requireOrg(http.HandlerFunc(wrapper.ListBillingPayments))))
 
 	// --- members + invitations (org-scoped: Identify + RequireOrg) ---
 	// RequireOrg checks membership and stamps the role; the handlers then run the

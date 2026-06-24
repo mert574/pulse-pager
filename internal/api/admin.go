@@ -11,6 +11,7 @@ import (
 	"pulse/internal/apigen"
 	"pulse/internal/authn"
 	"pulse/internal/authz"
+	"pulse/internal/billing"
 	"pulse/internal/domain"
 	"pulse/internal/entitlements"
 )
@@ -92,6 +93,43 @@ func (s *Server) GetAdminMetrics(ctx context.Context, _ apigen.GetAdminMetricsRe
 	}, nil
 }
 
+// GetAdminBilling returns the cross-org billing summary for the admin panel (RFC-018):
+// paid orgs, subscriptions by status, and mirrored revenue by currency. Same allowlist
+// check as the other admin endpoints.
+func (s *Server) GetAdminBilling(ctx context.Context, _ apigen.GetAdminBillingRequestObject) (apigen.GetAdminBillingResponseObject, error) {
+	p, ok := authn.FromContext(ctx)
+	if !ok || p.Kind != authz.ActorHuman {
+		return apigen.GetAdminBilling401JSONResponse{UnauthorizedJSONResponse: unauthorized("sign in required")}, nil
+	}
+	if !s.isPlatformAdmin(p.Email) {
+		return apigen.GetAdminBilling403JSONResponse{ForbiddenJSONResponse: forbidden("platform admin only")}, nil
+	}
+
+	b, err := s.store.PlatformBilling(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	subs := make([]apigen.AdminSubscriptionStatusCount, 0, len(b.SubscriptionsByStatus))
+	for _, sc := range b.SubscriptionsByStatus {
+		subs = append(subs, apigen.AdminSubscriptionStatusCount{Status: sc.Status, Count: int(sc.Count)})
+	}
+	rev := make([]apigen.AdminCurrencyRevenue, 0, len(b.RevenueByCurrency))
+	for _, cr := range b.RevenueByCurrency {
+		rev = append(rev, apigen.AdminCurrencyRevenue{
+			Currency: cr.Currency,
+			Gross:    cr.Gross,
+			Refunded: cr.Refunded,
+			Payments: int(cr.Payments),
+		})
+	}
+	return apigen.GetAdminBilling200JSONResponse{
+		PaidOrgs:              int(b.PaidOrgs),
+		SubscriptionsByStatus: subs,
+		RevenueByCurrency:     rev,
+	}, nil
+}
+
 // adminOrgDTO maps a store org to the admin-panel shape (id, name, slug, plan).
 func adminOrgDTO(o *domain.Organization) apigen.AdminOrg {
 	return apigen.AdminOrg{
@@ -125,9 +163,13 @@ func (s *Server) ListAdminOrgs(ctx context.Context, _ apigen.ListAdminOrgsReques
 	return apigen.ListAdminOrgs200JSONResponse(out), nil
 }
 
-// SetAdminOrgPlan sets an org's billing tier by hand (operator override until
-// Stripe lands). Validates the plan against the known set so a bad value is a 422
-// rather than a silent fall-back to free, and 404s an org that does not exist.
+// SetAdminOrgPlan moves an org's plan (RFC-018 5.1). It always sets the operator
+// override (organizations.plan), so an org with no subscription keeps working exactly
+// as before. When the org has a subscription it also tells the provider to switch the
+// price (the customer is never prompted) and writes the optimistic local subscription
+// state; the webhook later confirms. For tierCustom with a custom_amount it creates a
+// per-org price first (RFC-018 7). Validates the plan against the known set so a bad
+// value is a 422, and 404s an org that does not exist.
 func (s *Server) SetAdminOrgPlan(ctx context.Context, req apigen.SetAdminOrgPlanRequestObject) (apigen.SetAdminOrgPlanResponseObject, error) {
 	p, ok := authn.FromContext(ctx)
 	if !ok || p.Kind != authz.ActorHuman {
@@ -148,12 +190,57 @@ func (s *Server) SetAdminOrgPlan(ctx context.Context, req apigen.SetAdminOrgPlan
 		return apigen.SetAdminOrgPlan422JSONResponse{ValidationFailedJSONResponse: validationFailed("unknown plan")}, nil
 	}
 
+	cycle := "monthly"
+	if req.Body.Cycle != nil && *req.Body.Cycle != "" {
+		cycle = string(*req.Body.Cycle)
+	}
+	mode := "next_cycle"
+	if req.Body.Mode != nil && *req.Body.Mode != "" {
+		mode = string(*req.Body.Mode)
+	}
+
+	// If the org already has a subscription, drive the provider too (RFC-018 5.1). An
+	// org with no subscription is the operator-override / comp case: only the local
+	// plan changes, no provider call. A provider that has not built the method yet
+	// (the Paddle skeleton) is logged and skipped so the override still applies.
+	sub, subErr := s.store.GetSubscriptionByOrg(ctx, orgID)
+	hasSub := subErr == nil
+	if subErr != nil && !errors.Is(subErr, pgx.ErrNoRows) {
+		return nil, subErr
+	}
+
+	if hasSub && s.billing != nil {
+		priceID := sub.ProviderPriceID
+		if plan == string(entitlements.PlanTierCustom) && req.Body.CustomAmount != nil {
+			currency := "USD"
+			if req.Body.CustomCurrency != nil && *req.Body.CustomCurrency != "" {
+				currency = *req.Body.CustomCurrency
+			}
+			ref, perr := s.billing.SetCustomPrice(ctx, orgID, billing.Money{Minor: *req.Body.CustomAmount, Currency: currency}, cycle)
+			if perr != nil && !errors.Is(perr, billing.ErrNotImplemented) {
+				return nil, perr
+			}
+			if ref != "" {
+				priceID = ref
+			}
+		}
+		if perr := s.billing.UpdateSubscription(ctx, sub.ProviderSubscriptionID, billing.PlanChange{Plan: plan, Cycle: cycle, Mode: mode}); perr != nil && !errors.Is(perr, billing.ErrNotImplemented) {
+			return nil, perr
+		}
+		if err := s.store.UpdateSubscriptionPlan(ctx, orgID, plan, cycle, priceID); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := s.store.SetOrganizationPlan(ctx, orgID, plan); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return apigen.SetAdminOrgPlan404JSONResponse{NotFoundJSONResponse: notFound("org not found")}, nil
 		}
 		return nil, err
 	}
+
+	s.emitAudit(ctx, orgID, p.Email, "billing.plan_set", map[string]string{"plan": plan, "cycle": cycle, "mode": mode})
+
 	org, err := s.store.GetOrganization(ctx, orgID)
 	if err != nil {
 		return nil, err

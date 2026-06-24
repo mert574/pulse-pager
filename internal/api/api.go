@@ -23,6 +23,7 @@ import (
 	"pulse/internal/apigen"
 	"pulse/internal/authn"
 	"pulse/internal/authz"
+	"pulse/internal/billing"
 	"pulse/internal/checkstate"
 	"pulse/internal/domain"
 	"pulse/internal/entitlements"
@@ -107,6 +108,14 @@ type Server struct {
 	// verified CF Access identity instead of an app session. Nil = fall back to the
 	// normal session + allowlist (local/dev).
 	cfAccess *authn.CFAccessVerifier
+
+	// billing is the payment provider used by the operator and self-serve billing
+	// endpoints (RFC-018). Nil = no provider wired (dev/test); the handlers then apply
+	// the local override only and skip the provider call.
+	billing billing.Provider
+	// audit emits audit.events for operator billing actions (RFC-018 8). Nil skips the
+	// emit (dev/test without a bus); the action still happens.
+	audit AuditPublisher
 }
 
 // Config is what the caller (cmd/api) passes to build the Server.
@@ -143,6 +152,11 @@ type Config struct {
 	// CFAccess verifies the Cloudflare Access token on the admin endpoint. Optional;
 	// nil means the admin endpoint uses the normal session + allowlist (local/dev).
 	CFAccess *authn.CFAccessVerifier
+	// Billing is the payment provider for the operator/self-serve billing endpoints
+	// (RFC-018). Optional; nil applies the local override only and skips provider calls.
+	Billing billing.Provider
+	// Audit emits audit.events for operator billing actions. Optional; nil skips it.
+	Audit AuditPublisher
 }
 
 // New builds the identity API server.
@@ -195,6 +209,8 @@ func New(cfg Config) *Server {
 		devLogin:       cfg.DevLogin,
 		platformAdmins: admins,
 		cfAccess:       cfg.CFAccess,
+		billing:        cfg.Billing,
+		audit:          cfg.Audit,
 	}
 }
 

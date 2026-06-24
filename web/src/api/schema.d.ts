@@ -436,6 +436,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orgs/{orgId}/billing/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a hosted checkout to buy a paid plan (owner/admin).
+         * @description Returns a provider-hosted checkout URL for the chosen paid plan and cycle (RFC-018 6). The customer is redirected there to pay; the subscription lands via the provider webhook. Manage billing is owner/admin only. Custom is not self-serve (use Contact us), so only tier2/tier3 are accepted.
+         */
+        post: operations["createBillingCheckout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/billing/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The org's payments (invoices), newest first (owner/admin).
+         * @description Read-only mirror of the org's provider payments for the billing screen (RFC-018 4): amount, currency, status, period, hosted invoice URL, and how much has been refunded. Viewable by owner and admin only (PRD-006 9).
+         */
+        get: operations["listBillingPayments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orgs/{orgId}/billing/portal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open the provider customer portal (owner/admin).
+         * @description Returns a provider-hosted customer-portal URL where the customer manages their card, sees invoices, and can self-cancel or self-upgrade (RFC-018 6). Manage billing is owner/admin only.
+         */
+        post: operations["createBillingPortal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/plans": {
         parameters: {
             query?: never;
@@ -468,6 +534,26 @@ export interface paths {
          * @description Cross-org counts for the operator admin panel: total users, orgs, monitors, and channels, orgs grouped by plan, and a 30-day signup trend. Gated by the PULSE_PLATFORM_ADMINS email allowlist; a signed-in non-admin gets a 403. Not org-scoped.
          */
         get: operations["getAdminMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/billing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cross-org billing summary (platform admins only).
+         * @description Billing totals for the operator admin panel (RFC-018): how many orgs are on a paid plan, subscriptions grouped by status, and mirrored revenue grouped by currency (gross and refunded, in minor units). Aggregates only, never per-org rows. Gated by the PULSE_PLATFORM_ADMINS allowlist; a signed-in non-admin gets a 403. Not org-scoped.
+         */
+        get: operations["getAdminBilling"];
         put?: never;
         post?: never;
         delete?: never;
@@ -512,6 +598,50 @@ export interface paths {
          */
         put: operations["setAdminOrgPlan"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/orgs/{orgId}/subscription/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an organization's subscription (platform admins only).
+         * @description Operator cancellation of an org's paid subscription (RFC-018 5.2). Tells the provider to cancel immediately or at period end; the org drops to Free when the provider webhook confirms. Default period_end. Gated by the PULSE_PLATFORM_ADMINS allowlist; a signed-in non-admin gets a 403. 404 if the org has no subscription.
+         */
+        post: operations["cancelAdminOrgSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/orgs/{orgId}/refund": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refund an org's payment (platform admins only).
+         * @description Operator refund of a payment, full or partial (RFC-018 5.3). Irreversible: treat like a destructive action. With a Merchant of Record the refund also reverses tax. Gated by the PULSE_PLATFORM_ADMINS allowlist; a signed-in non-admin gets a 403.
+         */
+        post: operations["refundAdminOrgPayment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -998,6 +1128,117 @@ export interface components {
         };
         AdminOrgPlanUpdate: {
             plan: components["schemas"]["Plan"];
+            /**
+             * @description how a change to an org that already has a paid subscription takes effect; default next_cycle. Ignored for an org with no subscription (override only).
+             * @enum {string}
+             */
+            mode?: "prorate_now" | "next_cycle";
+            /**
+             * @description billing cycle for the new plan (paid moves and Custom)
+             * @enum {string}
+             */
+            cycle?: "monthly" | "annual";
+            /**
+             * Format: int64
+             * @description tierCustom only: the negotiated recurring amount in minor units (cents). The backend creates a per-org provider price for it (RFC-018 7). Omit for a comp/$0 Custom (operator override, no provider price).
+             */
+            custom_amount?: number | null;
+            /** @description ISO 4217 currency for custom_amount (e.g. USD) */
+            custom_currency?: string | null;
+        };
+        /** @description Cross-org billing totals for the admin panel (RFC-018). */
+        AdminBilling: {
+            /** @description active orgs on a paid plan (plan != tier1) */
+            paid_orgs: number;
+            subscriptions_by_status: components["schemas"]["AdminSubscriptionStatusCount"][];
+            revenue_by_currency: components["schemas"]["AdminCurrencyRevenue"][];
+        };
+        AdminSubscriptionStatusCount: {
+            status: string;
+            count: number;
+        };
+        /** @description Mirrored revenue in one currency, in minor units (RFC-018 8). */
+        AdminCurrencyRevenue: {
+            currency: string;
+            /**
+             * Format: int64
+             * @description gross paid, in minor units
+             */
+            gross: number;
+            /**
+             * Format: int64
+             * @description total refunded, in minor units
+             */
+            refunded: number;
+            /** @description number of payments */
+            payments: number;
+        };
+        /** @description An org's subscription as the admin panel sees it (RFC-018 4). */
+        AdminSubscription: {
+            org_id: string;
+            plan: components["schemas"]["Plan"];
+            /** @enum {string} */
+            status: "trialing" | "active" | "past_due" | "canceled";
+            /** @enum {string} */
+            billing_cycle: "monthly" | "annual";
+            provider: string;
+            cancel_at_period_end: boolean;
+            /** Format: date-time */
+            current_period_end?: string | null;
+        };
+        AdminSubscriptionCancel: {
+            /**
+             * @description when the cancellation takes effect; default period_end
+             * @enum {string}
+             */
+            when?: "immediate" | "period_end";
+        };
+        AdminRefundRequest: {
+            payment_id: string;
+            /**
+             * Format: int64
+             * @description partial refund amount in minor units; omit for a full refund
+             */
+            amount?: number | null;
+            /** @description ISO 4217 currency for a partial amount */
+            currency?: string | null;
+            reason?: string | null;
+        };
+        /** @description Acknowledgement that a refund was requested at the provider. */
+        AdminRefund: {
+            payment_id: string;
+            status: string;
+        };
+        /** @description The paid plan to buy (tier2 or tier3; Custom is not self-serve). */
+        BillingCheckoutRequest: {
+            plan: components["schemas"]["Plan"];
+            /** @enum {string} */
+            cycle: "monthly" | "annual";
+        };
+        /** @description A provider-hosted URL the browser is redirected to (RFC-018 6). */
+        BillingRedirect: {
+            url: string;
+        };
+        /** @description A mirrored provider payment for the billing screen (RFC-018 4). */
+        Payment: {
+            id: string;
+            provider: string;
+            /**
+             * Format: int64
+             * @description amount in minor units (cents), mirrored from the provider
+             */
+            amount: number;
+            currency: string;
+            status: string;
+            period?: string;
+            hosted_invoice_url?: string;
+            /**
+             * Format: int64
+             * @description total refunded so far in minor units (0 = not refunded)
+             */
+            refunded_amount: number;
+            /** Format: date-time */
+            created_at: string;
         };
         /** @description Editable profile fields. All optional; an omitted field is left unchanged. */
         MeUpdate: {
@@ -2265,6 +2506,86 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    createBillingCheckout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingCheckoutRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingRedirect"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    listBillingPayments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Payment"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createBillingPortal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingRedirect"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
     listPlans: {
         parameters: {
             query?: never;
@@ -2302,6 +2623,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminMetrics"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getAdminBilling: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminBilling"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -2352,6 +2695,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminOrg"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    cancelAdminOrgSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminSubscriptionCancel"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSubscription"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+        };
+    };
+    refundAdminOrgPayment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: components["parameters"]["OrgId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminRefundRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminRefund"];
                 };
             };
             401: components["responses"]["Unauthorized"];

@@ -24,6 +24,7 @@ const (
 	ServiceWorker    Service = "worker"
 	ServiceAlerting  Service = "alerting"
 	ServiceNotifier  Service = "notifier"
+	ServiceBilling   Service = "billing"
 )
 
 // needs describes which dependencies a service must have configured to boot.
@@ -40,6 +41,10 @@ var serviceNeeds = map[Service]needs{
 	ServiceWorker:    {postgres: true, redis: true, kafka: true},
 	ServiceAlerting:  {postgres: true, redis: true, kafka: true},
 	ServiceNotifier:  {postgres: true, redis: true, kafka: true, secret: true},
+	// billing only writes subscription state from the webhook sync path (RFC-018 1).
+	// Nothing consumes billing.events yet, so no bus; the webhook secret is a plain
+	// env var, so no AES key.
+	ServiceBilling: {postgres: true},
 }
 
 // Config is the resolved settings for one service.
@@ -67,6 +72,26 @@ type Config struct {
 	// signing key, the OAuth provider creds, the cookie/secure and app-base settings.
 	// Only the api service loads it; missing required values fail closed at boot.
 	Identity IdentityConfig
+
+	// Billing is the billing-service config (RFC-018). Only the billing service loads it.
+	Billing BillingConfig
+}
+
+// BillingConfig is the billing service's settings (RFC-018 Phase 1). The provider is
+// pluggable behind the billing.Provider seam; "stub" is the dev/test adapter that
+// needs no provider account. WebhookSecret verifies the inbound webhook signature for
+// whichever provider is selected.
+type BillingConfig struct {
+	// Provider selects the adapter: "stub" (default) or "paddle".
+	Provider string
+	// WebhookSecret is the shared secret the webhook signature is verified against
+	// (billing service only; the api does not verify webhooks).
+	WebhookSecret string
+	// Addr is the webhook HTTP listen address, separate from HealthAddr.
+	Addr string
+	// PaddleAPIKey is the Paddle Billing API key, used by the api/billing services to
+	// make provider calls when Provider is "paddle". Empty for the stub.
+	PaddleAPIKey string
 }
 
 // IdentityConfig is the api edge's auth settings (RFC-003 8.1). The JWT signing key
@@ -209,9 +234,44 @@ func Load(service Service) (*Config, error) {
 		if cfg.Identity, err = loadIdentity(); err != nil {
 			return nil, err
 		}
+		// The api makes operator/self-serve provider calls (RFC-018 5-6) but does not
+		// verify webhooks, so it needs the provider selection (and the Paddle key when
+		// paddle) but not the webhook secret. Defaults to the stub.
+		cfg.Billing.Provider = withDefault("PULSE_BILLING_PROVIDER", "stub")
+		if cfg.Billing.Provider != "stub" && cfg.Billing.Provider != "paddle" {
+			return nil, fmt.Errorf("PULSE_BILLING_PROVIDER must be \"stub\" or \"paddle\", got %q", cfg.Billing.Provider)
+		}
+		cfg.Billing.PaddleAPIKey = os.Getenv("PULSE_PADDLE_API_KEY")
+	}
+
+	// Only the billing service needs the full billing config (incl. webhook secret).
+	if service == ServiceBilling {
+		if cfg.Billing, err = loadBilling(); err != nil {
+			return nil, err
+		}
 	}
 
 	return cfg, nil
+}
+
+// loadBilling reads the billing service config (RFC-018). The webhook secret is
+// required and fails closed: a billing service with no secret would accept any
+// signature. The provider defaults to the stub so the service boots without a real
+// provider account (mirrors PULSE_BUS defaulting to kafka).
+func loadBilling() (BillingConfig, error) {
+	bc := BillingConfig{
+		Provider:     withDefault("PULSE_BILLING_PROVIDER", "stub"),
+		Addr:         withDefault("PULSE_BILLING_ADDR", ":8082"),
+		PaddleAPIKey: os.Getenv("PULSE_PADDLE_API_KEY"),
+	}
+	if bc.Provider != "stub" && bc.Provider != "paddle" {
+		return bc, fmt.Errorf("PULSE_BILLING_PROVIDER must be \"stub\" or \"paddle\", got %q", bc.Provider)
+	}
+	var err error
+	if bc.WebhookSecret, err = required("PULSE_BILLING_WEBHOOK_SECRET"); err != nil {
+		return bc, err
+	}
+	return bc, nil
 }
 
 // loadIdentity reads the api edge's auth config (RFC-003 8.1). The JWT signing key

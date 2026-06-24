@@ -78,6 +78,20 @@ type NotifyEvent struct {
 	SentAt time.Time `json:"sent_at"`
 }
 
+// AuditEvent is produced onto audit.events (key: org_id) for an operator action that
+// must leave a trail (RFC-018 5/8: every admin billing action is audited). Actor is the
+// operator email; Action is a short verb (e.g. "billing.plan_set", "billing.cancel",
+// "billing.refund"); Detail carries action-specific fields (plan, amount, payment id)
+// as a small flat map. There is no consumer yet; the api emits best-effort so the trail
+// exists for when the audit log is built.
+type AuditEvent struct {
+	OrgID      int64             `json:"org_id"`
+	Actor      string            `json:"actor"`
+	Action     string            `json:"action"`
+	Detail     map[string]string `json:"detail,omitempty"`
+	OccurredAt time.Time         `json:"occurred_at"`
+}
+
 // MonitorChangedEvent is produced by the api onto monitor.changed (key: org_id)
 // when a monitor is created, updated, enabled, disabled, or deleted, so the
 // scheduler picks up the live config change instead of waiting for its next full

@@ -160,6 +160,79 @@ func (s *server) SetAdminOrgPlan(_ context.Context, req apigen.SetAdminOrgPlanRe
 	return apigen.SetAdminOrgPlan404JSONResponse{NotFoundJSONResponse: notFound("org not found")}, nil
 }
 
+// CancelAdminOrgSubscription returns a sample canceled subscription so the dev admin UI
+// renders the cancel flow without a provider or DB (RFC-018 5.2).
+func (s *server) CancelAdminOrgSubscription(_ context.Context, req apigen.CancelAdminOrgSubscriptionRequestObject) (apigen.CancelAdminOrgSubscriptionResponseObject, error) {
+	status := apigen.AdminSubscriptionStatus("active")
+	cancelAtEnd := true
+	if req.Body != nil && req.Body.When != nil && *req.Body.When == apigen.Immediate {
+		status = "canceled"
+		cancelAtEnd = false
+	}
+	return apigen.CancelAdminOrgSubscription200JSONResponse(apigen.AdminSubscription{
+		OrgId:             req.OrgId,
+		Plan:              devOrgPlan,
+		Status:            status,
+		BillingCycle:      "monthly",
+		Provider:          "stub",
+		CancelAtPeriodEnd: cancelAtEnd,
+	}), nil
+}
+
+// RefundAdminOrgPayment acknowledges a refund in the dev stub (RFC-018 5.3).
+func (s *server) RefundAdminOrgPayment(_ context.Context, req apigen.RefundAdminOrgPaymentRequestObject) (apigen.RefundAdminOrgPaymentResponseObject, error) {
+	if req.Body == nil || req.Body.PaymentId == "" {
+		return apigen.RefundAdminOrgPayment422JSONResponse{ValidationFailedJSONResponse: validationFailed("payment_id is required")}, nil
+	}
+	return apigen.RefundAdminOrgPayment200JSONResponse(apigen.AdminRefund{
+		PaymentId: req.Body.PaymentId,
+		Status:    "refund_requested",
+	}), nil
+}
+
+// GetAdminBilling returns a sample cross-org billing summary for the dev admin panel.
+func (s *server) GetAdminBilling(_ context.Context, _ apigen.GetAdminBillingRequestObject) (apigen.GetAdminBillingResponseObject, error) {
+	return apigen.GetAdminBilling200JSONResponse{
+		PaidOrgs: 2,
+		SubscriptionsByStatus: []apigen.AdminSubscriptionStatusCount{
+			{Status: "active", Count: 2},
+			{Status: "past_due", Count: 1},
+		},
+		RevenueByCurrency: []apigen.AdminCurrencyRevenue{
+			{Currency: "USD", Gross: 5700, Refunded: 1900, Payments: 3},
+		},
+	}, nil
+}
+
+// CreateBillingCheckout returns a fake hosted-checkout URL in the dev stub (RFC-018 6).
+func (s *server) CreateBillingCheckout(_ context.Context, req apigen.CreateBillingCheckoutRequestObject) (apigen.CreateBillingCheckoutResponseObject, error) {
+	if req.Body == nil {
+		return apigen.CreateBillingCheckout422JSONResponse{ValidationFailedJSONResponse: validationFailed("plan and cycle are required")}, nil
+	}
+	return apigen.CreateBillingCheckout200JSONResponse{
+		Url: "https://stub.billing.local/checkout?plan=" + string(req.Body.Plan),
+	}, nil
+}
+
+// CreateBillingPortal returns a fake customer-portal URL in the dev stub (RFC-018 6).
+func (s *server) CreateBillingPortal(_ context.Context, _ apigen.CreateBillingPortalRequestObject) (apigen.CreateBillingPortalResponseObject, error) {
+	return apigen.CreateBillingPortal200JSONResponse{Url: "https://stub.billing.local/portal"}, nil
+}
+
+// ListBillingPayments returns a couple of sample payments so the dev billing screen
+// renders the invoices section (RFC-018 4).
+func (s *server) ListBillingPayments(_ context.Context, _ apigen.ListBillingPaymentsRequestObject) (apigen.ListBillingPaymentsResponseObject, error) {
+	inv := "https://stub.billing.local/invoice/dev-1"
+	period := "2026-06"
+	return apigen.ListBillingPayments200JSONResponse{
+		{
+			Id: "1", Provider: "stub", Amount: 1900, Currency: "USD",
+			Status: "paid", Period: &period, HostedInvoiceUrl: &inv, RefundedAmount: 0,
+			CreatedAt: time.Now().UTC().Add(-24 * time.Hour),
+		},
+	}, nil
+}
+
 // twoDigit zero-pads 1..31 for the sample dates.
 func twoDigit(n int) string {
 	if n < 10 {

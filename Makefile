@@ -1,4 +1,4 @@
-SERVICES := api scheduler worker alerting notifier
+SERVICES := api scheduler worker alerting notifier billing
 
 .PHONY: build
 build:
