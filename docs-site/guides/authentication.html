@@ -25,11 +25,6 @@
   <link rel="icon" type="image/svg+xml" href="../assets/logo-dark.svg" media="(prefers-color-scheme: dark)">
 </head>
 <body>
-  <div class="prelaunch">
-    <strong>Pre-launch.</strong> Pulse Pager is still in early development, so the hosted cloud is
-    not live yet and these docs describe the planned product. You can already
-    <a href="https://github.com/mert574/pulse-pager">run it yourself from source</a>.
-  </div>
   <nav class="nav">
     <div class="nav-inner">
       <a class="nav-brand" href="../"><img class="logo" src="../assets/logo.svg" alt="" width="22" height="22">Pulse Pager</a>
@@ -126,16 +121,22 @@
 <pre><code>curl -X DELETE https://api.pulsepager.com/api/v1/orgs/&lt;orgId&gt;/api-keys/&lt;id&gt; \
   -H "Authorization: Bearer pulse_sk_an_admin_key"</code></pre>
 
-    <h2>Webhooks (coming soon)</h2>
-    <div class="note">
-      <strong>Not available yet.</strong> Org-level outbound webhooks are planned: a programmatic
-      event feed (<code>monitor.down</code>, <code>monitor.recovery</code>,
-      <code>incident.opened</code>, <code>incident.closed</code>) so you can ingest Pulse Pager
-      events into your own pipeline without polling. Each delivery will be signed with a per-webhook secret
-      (an <code>X-Pulse-Signature</code> header over the timestamp and raw body) and carry a stable
-      <code>event_id</code> so retries dedup safely. This page will document the payload shapes and
-      signature verification once the surface ships.
-    </div>
+    <h2>Webhooks</h2>
+    <p>
+      Org-level outbound webhooks are a programmatic event feed (<code>monitor.down</code>,
+      <code>monitor.recovery</code>, <code>incident.opened</code>, <code>incident.closed</code>) so
+      you can ingest Pulse Pager events into your own pipeline without polling. Register and manage
+      them under <code>/orgs/&lt;orgId&gt;/webhooks</code> (owner or admin); the signing secret is
+      returned once when you create the webhook and can be rotated.
+    </p>
+    <p>
+      Each delivery is signed with the webhook's secret. The <code>X-Pulse-Signature</code> header
+      is <code>t=&lt;unix&gt;,v1=&lt;hex hmac-sha256&gt;</code>, where the HMAC is computed over
+      <code>&lt;t&gt;.&lt;raw body&gt;</code>: recompute it with your secret and compare. The
+      timestamp is part of the signed input, so a replayed delivery with a stale <code>t</code> will
+      not verify. A stable <code>event_id</code> (also sent as the <code>X-Pulse-Event-Id</code>
+      header) lets retries dedup safely.
+    </p>
 
     <p class="muted">
       Read the full set of operations and schemas in the

@@ -16,26 +16,11 @@
 
 * { box-sizing: border-box; }
 
-/* Pre-launch strip: the product is foundation-stage and the cloud is not live
-   yet, so every page says so up front. Sits above the sticky nav and scrolls
-   away with the page. */
-.prelaunch {
-  background: oklch(93% 0.08 85);
-  border-bottom: 1px solid oklch(80% 0.16 85);
-  color: oklch(41% 0.112 45.904); /* warning-content */
-  font-size: 0.85rem;
-  line-height: 1.5;
-  text-align: center;
-  padding: 0.55rem 1.2rem;
-}
-.prelaunch strong { color: oklch(35% 0.1 46); }
-.prelaunch a { color: oklch(35% 0.1 46); text-decoration: underline; }
-
 html { scroll-behavior: smooth; }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   line-height: 1.6;
@@ -252,7 +237,7 @@ footer {
 .nav-burger { display: none; }
 
 @media (max-width: 720px) {
-  .nav-inner { gap: 0.75rem; padding: 0.7rem 1rem; }
+  .nav-inner { gap: 0.75rem; padding: 1rem; }
 
   .nav-burger {
     display: flex;
