@@ -7,8 +7,9 @@
 Developer-first uptime monitoring that pages you the moment something breaks.
 Know before your customers do.
 
-Multi-tenant SaaS, built as five distributed Go services on Postgres, Redis, and a
-Kafka-compatible event bus (Redpanda locally), with a Lit single-page app in `web/`. The REST API is
+Multi-tenant SaaS, built as a set of distributed Go services (a five-stage monitoring
+pipeline plus a billing service) on Postgres, Redis, and a Kafka-compatible event bus
+(Redpanda locally), with a Lit single-page app in `web/`. The REST API is
 contract-first: `api/openapi/v1.yaml` is the single source of truth and both the
 Go and TypeScript types are generated from it.
 
@@ -24,43 +25,33 @@ within your plan's limits.
 
 What works:
 
-- **Auth and orgs**: Google/GitHub OAuth and passwordless magic-link email login,
-  JWT sessions with refresh, API keys, multi-tenant orgs with roles
-  (owner/admin/member/viewer) and email invitations. Postgres row-level security means one org can never read another's
-  rows, even if an app-level filter is missed.
-- **Monitors and checks**: HTTP checks (method, headers, optional expected status
-  codes, latency and body assertions) and SSL-certificate checks that warn 7, 3,
-  and 1 day before a cert expires; interval, timeout, per-region scheduling; manual
-  check-now with a rate limit; live per-region state; and recent-check history
-  grouped one row per run.
-- **Pipeline**: scheduler then worker then alerting then
-  notifier, over the event bus. Workers run per region, alerting opens and closes
-  incidents, and the notifier is the only thing that sends mail: alert channels plus
-  transactional invite and magic-link email, which the api hands off as intents on the
-  bus (the notifier mints the token at send time, so no token rides the bus). The bus
-  is pluggable (`PULSE_BUS`): Kafka by default, or Redis Streams for a single-node
-  setup with no separate broker.
-- **Channels**: ten channel types (Slack, Discord, generic webhook, bring-your-own
-  SMTP, Team email to selected org members, Telegram, PagerDuty, Opsgenie, Microsoft
-  Teams, Twilio), each with a config schema and a test-send. Secret config is encrypted
-  at rest. For platform email, the notifier can split account mail (sign-in, invites)
-  and alert mail across separate From subdomains for reputation
-  (`PULSE_SMTP_FROM_ACCOUNT` / `PULSE_SMTP_FROM_ALERTS`).
-- **Plans and entitlements**: Free/Hobby/Professional/Custom with monitor
-  caps, interval floors, region sets, seat caps, status-page caps, and per-plan
-  channel access, all enforced server-side, plus a usage-vs-caps screen.
-- **Status pages**: public per-org status pages with monitors,
-  incidents, and a quiet "Powered by Pulse Pager" credit.
-- **Multi-region**: a monitor can run from several regions; the UI
-  groups a run's regions into one row and shows a live chip per region.
+- **Auth and orgs**: Google/GitHub OAuth and passwordless magic-link login, JWT
+  sessions, API keys, and multi-tenant orgs with roles and email invites. Postgres
+  row-level security isolates each org's data even if an app-level filter is missed.
+- **Monitors and checks**: HTTP and SSL-expiry checks with per-region scheduling,
+  status/latency/body assertions, rate-limited manual check-now, live per-region
+  state, and recent-check history.
+- **Pipeline**: scheduler → worker → alerting → notifier over a pluggable bus
+  (`PULSE_BUS`: Kafka, or Redis Streams for a single node). The notifier is the only
+  thing that sends mail (alerts plus invite and magic-link), minting tokens at send
+  time so none ride the bus.
+- **Channels**: ten types (Slack, Discord, webhook, SMTP, Team email, Telegram,
+  PagerDuty, Opsgenie, Teams, Twilio), each with a test-send and secrets encrypted at
+  rest; platform email can split account vs alert mail across From subdomains.
+- **Plans and entitlements**: Free/Hobby/Professional/Custom caps (monitors, interval,
+  regions, seats, status pages, channels), enforced server-side, with a usage screen.
+- **Status pages**: public per-org status pages with monitors and incident history.
+- **Multi-region**: a monitor can run from several regions, with a live chip per region.
 
 Still early or not built yet:
 
 - Multi-region verdict aggregation (the `down_policy`/quorum window) sits behind
   a single-region seam in alerting: today each region's result is its own
   verdict, the cross-region reduce is not wired yet.
-- Billing is usage and plan-catalog display only. Payments (Stripe) are not
-  wired, so plans are set by an operator for now.
+- Billing (RFC-018): the provider-agnostic core, the plan catalog, and the
+  subscription + trial state synced from a provider's webhooks are built, with a stub
+  provider that exercises the whole sync path without an account. Live Paddle checkout
+  and the customer portal are not wired yet, so an operator sets plans for now.
 - Deployment (Helm/Terraform/k8s), SLO dashboards, enterprise SSO, and the
   cron/heartbeat check type are not built yet.
 
@@ -183,7 +174,7 @@ npm run typecheck           # tsc --noEmit
 
 ```
 api/openapi/    v1.yaml: the API contract, single source of truth
-cmd/            the five services (api, scheduler, worker, alerting, notifier) + schema
+cmd/            five pipeline services (api, scheduler, worker, alerting, notifier), the billing service, + utilities (schema, migrate)
 internal/
   api/          control-plane HTTP server implementing the generated contract
   apigen/       generated from v1.yaml (oapi-codegen): models + strict server interface
@@ -191,6 +182,7 @@ internal/
   authn/        oauth login, jwt issue + jwks, refresh rotation, api keys, middleware
   authz/        role model and Can checks
   entitlements/ per-plan caps, floors, and feature access
+  billing/      provider-agnostic recurring payments (RFC-018): stub + Paddle adapter
   store/        pgxpool, schema.sql + ApplySchema, the WithOrg org-scoping helper (RLS)
   scheduler/    dispatches per-(monitor, region) check jobs
   worker/       runs checks for its region and emits results
