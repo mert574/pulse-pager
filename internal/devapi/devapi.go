@@ -330,6 +330,7 @@ func (s *server) GetEntitlements(_ context.Context, _ apigen.GetEntitlementsRequ
 		ApiAccessAllowed:     true,
 		ApiWriteAllowed:      true,
 		FailureSnapshot:      true,
+		TrialEligible:        true,
 	}), nil
 }
 

@@ -195,9 +195,10 @@ func NowUnix() string { return strconv.FormatInt(time.Now().Unix(), 10) }
 // stubBaseURL is the fake hosted surface the stub points checkout/portal at.
 const stubBaseURL = "https://stub.billing.local"
 
-// Checkout returns a fake hosted-checkout url carrying the org/plan/cycle.
-func (s *Stub) Checkout(_ context.Context, orgID int64, plan, cycle string) (string, error) {
-	return fmt.Sprintf("%s/checkout?org=%d&plan=%s&cycle=%s", stubBaseURL, orgID, plan, cycle), nil
+// Checkout returns a fake hosted-checkout url carrying the org/plan/cycle and whether a
+// trial applies (so a test can assert the eligibility flag reaches the provider).
+func (s *Stub) Checkout(_ context.Context, orgID int64, plan, cycle string, withTrial bool) (string, error) {
+	return fmt.Sprintf("%s/checkout?org=%d&plan=%s&cycle=%s&trial=%t", stubBaseURL, orgID, plan, cycle, withTrial), nil
 }
 
 // PortalURL returns a fake customer-portal url for the given provider customer.

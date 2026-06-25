@@ -103,7 +103,11 @@ type Provider interface {
 	// ingest reads the right one per provider.
 	SignatureHeader() string
 
-	Checkout(ctx context.Context, orgID int64, plan, cycle string) (url string, err error)
+	// Checkout starts a purchase for the plan/cycle and returns a hosted-checkout URL.
+	// withTrial picks the trialled price for a new customer or the trialless price for
+	// someone who recently had a subscription (RFC-018 anti-abuse); the caller decides
+	// eligibility, the adapter just maps it to the right provider price.
+	Checkout(ctx context.Context, orgID int64, plan, cycle string, withTrial bool) (url string, err error)
 	// PortalURL returns a provider-hosted page where the customer manages their own
 	// billing (change/cancel plan, update card, view invoices). It takes the provider
 	// customer id (and the subscription id, for deep links) since the org's plan moves

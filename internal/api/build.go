@@ -104,10 +104,12 @@ func Build(ctx context.Context, d Deps) (*Server, http.Handler, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("load plan_prices: %w", err)
 		}
+		withTrial, noTrial := paddle.PriceMaps(prices)
 		billingProvider, err = paddle.New(paddle.Config{
-			APIKey:  d.Cfg.Billing.PaddleAPIKey,
-			BaseURL: d.Cfg.Billing.APIBase,
-			Prices:  paddle.PriceMap(prices),
+			APIKey:        d.Cfg.Billing.PaddleAPIKey,
+			BaseURL:       d.Cfg.Billing.APIBase,
+			Prices:        withTrial,
+			PricesNoTrial: noTrial,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("build paddle adapter: %w", err)

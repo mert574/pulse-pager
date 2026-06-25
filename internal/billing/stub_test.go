@@ -98,7 +98,7 @@ func TestStubOperatorMethods(t *testing.T) {
 	s := NewStub(testSecret)
 	ctx := context.Background()
 
-	url, err := s.Checkout(ctx, 7, "tier2", "monthly")
+	url, err := s.Checkout(ctx, 7, "tier2", "monthly", true)
 	if err != nil || !strings.Contains(url, "org=7") || !strings.Contains(url, "plan=tier2") {
 		t.Fatalf("Checkout: url=%q err=%v", url, err)
 	}

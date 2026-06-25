@@ -318,6 +318,147 @@ func TestBillingWebhookSyncPath(t *testing.T) {
 	})
 }
 
+// TestBillingTrialEligibility exercises the per-person free-trial gate end to end
+// (RFC-018): the person_had_recent_inactive_subscription SECURITY DEFINER function must
+// read across the person's owned/admin orgs even when called as the restricted pulse_app
+// role (RLS bypassed), and must honor the 35-day window, the status filter, and the role
+// filter. Direct inserts go through the admin pool so we can set updated_at into the past.
+func TestBillingTrialEligibility(t *testing.T) {
+	ctx := context.Background()
+
+	pgC, err := postgres.Run(ctx, "postgres:16",
+		postgres.WithDatabase("pulse"),
+		postgres.WithUsername("pulse"),
+		postgres.WithPassword("pulse"),
+		postgres.BasicWaitStrategies(),
+	)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer func() { _ = pgC.Terminate(ctx) }()
+
+	host, err := pgC.Host(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := pgC.MappedPort(ctx, "5432/tcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminDSN := fmt.Sprintf("postgres://pulse:pulse@%s:%s/pulse?sslmode=disable", host, port.Port())
+	appDSN := fmt.Sprintf("postgres://pulse_app:pulse_app@%s:%s/pulse?sslmode=disable", host, port.Port())
+
+	admin, err := store.Open(ctx, adminDSN)
+	if err != nil {
+		t.Fatalf("open admin pool: %v", err)
+	}
+	defer admin.Close()
+	if err := store.ApplySchema(ctx, admin); err != nil {
+		t.Fatalf("apply schema: %v", err)
+	}
+	// The check runs as pulse_app, so the SECURITY DEFINER function must still see across
+	// the person's orgs (the whole point of the definer bypass).
+	app, err := store.Open(ctx, appDSN)
+	if err != nil {
+		t.Fatalf("open app pool: %v", err)
+	}
+	defer app.Close()
+
+	// One person who owns org A.
+	var userID, orgA int64
+	if err := admin.QueryRow(ctx, "INSERT INTO users(email) VALUES('p@example.com') RETURNING id").Scan(&userID); err != nil {
+		t.Fatal(err)
+	}
+	if err := admin.QueryRow(ctx, "INSERT INTO organizations(name, slug) VALUES('Org A','elig-a') RETURNING id").Scan(&orgA); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.Exec(ctx, "INSERT INTO memberships(org_id, user_id, role) VALUES($1,$2,'owner')", orgA, userID); err != nil {
+		t.Fatal(err)
+	}
+
+	// hadRecentInactive returns true when the person should be DENIED a trial.
+	hadRecentInactive := func() bool {
+		had, err := app.PersonHadRecentInactiveSubscription(ctx, userID, 35)
+		if err != nil {
+			t.Fatalf("PersonHadRecentInactiveSubscription: %v", err)
+		}
+		return had
+	}
+
+	// setSubA upserts org A's single subscription to a status and an age in days.
+	setSubA := func(status string, ageDays int) {
+		_, err := admin.Exec(ctx, `
+			INSERT INTO subscriptions (org_id, plan, billing_cycle, status, provider, updated_at)
+			VALUES ($1,'tier3','monthly',$2,'stub', now() - make_interval(days => $3))
+			ON CONFLICT (org_id) DO UPDATE SET status = EXCLUDED.status, updated_at = EXCLUDED.updated_at`,
+			orgA, status, ageDays)
+		if err != nil {
+			t.Fatalf("seed subscription: %v", err)
+		}
+	}
+
+	t.Run("no subscription is eligible", func(t *testing.T) {
+		if hadRecentInactive() {
+			t.Fatal("a person with no subscription must be trial-eligible")
+		}
+	})
+
+	t.Run("active subscription does not deny a trial", func(t *testing.T) {
+		setSubA("active", 1)
+		if hadRecentInactive() {
+			t.Fatal("an active subscription must not deny a trial")
+		}
+	})
+
+	t.Run("recently cancelled denies a trial", func(t *testing.T) {
+		setSubA("canceled", 10)
+		if !hadRecentInactive() {
+			t.Fatal("a subscription cancelled 10 days ago must deny a trial")
+		}
+	})
+
+	t.Run("cancelled outside the window is eligible again", func(t *testing.T) {
+		setSubA("canceled", 40)
+		if hadRecentInactive() {
+			t.Fatal("a subscription cancelled 40 days ago is outside the 35-day window")
+		}
+	})
+
+	t.Run("only an owner/admin membership counts", func(t *testing.T) {
+		// org A is now 40 days old (does not match). Add org B with a recent cancellation
+		// where our person is only a member: it must not deny a trial. A real org always
+		// has an owner (the enforce_last_owner trigger guarantees it), so seed another
+		// user as org B's owner; that also lets the later promote pass the last-owner guard.
+		var orgB, owner2 int64
+		if err := admin.QueryRow(ctx, "INSERT INTO organizations(name, slug) VALUES('Org B','elig-b') RETURNING id").Scan(&orgB); err != nil {
+			t.Fatal(err)
+		}
+		if err := admin.QueryRow(ctx, "INSERT INTO users(email) VALUES('owner2@example.com') RETURNING id").Scan(&owner2); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := admin.Exec(ctx, "INSERT INTO memberships(org_id, user_id, role) VALUES($1,$2,'owner')", orgB, owner2); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := admin.Exec(ctx, "INSERT INTO memberships(org_id, user_id, role) VALUES($1,$2,'member')", orgB, userID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := admin.Exec(ctx, `INSERT INTO subscriptions (org_id, plan, billing_cycle, status, provider, updated_at)
+			VALUES ($1,'tier3','monthly','canceled','stub', now() - make_interval(days => 5))`, orgB); err != nil {
+			t.Fatal(err)
+		}
+		if hadRecentInactive() {
+			t.Fatal("a recent cancellation in an org the person is only a member of must not deny a trial")
+		}
+		// Promote our person to admin (org B keeps owner2, so the last-owner guard is fine).
+		if _, err := admin.Exec(ctx, "UPDATE memberships SET role='admin' WHERE org_id=$1 AND user_id=$2", orgB, userID); err != nil {
+			t.Fatal(err)
+		}
+		if !hadRecentInactive() {
+			t.Fatal("a recent cancellation in an org the person admins must deny a trial")
+		}
+	})
+}
+
 func countRows(t *testing.T, p *store.Pool, sql string, args ...any) int {
 	t.Helper()
 	var n int

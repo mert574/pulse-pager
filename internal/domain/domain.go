@@ -505,14 +505,17 @@ type Payment struct {
 }
 
 // PlanPrice maps a catalog plan + cycle to a billing provider price (RFC-018 6), so
-// checkout knows which price to charge. TrialDays is the native provider trial (for
-// display); CustomData is the provider's price metadata kept as a jsonb passthrough.
+// checkout knows which price to charge. HasTrial splits the two prices a plan/cycle has:
+// the trialled one for new customers and the trialless one for people who recently had a
+// subscription. TrialDays is the native provider trial (for display); CustomData is the
+// provider's price metadata kept as a jsonb passthrough.
 type PlanPrice struct {
 	ID              int64
 	Provider        string
 	Plan            string // tier2 | tier3
 	Cycle           string // monthly | annual
 	ProviderPriceID string
+	HasTrial        bool
 	TrialDays       int
 	CustomData      json.RawMessage
 	CreatedAt       time.Time

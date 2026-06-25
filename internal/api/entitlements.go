@@ -59,6 +59,13 @@ func (s *Server) GetEntitlements(ctx context.Context, _ apigen.GetEntitlementsRe
 	// gate can never disagree.
 	limits := s.monitors.MonitorLimits(p.OrgID, plan)
 
+	// Whether this person still qualifies for a free trial, so the billing page can hide
+	// the trial badge for someone who recently had a subscription (RFC-018).
+	trialEligible, err := s.trialEligible(ctx, p.UserID)
+	if err != nil {
+		return nil, err
+	}
+
 	return apigen.GetEntitlements200JSONResponse(apigen.Entitlements{
 		Plan:                 apigen.Plan(plan),
 		MonitorsUsed:         monitorsUsed,
@@ -75,6 +82,7 @@ func (s *Server) GetEntitlements(ctx context.Context, _ apigen.GetEntitlementsRe
 		ApiAccessAllowed:     entitlements.APIAccessAllowed(plan),
 		ApiWriteAllowed:      entitlements.APIWriteAllowed(plan),
 		FailureSnapshot:      s.ents.For(p.OrgID).FailureSnapshot,
+		TrialEligible:        trialEligible,
 	}), nil
 }
 

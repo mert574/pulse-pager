@@ -26,6 +26,7 @@ func newProvider(t *testing.T, baseURL string) *Provider {
 		BaseURL:       baseURL,
 		WebhookSecret: testSecret,
 		Prices:        map[string]string{"tier3:monthly": "pri_test", "tier2:annual": "pri_hobby_yr"},
+		PricesNoTrial: map[string]string{"tier3:monthly": "pri_test_notrial"},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -58,27 +59,77 @@ func TestCheckout(t *testing.T) {
 	defer srv.Close()
 
 	p := newProvider(t, srv.URL)
-	url, err := p.Checkout(context.Background(), 42, "tier3", "monthly")
+	url, err := p.Checkout(context.Background(), 42, "tier3", "monthly", true)
 	if err != nil {
 		t.Fatalf("Checkout: %v", err)
 	}
 	if url != "https://pay.paddle.com/?_ptxn=txn_123" {
 		t.Fatalf("checkout url: %q", url)
 	}
-	// the request must carry the catalog price and the org_id in custom_data
+	// the request must carry the trialled catalog price and the org_id in custom_data
 	items, _ := gotBody["items"].([]any)
 	if len(items) != 1 {
 		t.Fatalf("items: %v", gotBody["items"])
+	}
+	if item, _ := items[0].(map[string]any); item["price_id"] != "pri_test" {
+		t.Fatalf("price_id: want pri_test (trialled), got %v", item["price_id"])
 	}
 	if cd, _ := gotBody["custom_data"].(map[string]any); cd["org_id"] != "42" {
 		t.Fatalf("custom_data org_id: %v", gotBody["custom_data"])
 	}
 }
 
+// A trial-ineligible checkout (withTrial=false) must use the trialless price id.
+func TestCheckoutNoTrialUsesTriallessPrice(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"id":"txn_1","status":"ready","checkout":{"url":"https://pay.paddle.com/?_ptxn=txn_1"}}}`))
+	}))
+	defer srv.Close()
+
+	p := newProvider(t, srv.URL)
+	if _, err := p.Checkout(context.Background(), 42, "tier3", "monthly", false); err != nil {
+		t.Fatalf("Checkout: %v", err)
+	}
+	items, _ := gotBody["items"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("items: %v", gotBody["items"])
+	}
+	if item, _ := items[0].(map[string]any); item["price_id"] != "pri_test_notrial" {
+		t.Fatalf("price_id: want pri_test_notrial (trialless), got %v", item["price_id"])
+	}
+}
+
 func TestCheckoutUnknownPrice(t *testing.T) {
 	p := newProvider(t, "https://example.invalid")
-	if _, err := p.Checkout(context.Background(), 1, "tier3", "annual"); err == nil {
+	if _, err := p.Checkout(context.Background(), 1, "tier3", "annual", true); err == nil {
 		t.Fatal("expected error for a plan/cycle with no configured price")
+	}
+}
+
+// When no trialless price is configured for a plan/cycle, an ineligible checkout falls
+// back to the trialled price so the sale still completes.
+func TestCheckoutNoTrialFallsBack(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"id":"txn_1","status":"ready","checkout":{"url":"https://pay.paddle.com/?_ptxn=txn_1"}}}`))
+	}))
+	defer srv.Close()
+
+	// tier2:annual has only a trialled price configured (no trialless variant).
+	p := newProvider(t, srv.URL)
+	if _, err := p.Checkout(context.Background(), 42, "tier2", "annual", false); err != nil {
+		t.Fatalf("Checkout: %v", err)
+	}
+	items, _ := gotBody["items"].([]any)
+	if item, _ := items[0].(map[string]any); item["price_id"] != "pri_hobby_yr" {
+		t.Fatalf("price_id: want pri_hobby_yr (fallback to trialled), got %v", item["price_id"])
 	}
 }
 

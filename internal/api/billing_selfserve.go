@@ -19,6 +19,23 @@ import (
 // Both are org-scoped and owner/admin only (ActionManageBilling). The subscription
 // itself lands via the provider webhook, not here.
 
+// trialDenyWindowDays is how recently a person must have had a subscription end for us to
+// withhold a new free trial (RFC-018 anti-abuse). Within this window they get the
+// trialless price and no trial badge; after it, they're treated as a fresh customer.
+const trialDenyWindowDays = 35
+
+// trialEligible reports whether the person may get a free trial: false when they recently
+// controlled a subscription that ended, across any org they own or admin (per-person, not
+// just this org). Used by checkout (to pick the price) and entitlements (to hide the
+// trial badge), so the two never disagree.
+func (s *Server) trialEligible(ctx context.Context, userID int64) (bool, error) {
+	had, err := s.store.PersonHadRecentInactiveSubscription(ctx, userID, trialDenyWindowDays)
+	if err != nil {
+		return false, err
+	}
+	return !had, nil
+}
+
 // CreateBillingCheckout returns a hosted-checkout URL for a paid plan. Custom is never
 // self-serve (RFC-018 7), so only tier2/tier3 are accepted.
 func (s *Server) CreateBillingCheckout(ctx context.Context, req apigen.CreateBillingCheckoutRequestObject) (apigen.CreateBillingCheckoutResponseObject, error) {
@@ -40,7 +57,12 @@ func (s *Server) CreateBillingCheckout(ctx context.Context, req apigen.CreateBil
 		return apigen.CreateBillingCheckout422JSONResponse{ValidationFailedJSONResponse: validationFailed("billing is not configured")}, nil
 	}
 
-	url, err := s.billing.Checkout(ctx, p.OrgID, plan, string(req.Body.Cycle))
+	withTrial, err := s.trialEligible(ctx, p.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	url, err := s.billing.Checkout(ctx, p.OrgID, plan, string(req.Body.Cycle), withTrial)
 	if err != nil {
 		if errors.Is(err, billing.ErrNotImplemented) {
 			return apigen.CreateBillingCheckout422JSONResponse{ValidationFailedJSONResponse: validationFailed("checkout is not available yet")}, nil

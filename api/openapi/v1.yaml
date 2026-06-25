@@ -1835,7 +1835,8 @@ components:
       required:
         [plan, monitors_used, monitors_cap, seats_used, seats_cap, status_pages_used,
          status_pages_cap, min_interval_seconds, retention_days, regions_allowed,
-         regions_per_monitor_cap, custom_domain_allowed, api_access_allowed, api_write_allowed, failure_snapshot]
+         regions_per_monitor_cap, custom_domain_allowed, api_access_allowed, api_write_allowed,
+         failure_snapshot, trial_eligible]
       properties:
         plan: { $ref: "#/components/schemas/Plan" }
         monitors_used: { type: integer }
@@ -1854,6 +1855,7 @@ components:
         api_access_allowed: { type: boolean, description: "plan gets API keys at all (Free does not)" }
         api_write_allowed: { type: boolean }
         failure_snapshot: { type: boolean }
+        trial_eligible: { type: boolean, description: "person still qualifies for a free trial (RFC-018); false hides trial offers" }
 
     PlanCatalogEntry:
       type: object

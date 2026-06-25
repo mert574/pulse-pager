@@ -30,30 +30,42 @@ import (
 	"pulse/internal/domain"
 )
 
-// PriceMap builds the "<plan>:<cycle>" -> price_id map New expects from plan_prices rows.
-func PriceMap(rows []*domain.PlanPrice) map[string]string {
-	m := make(map[string]string, len(rows))
+// PriceMaps splits plan_prices rows into the two "<plan>:<cycle>" -> price_id maps New
+// expects: the trialled prices (has_trial) for new customers and the trialless ones for
+// people who recently had a subscription (RFC-018 anti-abuse).
+func PriceMaps(rows []*domain.PlanPrice) (withTrial, noTrial map[string]string) {
+	withTrial = make(map[string]string)
+	noTrial = make(map[string]string)
 	for _, r := range rows {
-		m[r.Plan+":"+r.Cycle] = r.ProviderPriceID
+		key := r.Plan + ":" + r.Cycle
+		if r.HasTrial {
+			withTrial[key] = r.ProviderPriceID
+		} else {
+			noTrial[key] = r.ProviderPriceID
+		}
 	}
-	return m
+	return withTrial, noTrial
 }
 
-// Config wires the adapter. Prices maps "<plan>:<cycle>" (e.g. "tier3:monthly") to the
-// Paddle price id, loaded from plan_prices. BaseURL is empty for production.
+// Config wires the adapter. Prices and PricesNoTrial each map "<plan>:<cycle>" (e.g.
+// "tier3:monthly") to the Paddle price id, loaded from plan_prices: Prices is the
+// trialled price for new customers, PricesNoTrial the trialless one for people who
+// recently had a subscription. BaseURL is empty for production.
 type Config struct {
 	APIKey        string
 	BaseURL       string
 	WebhookSecret string
 	Prices        map[string]string
+	PricesNoTrial map[string]string
 }
 
 // Provider is the Paddle adapter.
 type Provider struct {
-	sdk      *paddle.SDK
-	verifier *paddle.WebhookVerifier
-	prices   map[string]string    // plan:cycle -> price_id
-	byPrice  map[string]planCycle // price_id -> plan/cycle (reverse, for webhook mapping)
+	sdk           *paddle.SDK
+	verifier      *paddle.WebhookVerifier
+	prices        map[string]string    // plan:cycle -> trialled price_id
+	pricesNoTrial map[string]string    // plan:cycle -> trialless price_id
+	byPrice       map[string]planCycle // price_id -> plan/cycle (reverse, for webhook mapping)
 }
 
 type planCycle struct{ plan, cycle string }
@@ -70,16 +82,21 @@ func New(cfg Config) (*Provider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("paddle: %w", err)
 	}
-	byPrice := make(map[string]planCycle, len(cfg.Prices))
-	for key, id := range cfg.Prices {
-		plan, cycle, _ := strings.Cut(key, ":")
-		byPrice[id] = planCycle{plan: plan, cycle: cycle}
+	// The reverse map covers both trialled and trialless price ids, so a subscription
+	// created from either price still maps back to its plan/cycle on the webhook.
+	byPrice := make(map[string]planCycle, len(cfg.Prices)+len(cfg.PricesNoTrial))
+	for _, m := range []map[string]string{cfg.Prices, cfg.PricesNoTrial} {
+		for key, id := range m {
+			plan, cycle, _ := strings.Cut(key, ":")
+			byPrice[id] = planCycle{plan: plan, cycle: cycle}
+		}
 	}
 	return &Provider{
-		sdk:      sdk,
-		verifier: paddle.NewWebhookVerifier(cfg.WebhookSecret),
-		prices:   cfg.Prices,
-		byPrice:  byPrice,
+		sdk:           sdk,
+		verifier:      paddle.NewWebhookVerifier(cfg.WebhookSecret),
+		prices:        cfg.Prices,
+		pricesNoTrial: cfg.PricesNoTrial,
+		byPrice:       byPrice,
 	}, nil
 }
 
@@ -89,12 +106,27 @@ func (p *Provider) Name() string { return "paddle" }
 // SignatureHeader is the header Paddle sends its webhook signature in.
 func (p *Provider) SignatureHeader() string { return "Paddle-Signature" }
 
+// priceFor picks the price id for a plan/cycle. When the customer isn't trial-eligible it
+// uses the trialless price; if none is configured it falls back to the trialled price so
+// the sale still completes (a missing trialless price is a seeding gap, not a reason to
+// block checkout).
+func (p *Provider) priceFor(plan, cycle string, withTrial bool) (string, bool) {
+	key := plan + ":" + cycle
+	if !withTrial {
+		if id, ok := p.pricesNoTrial[key]; ok {
+			return id, true
+		}
+	}
+	id, ok := p.prices[key]
+	return id, ok
+}
+
 // Checkout creates an automatically-collected transaction for the plan's price and
 // returns its hosted checkout URL. org_id rides along in custom_data so the webhook can
 // tie the resulting subscription back to the org. The subscription is created by Paddle
 // once the customer pays; our webhook then syncs it.
-func (p *Provider) Checkout(ctx context.Context, orgID int64, plan, cycle string) (string, error) {
-	priceID, ok := p.prices[plan+":"+cycle]
+func (p *Provider) Checkout(ctx context.Context, orgID int64, plan, cycle string, withTrial bool) (string, error) {
+	priceID, ok := p.priceFor(plan, cycle, withTrial)
 	if !ok {
 		return "", fmt.Errorf("paddle: no price configured for %s/%s", plan, cycle)
 	}

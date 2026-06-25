@@ -51,6 +51,22 @@ func (p *Pool) GetSubscriptionByOrg(ctx context.Context, orgID int64) (*domain.S
 	return sub, nil
 }
 
+// PersonHadRecentInactiveSubscription reports whether the user recently controlled a
+// subscription that ended, so they should not get another free trial (RFC-018 anti-abuse).
+// It checks every org where the user is owner/admin via the
+// person_had_recent_inactive_subscription SECURITY DEFINER function, run on the bare pool:
+// the check spans the user's orgs, so it can't sit under a single WithOrg, and the
+// function returns only a boolean (never another org's data).
+func (p *Pool) PersonHadRecentInactiveSubscription(ctx context.Context, userID int64, withinDays int) (bool, error) {
+	var had bool
+	err := p.QueryRow(ctx,
+		`SELECT person_had_recent_inactive_subscription($1, $2)`, userID, withinDays).Scan(&had)
+	if err != nil {
+		return false, err
+	}
+	return had, nil
+}
+
 // ApplySubscriptionEvent upserts the subscription and reconciles organizations.plan (the
 // entitlement resolvers read it) in one transaction. The webhook inbox
 // (RecordBillingEvent) owns dedup and the raw-payload record; this just makes the state

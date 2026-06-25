@@ -36,6 +36,7 @@ const ENT: Entitlements = {
   api_access_allowed: true,
   api_write_allowed: true,
   failure_snapshot: true,
+  trial_eligible: true,
 };
 
 function plan(p: PlanCatalogEntry["plan"], over: Partial<PlanCatalogEntry>): PlanCatalogEntry {
@@ -185,6 +186,33 @@ describe("billing-view", () => {
       expect(teamCard.textContent).to.contain("Current");
       const freeCard = el.querySelector<HTMLElement>('[data-plan="tier1"]')!;
       expect(freeCard.dataset.current).to.equal("false");
+    } finally {
+      restore();
+    }
+  });
+
+  it("shows a free-trial badge on paid plans when the person is trial-eligible", async () => {
+    const { el, restore } = await mount({});
+    try {
+      await waitUntil(() => el.querySelector("[data-plan]") !== null);
+      expect(/free trial/i.test(el.textContent ?? "")).to.equal(true);
+    } finally {
+      restore();
+    }
+  });
+
+  it("hides the free-trial badge when the person is not trial-eligible", async () => {
+    const ineligible: Entitlements = { ...ENT, trial_eligible: false };
+    const handler = (c: Call): Response => {
+      if (c.url.endsWith("/entitlements")) return json(200, ineligible);
+      if (c.url.endsWith("/plans")) return json(200, PLANS);
+      if (c.url.endsWith("/billing/payments")) return json(200, PAYMENTS);
+      return json(404, { error: { code: "not_found", message: "nope" } });
+    };
+    const { el, restore } = await mount({ handler });
+    try {
+      await waitUntil(() => el.querySelector("[data-plan]") !== null);
+      expect(/free trial/i.test(el.textContent ?? "")).to.equal(false);
     } finally {
       restore();
     }

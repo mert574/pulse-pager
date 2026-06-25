@@ -483,8 +483,11 @@ export class BillingView extends AppElement {
     // tier3 (Professional) is the highlighted plan on the public pricing page too.
     const featured = p.plan === "tier3";
     const price = this.planPrice(p.plan);
+    // Only show a trial when this person still qualifies for one. Someone who recently
+    // had a subscription is trial-ineligible (RFC-018), so they get no badge here and the
+    // trialless price at checkout.
     const trialDays =
-      PLAN_PRICE[p.plan].kind === "paid"
+      PLAN_PRICE[p.plan].kind === "paid" && this.ent?.trial_eligible
         ? CYCLE_TRIAL_DAYS[this.cycle]
         : undefined;
     return html`<div

@@ -44,11 +44,13 @@ func main() {
 			svc.Log.Error("load plan_prices", "err", err)
 			os.Exit(1)
 		}
+		withTrial, noTrial := paddle.PriceMaps(prices)
 		provider, err = paddle.New(paddle.Config{
 			APIKey:        svc.Cfg.Billing.PaddleAPIKey,
 			BaseURL:       svc.Cfg.Billing.APIBase,
 			WebhookSecret: svc.Cfg.Billing.WebhookSecret,
-			Prices:        paddle.PriceMap(prices),
+			Prices:        withTrial,
+			PricesNoTrial: noTrial,
 		})
 		if err != nil {
 			svc.Log.Error("build paddle adapter", "err", err)

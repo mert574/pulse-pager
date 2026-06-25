@@ -1371,6 +1371,8 @@ export interface components {
             api_access_allowed: boolean;
             api_write_allowed: boolean;
             failure_snapshot: boolean;
+            /** @description person still qualifies for a free trial (RFC-018); false hides trial offers */
+            trial_eligible: boolean;
         };
         /** @description One tier in the public plan catalog (PRD-006 3): the plan id plus its limits. Reference config the FE renders as a comparison/upgrade table; carries no per-org usage. */
         PlanCatalogEntry: {
