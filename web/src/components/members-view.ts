@@ -51,7 +51,6 @@ export class MembersView extends AppElement {
   @state() private busyMember: string | null = null;
   @state() private busyInvite: string | null = null;
 
-  // invite form
   @state() private inviteEmail = "";
   @state() private inviteRole: Role = "member";
   @state() private inviting = false;

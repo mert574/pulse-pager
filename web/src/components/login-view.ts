@@ -158,10 +158,8 @@ export class LoginView extends AppElement {
                 </div>`
               : nothing}
 
-            <!-- Consent gates every sign-in method below. items-start aligns the box
-                 to the first line (the label can wrap); the box is 16px and the line is
-                 16px, so it sits centered on that line without a nudge. -->
-            <label class="flex items-start gap-2 text-xs text-base-content/70 cursor-pointer">
+            <!-- Until this is ticked every sign-in method below stays disabled. -->
+            <label class="flex items-center justify-center gap-2 text-xs text-base-content/70 cursor-pointer">
               <input
                 type="checkbox"
                 class="checkbox checkbox-xs h-4 w-4 shrink-0"
