@@ -24,11 +24,15 @@ import (
 // trialless price and no trial badge; after it, they're treated as a fresh customer.
 const trialDenyWindowDays = 35
 
-// trialEligible reports whether the person may get a free trial: false when they recently
-// controlled a subscription that ended, across any org they own or admin (per-person, not
-// just this org). Used by checkout (to pick the price) and entitlements (to hide the
-// trial badge), so the two never disagree.
-func (s *Server) trialEligible(ctx context.Context, userID int64) (bool, error) {
+// trialEligible reports whether this org may get a free trial. It is false when the org is
+// already on a paid plan (a paying customer does not get another free trial) or when the
+// person recently controlled a subscription that ended, across any org they own or admin
+// (per-person, not just this org). orgPlan is the org's current plan. Used by checkout (to
+// pick the price) and entitlements (to hide the trial badge), so the two never disagree.
+func (s *Server) trialEligible(ctx context.Context, userID int64, orgPlan entitlements.Plan) (bool, error) {
+	if orgPlan != entitlements.PlanTier1 {
+		return false, nil
+	}
 	had, err := s.store.PersonHadRecentInactiveSubscription(ctx, userID, trialDenyWindowDays)
 	if err != nil {
 		return false, err
@@ -57,7 +61,7 @@ func (s *Server) CreateBillingCheckout(ctx context.Context, req apigen.CreateBil
 		return apigen.CreateBillingCheckout422JSONResponse{ValidationFailedJSONResponse: validationFailed("billing is not configured")}, nil
 	}
 
-	withTrial, err := s.trialEligible(ctx, p.UserID)
+	withTrial, err := s.trialEligible(ctx, p.UserID, s.orgPlan(ctx, p.OrgID))
 	if err != nil {
 		return nil, err
 	}

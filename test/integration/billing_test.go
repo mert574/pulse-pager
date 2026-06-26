@@ -24,6 +24,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"pulse/internal/billing"
+	"pulse/internal/domain"
 	"pulse/internal/obs"
 	"pulse/internal/store"
 )
@@ -385,12 +386,15 @@ func TestBillingTrialEligibility(t *testing.T) {
 		return had
 	}
 
-	// setSubA upserts org A's single subscription to a status and an age in days.
+	// setSubA upserts org A's single subscription to a status and an age in days. The
+	// window keys off ended_at, so age is when the subscription ended; an active/trialing
+	// row has no end yet (ended_at NULL), mirroring how the writers stamp it.
 	setSubA := func(status string, ageDays int) {
 		_, err := admin.Exec(ctx, `
-			INSERT INTO subscriptions (org_id, plan, billing_cycle, status, provider, updated_at)
-			VALUES ($1,'tier3','monthly',$2,'stub', now() - make_interval(days => $3))
-			ON CONFLICT (org_id) DO UPDATE SET status = EXCLUDED.status, updated_at = EXCLUDED.updated_at`,
+			INSERT INTO subscriptions (org_id, plan, billing_cycle, status, provider, updated_at, ended_at)
+			VALUES ($1,'tier3','monthly',$2,'stub', now(),
+				CASE WHEN $2 NOT IN ('active','trialing') THEN now() - make_interval(days => $3) ELSE NULL END)
+			ON CONFLICT (org_id) DO UPDATE SET status = EXCLUDED.status, ended_at = EXCLUDED.ended_at`,
 			orgA, status, ageDays)
 		if err != nil {
 			t.Fatalf("seed subscription: %v", err)
@@ -424,6 +428,21 @@ func TestBillingTrialEligibility(t *testing.T) {
 		}
 	})
 
+	t.Run("re-applying a canceled event does not restart the window", func(t *testing.T) {
+		// orgA's subscription ended 40 days ago (eligible again from the previous case). A
+		// trailing or re-synced provider event re-applies the same canceled state. Keying
+		// on updated_at used to bump it to now and re-deny the trial; with ended_at the
+		// window must stay anchored at the original end.
+		if err := app.ApplySubscriptionEvent(ctx, &domain.Subscription{
+			OrgID: orgA, Plan: "tier1", BillingCycle: "monthly", Status: "canceled", Provider: "stub",
+		}); err != nil {
+			t.Fatalf("re-apply canceled event: %v", err)
+		}
+		if hadRecentInactive() {
+			t.Fatal("re-applying a canceled event must not restart the 35-day window")
+		}
+	})
+
 	t.Run("only an owner/admin membership counts", func(t *testing.T) {
 		// org A is now 40 days old (does not match). Add org B with a recent cancellation
 		// where our person is only a member: it must not deny a trial. A real org always
@@ -442,8 +461,8 @@ func TestBillingTrialEligibility(t *testing.T) {
 		if _, err := admin.Exec(ctx, "INSERT INTO memberships(org_id, user_id, role) VALUES($1,$2,'member')", orgB, userID); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := admin.Exec(ctx, `INSERT INTO subscriptions (org_id, plan, billing_cycle, status, provider, updated_at)
-			VALUES ($1,'tier3','monthly','canceled','stub', now() - make_interval(days => 5))`, orgB); err != nil {
+		if _, err := admin.Exec(ctx, `INSERT INTO subscriptions (org_id, plan, billing_cycle, status, provider, updated_at, ended_at)
+			VALUES ($1,'tier3','monthly','canceled','stub', now(), now() - make_interval(days => 5))`, orgB); err != nil {
 			t.Fatal(err)
 		}
 		if hadRecentInactive() {

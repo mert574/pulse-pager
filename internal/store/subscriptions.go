@@ -140,9 +140,13 @@ func (p *Pool) SetSubscriptionCancelAtPeriodEnd(ctx context.Context, orgID int64
 // has no subscription.
 func (p *Pool) CancelSubscriptionNow(ctx context.Context, orgID int64) error {
 	return p.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
+		// ended_at anchors the trial window (RFC-018); stamp it only on the transition out
+		// of active/trialing (the RHS status is the pre-update value), so re-canceling an
+		// already-canceled row keeps the original anchor.
 		tag, err := tx.Exec(ctx, `
 			UPDATE subscriptions
-			SET status = 'canceled', cancel_at_period_end = false, updated_at = now()
+			SET status = 'canceled', cancel_at_period_end = false, updated_at = now(),
+				ended_at = CASE WHEN status IN ('active','trialing') THEN now() ELSE ended_at END
 			WHERE org_id = $1`, orgID)
 		if err != nil {
 			return err
@@ -157,12 +161,19 @@ func (p *Pool) CancelSubscriptionNow(ctx context.Context, orgID int64) error {
 }
 
 // upsertSubscriptionTx writes the subscription inside an existing tx (one row per org).
+//
+// ended_at anchors the trial-eligibility window (RFC-018), so it is stamped once when the
+// row leaves active/trialing and held stable on later writes that keep it non-active (a
+// re-synced or trailing event must not restart the window). It is cleared if the row goes
+// back to active/trialing (a reactivation). On the first insert it is set only when the
+// new row is already non-active, which is rare but keeps the anchor honest.
 func upsertSubscriptionTx(ctx context.Context, tx pgx.Tx, s *domain.Subscription) error {
 	_, err := tx.Exec(ctx, `
 		INSERT INTO subscriptions (org_id, plan, billing_cycle, status, provider,
 			provider_customer_id, provider_subscription_id, provider_price_id,
-			current_period_end, cancel_at_period_end, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now())
+			current_period_end, cancel_at_period_end, updated_at, ended_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now(),
+			CASE WHEN $4 NOT IN ('active','trialing') THEN now() ELSE NULL END)
 		ON CONFLICT (org_id) DO UPDATE SET
 			plan = EXCLUDED.plan,
 			billing_cycle = EXCLUDED.billing_cycle,
@@ -173,7 +184,12 @@ func upsertSubscriptionTx(ctx context.Context, tx pgx.Tx, s *domain.Subscription
 			provider_price_id = EXCLUDED.provider_price_id,
 			current_period_end = EXCLUDED.current_period_end,
 			cancel_at_period_end = EXCLUDED.cancel_at_period_end,
-			updated_at = now()`,
+			updated_at = now(),
+			ended_at = CASE
+				WHEN EXCLUDED.status IN ('active','trialing') THEN NULL
+				WHEN subscriptions.status IN ('active','trialing') THEN now()
+				ELSE subscriptions.ended_at
+			END`,
 		s.OrgID, s.Plan, s.BillingCycle, s.Status, s.Provider,
 		s.ProviderCustomerID, s.ProviderSubscriptionID, s.ProviderPriceID,
 		s.CurrentPeriodEnd, s.CancelAtPeriodEnd)

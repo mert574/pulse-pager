@@ -47,6 +47,7 @@ type entitlementsDTO struct {
 	CustomDomainAllowed  bool     `json:"custom_domain_allowed"`
 	ApiWriteAllowed      bool     `json:"api_write_allowed"`
 	FailureSnapshot      bool     `json:"failure_snapshot"`
+	TrialEligible        bool     `json:"trial_eligible"`
 }
 
 type planEntryDTO struct {
@@ -243,6 +244,34 @@ func TestAPIEntitlements(t *testing.T) {
 		}
 		if e.ApiWriteAllowed {
 			t.Fatalf("api_write_allowed = true, want false on Free")
+		}
+		// A fresh Free org with no subscription history qualifies for a trial.
+		if !e.TrialEligible {
+			t.Fatalf("trial_eligible = false on a fresh Free org, want true")
+		}
+	})
+
+	// --- a paid plan hides the trial offer (RFC-018: paying customers get no new trial) ---
+	t.Run("trial_eligible_false_on_paid_plan", func(t *testing.T) {
+		if _, err := admin.Exec(ctx, "UPDATE organizations SET plan='tier2' WHERE id=$1::bigint", orgID); err != nil {
+			t.Fatalf("set paid plan: %v", err)
+		}
+		// Restore Free so later subtests see the original caps.
+		defer func() {
+			if _, err := admin.Exec(ctx, "UPDATE organizations SET plan='tier1' WHERE id=$1::bigint", orgID); err != nil {
+				t.Fatalf("restore plan: %v", err)
+			}
+		}()
+		resp, e := getEnts(t, ownerClient, orgID)
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("want 200, got %d", resp.StatusCode)
+		}
+		if e.Plan != "tier2" {
+			t.Fatalf("plan = %q, want tier2", e.Plan)
+		}
+		if e.TrialEligible {
+			t.Fatalf("trial_eligible = true on a paid plan, want false")
 		}
 	})
 
