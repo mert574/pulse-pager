@@ -206,11 +206,16 @@ func TestFoundation(t *testing.T) {
 
 		deadline := time.Now().Add(30 * time.Second)
 		var got bus.Record
+		var gotCorr string
 		found := false
 		for time.Now().Before(deadline) && !found {
 			pollCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			err := cons.Poll(pollCtx, func(r bus.Record) error {
+			err := cons.Poll(pollCtx, func(rctx context.Context, r bus.Record) error {
 				got = r
+				// The id rides the message headers and is restored onto the handler
+				// ctx (RFC-021 section 4.3); with no span on the producer it comes
+				// back via the legacy correlation header (section 7).
+				gotCorr = obs.CorrelationID(rctx)
 				found = true
 				return nil
 			})
@@ -225,8 +230,8 @@ func TestFoundation(t *testing.T) {
 		if got.Key != "org-1" || string(got.Value) != "hello" {
 			t.Fatalf("record mismatch: key=%q value=%q", got.Key, got.Value)
 		}
-		if got.CorrelationID != "corr-123" {
-			t.Fatalf("correlation id not propagated: %q", got.CorrelationID)
+		if gotCorr != "corr-123" {
+			t.Fatalf("correlation id not propagated: %q", gotCorr)
 		}
 	})
 

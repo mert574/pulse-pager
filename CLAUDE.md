@@ -56,6 +56,14 @@ export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
 make test-integration
 ```
 
+**Gotcha: `make test` (`go test ./...`) does NOT compile the `//go:build integration`
+files in `test/integration/`.** The build tag excludes them, so a change to a shared
+type (a `bus.Record` field, an `api`/`store`/`config`/`events` signature) can break the
+integration suite's compilation while the unit gate stays green. After touching shared
+types, run `go vet -tags integration ./...` (or `./test/integration/`) to catch compile
+breaks, then `make test-integration` (with the colima env above) to actually run them.
+Each test spins its own testcontainers Postgres; the full suite is ~46s.
+
 ## Contract-first API (do this, do not hand-edit generated files)
 
 `api/openapi/v1.yaml` is the single source of truth (RFC-012). Both the Go server types/stubs (`internal/apigen/apigen.gen.go`) and the TypeScript client types (`web/src/api/schema.d.ts`) are generated from it, so backend and frontend cannot drift.

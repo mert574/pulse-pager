@@ -7,7 +7,7 @@ import { client, ApiError } from "../api/client.js";
 import { can } from "../state/can.js";
 import { session } from "../state/session.js";
 import { t, type MessageKey } from "../i18n.js";
-import { toast } from "../toast.js";
+import { toast, toastError } from "../toast.js";
 import { formatDuration } from "../format.js";
 import type {
   FailureReason,
@@ -134,7 +134,7 @@ export class IncidentDetailView extends AppElement {
       this.note = "";
       toast(t("incident.noteAdded"), "success");
     } catch (err) {
-      toast(err instanceof ApiError ? err.message : t("state.error"), "error");
+      toastError(err, t("state.error"));
     } finally {
       this.adding = false;
     }
@@ -158,7 +158,7 @@ export class IncidentDetailView extends AppElement {
         this.loadedKey = null;
         await this.load();
       } else {
-        toast(err instanceof ApiError ? err.message : t("state.error"), "error");
+        toastError(err, t("state.error"));
       }
     } finally {
       this.closing = false;

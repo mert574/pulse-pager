@@ -5,7 +5,7 @@ import { AppElement } from "./base.js";
 import { appContext, type AppContext } from "../state/context.js";
 import { client, ApiError } from "../api/client.js";
 import { navigate } from "../router.js";
-import { toast } from "../toast.js";
+import { toast, toastError } from "../toast.js";
 import { t, tDynamic, type MessageKey } from "../i18n.js";
 import { icon } from "../icons.js";
 import { publicStatusUrl } from "./status-page-url.js";
@@ -223,7 +223,7 @@ export class StatusPageFormView extends AppElement {
       this.published = updated.state === "published";
       toast(t(this.published ? "statusPages.published" : "statusPages.unpublished"), "success");
     } catch (err) {
-      toast(err instanceof ApiError ? err.message : t("state.error"), "error");
+      toastError(err, t("state.error"));
     } finally {
       this.togglingPublish = false;
     }

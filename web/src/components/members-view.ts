@@ -6,7 +6,7 @@ import { appContext, type AppContext } from "../state/context.js";
 import { client, ApiError } from "../api/client.js";
 import { can } from "../state/can.js";
 import { t, tDynamic } from "../i18n.js";
-import { toast } from "../toast.js";
+import { toast, toastError } from "../toast.js";
 import { navigate } from "../router.js";
 import { icon } from "../icons.js";
 import { session } from "../state/session.js";
@@ -126,7 +126,7 @@ export class MembersView extends AppElement {
       );
       toast(t("members.roleChanged"), "success");
     } catch (err) {
-      toast(err instanceof ApiError ? err.message : t("state.error"), "error");
+      toastError(err, t("state.error"));
       // re-pull so the select snaps back to the server's truth
       void this.load(orgId);
     } finally {
@@ -154,7 +154,7 @@ export class MembersView extends AppElement {
       );
       toast(t("members.removed"), "success");
     } catch (err) {
-      toast(err instanceof ApiError ? err.message : t("state.error"), "error");
+      toastError(err, t("state.error"));
     } finally {
       this.busyMember = null;
     }
@@ -183,7 +183,7 @@ export class MembersView extends AppElement {
       await this.ctx.refreshMe();
       void this.load(orgId);
     } catch (err) {
-      toast(err instanceof ApiError ? err.message : t("state.error"), "error");
+      toastError(err, t("state.error"));
     } finally {
       this.busyMember = null;
     }
@@ -266,7 +266,7 @@ export class MembersView extends AppElement {
       this.invitations = (this.invitations ?? []).filter((x) => x.id !== inv.id);
       toast(t("invites.revoked"), "success");
     } catch (err) {
-      toast(err instanceof ApiError ? err.message : t("state.error"), "error");
+      toastError(err, t("state.error"));
     } finally {
       this.busyInvite = null;
     }
@@ -283,7 +283,7 @@ export class MembersView extends AppElement {
       );
       toast(t("invites.resent"), "success");
     } catch (err) {
-      toast(err instanceof ApiError ? err.message : t("state.error"), "error");
+      toastError(err, t("state.error"));
     } finally {
       this.busyInvite = null;
     }

@@ -3,6 +3,7 @@ import { customElement, state } from "lit/decorators.js";
 import { AppElement } from "./base.js";
 import { subscribeToasts, dismissToast, type ToastItem } from "../toast.js";
 import { icon, type IconName } from "../icons.js";
+import { t } from "../i18n.js";
 
 const ALERT_CLASS: Record<ToastItem["type"], string> = {
   success: "alert-success",
@@ -35,6 +36,21 @@ export class ToastHost extends AppElement {
     super.disconnectedCallback();
   }
 
+  // Short, clickable trace id on error toasts: clicking copies the full id and does
+  // not dismiss the toast (RFC-021 section 8). Shown abbreviated to keep it small.
+  private renderTraceId(traceId: string) {
+    return html`<button
+      class="font-mono text-xs opacity-70 hover:opacity-100 underline"
+      title=${t("error.traceId")}
+      @click=${(e: Event) => {
+        e.stopPropagation();
+        void navigator.clipboard?.writeText(traceId);
+      }}
+    >
+      ${traceId.slice(0, 8)}
+    </button>`;
+  }
+
   override render() {
     if (this.items.length === 0) return html``;
     return html`
@@ -47,6 +63,7 @@ export class ToastHost extends AppElement {
           >
             ${icon(ALERT_ICON[item.type], "size-4")}
             <span>${item.message}</span>
+            ${item.traceId ? this.renderTraceId(item.traceId) : null}
           </div>`,
         )}
       </div>

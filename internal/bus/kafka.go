@@ -4,8 +4,6 @@ import (
 	"context"
 
 	"github.com/twmb/franz-go/pkg/kgo"
-
-	"pulse/internal/obs"
 )
 
 // kafkaProducer publishes to a Kafka-compatible broker via franz-go.
@@ -27,8 +25,8 @@ func newKafkaProducer(brokers []string) (*kafkaProducer, error) {
 
 func (p *kafkaProducer) produce(ctx context.Context, topic, key string, value []byte) error {
 	rec := &kgo.Record{Topic: topic, Key: []byte(key), Value: value}
-	if id := obs.CorrelationID(ctx); id != "" {
-		rec.Headers = append(rec.Headers, kgo.RecordHeader{Key: correlationHeader, Value: []byte(id)})
+	for k, v := range injectTrace(ctx) {
+		rec.Headers = append(rec.Headers, kgo.RecordHeader{Key: k, Value: []byte(v)})
 	}
 	return p.cl.ProduceSync(ctx, rec).FirstErr()
 }
@@ -54,7 +52,7 @@ func newKafkaConsumer(brokers []string, group string, topics ...string) (*kafkaC
 	return &kafkaConsumer{cl: cl}, nil
 }
 
-func (c *kafkaConsumer) poll(ctx context.Context, handler func(Record) error) error {
+func (c *kafkaConsumer) poll(ctx context.Context, handler func(context.Context, Record) error) error {
 	fetches := c.cl.PollFetches(ctx)
 	if err := ctx.Err(); err != nil {
 		return err
@@ -67,7 +65,8 @@ func (c *kafkaConsumer) poll(ctx context.Context, handler func(Record) error) er
 		if herr != nil {
 			return
 		}
-		herr = handler(toKafkaRecord(r))
+		recCtx := restoreTrace(ctx, kafkaHeaders(r))
+		herr = handler(recCtx, toKafkaRecord(r))
 	})
 	return herr
 }
@@ -76,11 +75,17 @@ func (c *kafkaConsumer) ping(ctx context.Context) error { return c.cl.Ping(ctx) 
 func (c *kafkaConsumer) close()                         { c.cl.Close() }
 
 func toKafkaRecord(r *kgo.Record) Record {
-	rec := Record{Topic: r.Topic, Key: string(r.Key), Value: r.Value}
-	for _, h := range r.Headers {
-		if h.Key == correlationHeader {
-			rec.CorrelationID = string(h.Value)
-		}
+	return Record{Topic: r.Topic, Key: string(r.Key), Value: r.Value}
+}
+
+// kafkaHeaders flattens the record headers into a map the propagator can read.
+func kafkaHeaders(r *kgo.Record) map[string]string {
+	if len(r.Headers) == 0 {
+		return nil
 	}
-	return rec
+	h := make(map[string]string, len(r.Headers))
+	for _, hdr := range r.Headers {
+		h[hdr.Key] = string(hdr.Value)
+	}
+	return h
 }

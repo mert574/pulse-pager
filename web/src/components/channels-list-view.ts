@@ -6,7 +6,7 @@ import { appContext, type AppContext } from "../state/context.js";
 import { client, ApiError } from "../api/client.js";
 import { can } from "../state/can.js";
 import { t } from "../i18n.js";
-import { toast } from "../toast.js";
+import { toast, toastError } from "../toast.js";
 import type { Channel } from "../api/types.js";
 
 import { icon } from "../icons.js";
@@ -88,7 +88,7 @@ export class ChannelsListView extends AppElement {
       toast(t("channels.deleted"), "success");
       this.channels = (this.channels ?? []).filter((c) => c.id !== channel.id);
     } catch (err) {
-      toast(err instanceof ApiError ? err.message : t("state.error"), "error");
+      toastError(err, t("state.error"));
     }
   }
 

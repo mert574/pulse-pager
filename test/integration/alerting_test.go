@@ -59,7 +59,7 @@ type feedConsumer struct {
 	done chan struct{}
 }
 
-func (c *feedConsumer) Poll(ctx context.Context, handler func(bus.Record) error) error {
+func (c *feedConsumer) Poll(ctx context.Context, handler func(context.Context, bus.Record) error) error {
 	if c.i >= len(c.recs) {
 		select {
 		case <-c.done:
@@ -71,7 +71,7 @@ func (c *feedConsumer) Poll(ctx context.Context, handler func(bus.Record) error)
 	}
 	rec := c.recs[c.i]
 	c.i++
-	return handler(rec)
+	return handler(ctx, rec)
 }
 
 func alertingPostgres(t *testing.T) (*store.Pool, func()) {

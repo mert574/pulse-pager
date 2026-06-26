@@ -68,10 +68,14 @@ export class ApiError extends Error {
   // interpolation values some error codes carry (e.g. seat-limit). The generated
   // Error schema does not model params, so we read them off the wire defensively.
   readonly params?: Record<string, unknown>;
+  // the W3C trace id the client minted for this request (RFC-021 section 8). Shown
+  // on error states so a user or support can quote it into the trace tooling.
+  readonly traceId?: string;
 
   constructor(
     status: number,
     body: ApiErrorBody & { params?: Record<string, unknown> },
+    traceId?: string,
   ) {
     super(body.message);
     this.name = "ApiError";
@@ -79,6 +83,7 @@ export class ApiError extends Error {
     this.code = body.code;
     if (body.fields) this.fields = body.fields;
     if (body.params) this.params = body.params;
+    if (traceId) this.traceId = traceId;
   }
 }
 
@@ -152,14 +157,27 @@ function csrfHeader(method: string): Record<string, string> {
   return token ? { "X-CSRF-Token": token } : {};
 }
 
+// Mint a W3C traceparent so the trace starts at this request (RFC-021 section 5):
+// a random 16-byte trace id and 8-byte span id as hex, sampled flag on. No SDK is
+// needed for the id; the api continues it across every service, and the client keeps
+// the trace id to show on errors. crypto.getRandomValues is always present here.
+function newTraceparent(): string {
+  const hex = (bytes: number): string => {
+    const buf = new Uint8Array(bytes);
+    crypto.getRandomValues(buf);
+    return Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
+  };
+  return `00-${hex(16)}-${hex(8)}-01`;
+}
+
 // Build the RequestInit for a call: cookies always sent, JSON body when present,
 // CSRF echoed on unsafe methods.
-function buildInit(opts: RequestOptions): RequestInit {
+function buildInit(opts: RequestOptions, traceparent: string): RequestInit {
   const method = opts.method ?? "GET";
   const init: RequestInit = {
     method,
     credentials: "include",
-    headers: { ...csrfHeader(method) },
+    headers: { ...csrfHeader(method), traceparent },
   };
   if (opts.body !== undefined) {
     init.headers = { ...init.headers, "Content-Type": "application/json" };
@@ -168,7 +186,7 @@ function buildInit(opts: RequestOptions): RequestInit {
   return init;
 }
 
-async function parseError(res: Response): Promise<ApiError> {
+async function parseError(res: Response, traceId: string): Promise<ApiError> {
   let body: ApiErrorBody;
   try {
     const parsed = (await res.json()) as { error?: ApiErrorBody };
@@ -182,7 +200,7 @@ async function parseError(res: Response): Promise<ApiError> {
       message: `Request failed with status ${res.status}`,
     };
   }
-  return new ApiError(res.status, body);
+  return new ApiError(res.status, body, traceId);
 }
 
 async function parseBody<T>(res: Response): Promise<T> {
@@ -203,18 +221,23 @@ function failToLogin(): never {
 
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const url = path + buildQuery(opts.query);
-  let res = await fetch(url, buildInit(opts));
+  // Mint one traceparent for the whole call and reuse it on the refresh-retry, so
+  // the user action is one trace (RFC-021 section 5). The trace id is the second
+  // field; we keep it to attach to any error we throw.
+  const traceparent = newTraceparent();
+  const traceId = traceparent.split("-")[1];
+  let res = await fetch(url, buildInit(opts, traceparent));
 
   if (res.status === 401 && !opts.noRetry) {
     // single-flight refresh, then replay the original request exactly once
     const refreshed = await refreshOnce();
     if (!refreshed) failToLogin();
-    res = await fetch(url, buildInit(opts));
+    res = await fetch(url, buildInit(opts, traceparent));
     if (res.status === 401) failToLogin();
   }
 
   if (res.status === 401) failToLogin();
-  if (!res.ok) throw await parseError(res);
+  if (!res.ok) throw await parseError(res, traceId);
   return parseBody<T>(res);
 }
 

@@ -7,7 +7,7 @@ import { client, ApiError } from "../api/client.js";
 import { can } from "../state/can.js";
 import { navigate } from "../router.js";
 import { t, type MessageKey } from "../i18n.js";
-import { toast } from "../toast.js";
+import { toast, toastError } from "../toast.js";
 import { toastCheckError } from "../check-now.js";
 import { formatDuration } from "../format.js";
 import type {
@@ -176,7 +176,7 @@ export abstract class MonitorDetailBase extends AppElement {
       toast(t("monitor.deleted"), "success");
       navigate(this.base);
     } catch (err) {
-      toast(err instanceof ApiError ? err.message : t("state.error"), "error");
+      toastError(err, t("state.error"));
     }
   }
 

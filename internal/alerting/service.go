@@ -47,7 +47,7 @@ type Store interface {
 
 // Consumer is the subset of the bus consumer the service needs.
 type Consumer interface {
-	Poll(ctx context.Context, handler func(bus.Record) error) error
+	Poll(ctx context.Context, handler func(context.Context, bus.Record) error) error
 }
 
 // Producer emits notify.events.
@@ -78,8 +78,8 @@ func (r *Runner) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		err := r.cons.Poll(ctx, func(rec bus.Record) error {
-			return r.handle(ctx, rec)
+		err := r.cons.Poll(ctx, func(recCtx context.Context, rec bus.Record) error {
+			return r.handle(recCtx, rec)
 		})
 		if err != nil {
 			if ctx.Err() != nil {

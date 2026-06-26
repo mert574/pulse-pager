@@ -33,11 +33,11 @@ type directConsumer struct {
 	delivered chan struct{}
 }
 
-func (d *directConsumer) Poll(ctx context.Context, handler func(bus.Record) error) error {
+func (d *directConsumer) Poll(ctx context.Context, handler func(context.Context, bus.Record) error) error {
 	var err error
 	d.once.Do(func() {
 		for _, v := range d.recs {
-			if e := handler(bus.Record{Topic: bus.TopicNotifyEvents, Value: v}); e != nil {
+			if e := handler(ctx, bus.Record{Topic: bus.TopicNotifyEvents, Value: v}); e != nil {
 				err = e
 				return
 			}

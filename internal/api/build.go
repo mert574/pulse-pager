@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"pulse/internal/authn"
 	"pulse/internal/billing"
@@ -308,10 +311,28 @@ func (b *busCheckJobPublisher) PublishCheckJob(ctx context.Context, job events.C
 
 // --- middleware chain ---
 
-// chain wraps the router with recover, a request id, and request metrics, outermost
-// first so a panic deep in a handler is still recovered and counted.
+// chain wraps the router with the trace server span (outermost, so it is on the
+// ctx before anything inner runs), then recover, a request id, the route attribute,
+// and request metrics. The otelhttp handler extracts an incoming traceparent and
+// continues the FE-rooted trace, or starts a root when there is none (RFC-021
+// section 4.2). With tracing off the tracer is a no-op, so this just costs the
+// propagator extract.
 func chain(h http.Handler, log *slog.Logger, m *httpMetrics) http.Handler {
-	return recoverMW(log)(requestIDMW(m.instrument(h)))
+	inner := recoverMW(log)(requestIDMW(routeAttrMW(m.instrument(h))))
+	return otelhttp.NewHandler(inner, "api.request")
+}
+
+// routeAttrMW tags the server span with the matched route once the mux has routed
+// the request. otelhttp names the span before routing, when the route is not known
+// yet, so the low-cardinality http.route lands here as an attribute instead of in
+// the span name.
+func routeAttrMW(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r)
+		if r.Pattern != "" {
+			trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("http.route", r.Pattern))
+		}
+	})
 }
 
 // recoverMW turns a handler panic into a 500 envelope instead of dropping the
@@ -331,10 +352,15 @@ func recoverMW(log *slog.Logger) func(http.Handler) http.Handler {
 }
 
 // requestIDMW puts a correlation id on the request context and echoes it in the
-// response so a client can quote it. It reuses an inbound X-Request-Id when present.
+// response so a client can quote it. It prefers the active span's trace id, so the
+// id on every log line matches the trace (RFC-021 section 7); failing that it reuses
+// an inbound X-Request-Id, else a fresh random id.
 func requestIDMW(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := r.Header.Get("X-Request-Id")
+		id := obs.TraceID(r.Context())
+		if id == "" {
+			id = r.Header.Get("X-Request-Id")
+		}
 		if id == "" {
 			id, _ = authn.NewCSRFToken() // a random opaque id; reuse the token generator
 		}

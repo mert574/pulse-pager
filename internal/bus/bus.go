@@ -30,12 +30,14 @@ func CheckJobsTopic(region string) string { return "check.jobs." + region }
 
 const correlationHeader = "pulse-correlation-id"
 
-// Record is a consumed message in the shape the handlers want.
+// Record is a consumed message in the shape the handlers want. The trace context
+// is not a field: it is restored from the message headers onto the ctx the handler
+// receives (RFC-021 section 4.3), so it flows to logs and onward produce the same
+// way it does on an inbound api request.
 type Record struct {
-	Topic         string
-	Key           string
-	Value         []byte
-	CorrelationID string
+	Topic string
+	Key   string
+	Value []byte
 }
 
 // producerBackend is the transport a Producer delegates to (kafka or redis).
@@ -45,9 +47,10 @@ type producerBackend interface {
 	close()
 }
 
-// consumerBackend is the transport a Consumer delegates to.
+// consumerBackend is the transport a Consumer delegates to. The handler is called
+// with a per-record context carrying the restored trace (RFC-021 section 4.3).
 type consumerBackend interface {
-	poll(ctx context.Context, handler func(Record) error) error
+	poll(ctx context.Context, handler func(context.Context, Record) error) error
 	ping(ctx context.Context) error
 	close()
 }
@@ -70,10 +73,11 @@ func (p *Producer) Close() { p.b.close() }
 // Consumer reads from a consumer group over the configured backend.
 type Consumer struct{ b consumerBackend }
 
-// Poll fetches a batch and calls handler for each record. It returns on context
-// cancellation or the first handler error; an errored record is left unacked and
-// redelivered on a later poll.
-func (c *Consumer) Poll(ctx context.Context, handler func(Record) error) error {
+// Poll fetches a batch and calls handler for each record, passing a per-record
+// context that carries the trace restored from the message headers (RFC-021
+// section 4.3). It returns on context cancellation or the first handler error; an
+// errored record is left unacked and redelivered on a later poll.
+func (c *Consumer) Poll(ctx context.Context, handler func(context.Context, Record) error) error {
 	return c.b.poll(ctx, handler)
 }
 

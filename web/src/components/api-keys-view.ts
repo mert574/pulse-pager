@@ -6,7 +6,7 @@ import { appContext, type AppContext } from "../state/context.js";
 import { client, ApiError } from "../api/client.js";
 import { can } from "../state/can.js";
 import { t } from "../i18n.js";
-import { toast } from "../toast.js";
+import { toast, toastError } from "../toast.js";
 import { icon } from "../icons.js";
 import type { ApiKey, ApiKeyCreated, Role } from "../api/types.js";
 
@@ -196,7 +196,7 @@ export class ApiKeysView extends AppElement {
       this.keys = (this.keys ?? []).filter((k) => k.id !== key.id);
       toast(t("apiKeys.revoked"), "success");
     } catch (err) {
-      toast(err instanceof ApiError ? err.message : t("state.error"), "error");
+      toastError(err, t("state.error"));
     } finally {
       this.busyKey = null;
     }

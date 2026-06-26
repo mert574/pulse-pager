@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-
-	"pulse/internal/obs"
 )
 
 const (
@@ -37,8 +35,8 @@ func newRedisProducer(addr string) (*redisProducer, error) {
 
 func (p *redisProducer) produce(ctx context.Context, topic, key string, value []byte) error {
 	vals := map[string]any{"key": key, "value": value}
-	if id := obs.CorrelationID(ctx); id != "" {
-		vals[correlationHeader] = id
+	for k, v := range injectTrace(ctx) {
+		vals[k] = v
 	}
 	return p.rdb.XAdd(ctx, &redis.XAddArgs{
 		Stream: topic,
@@ -81,7 +79,7 @@ func isBusyGroup(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "BUSYGROUP")
 }
 
-func (c *redisConsumer) poll(ctx context.Context, handler func(Record) error) error {
+func (c *redisConsumer) poll(ctx context.Context, handler func(context.Context, Record) error) error {
 	// 1. Reprocess this consumer's own pending entries first. On startup these are
 	//    whatever a previous run was delivered but did not ack (crash recovery); in
 	//    steady state they are entries whose handler returned an error and must be
@@ -111,7 +109,7 @@ func (c *redisConsumer) poll(ctx context.Context, handler func(Record) error) er
 
 // readInto reads from one stream at the given id ("0" = own pending, ">" = new) and
 // dispatches each entry. block < 0 means do not block.
-func (c *redisConsumer) readInto(ctx context.Context, topic, id string, block time.Duration, handler func(Record) error) error {
+func (c *redisConsumer) readInto(ctx context.Context, topic, id string, block time.Duration, handler func(context.Context, Record) error) error {
 	res, err := c.rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
 		Group:    c.group,
 		Consumer: c.consumer,
@@ -128,7 +126,7 @@ func (c *redisConsumer) readInto(ctx context.Context, topic, id string, block ti
 	return c.dispatchStreams(ctx, res, handler)
 }
 
-func (c *redisConsumer) readNew(ctx context.Context, handler func(Record) error) error {
+func (c *redisConsumer) readNew(ctx context.Context, handler func(context.Context, Record) error) error {
 	streams := make([]string, 0, len(c.topics)*2)
 	streams = append(streams, c.topics...)
 	for range c.topics {
@@ -150,7 +148,7 @@ func (c *redisConsumer) readNew(ctx context.Context, handler func(Record) error)
 	return c.dispatchStreams(ctx, res, handler)
 }
 
-func (c *redisConsumer) reclaim(ctx context.Context, topic string, handler func(Record) error) error {
+func (c *redisConsumer) reclaim(ctx context.Context, topic string, handler func(context.Context, Record) error) error {
 	start := "0-0"
 	for {
 		msgs, next, err := c.rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
@@ -176,7 +174,7 @@ func (c *redisConsumer) reclaim(ctx context.Context, topic string, handler func(
 	}
 }
 
-func (c *redisConsumer) dispatchStreams(ctx context.Context, streams []redis.XStream, handler func(Record) error) error {
+func (c *redisConsumer) dispatchStreams(ctx context.Context, streams []redis.XStream, handler func(context.Context, Record) error) error {
 	for _, st := range streams {
 		for _, m := range st.Messages {
 			if err := c.dispatch(ctx, st.Stream, m, handler); err != nil {
@@ -187,8 +185,9 @@ func (c *redisConsumer) dispatchStreams(ctx context.Context, streams []redis.XSt
 	return nil
 }
 
-func (c *redisConsumer) dispatch(ctx context.Context, stream string, m redis.XMessage, handler func(Record) error) error {
-	if err := handler(toRedisRecord(stream, m)); err != nil {
+func (c *redisConsumer) dispatch(ctx context.Context, stream string, m redis.XMessage, handler func(context.Context, Record) error) error {
+	recCtx := restoreTrace(ctx, redisHeaders(m))
+	if err := handler(recCtx, toRedisRecord(stream, m)); err != nil {
 		return err // leave unacked: retried from the pending list on a later poll
 	}
 	return c.rdb.XAck(ctx, stream, c.group, m.ID).Err()
@@ -205,8 +204,20 @@ func toRedisRecord(stream string, m redis.XMessage) Record {
 	if v, ok := m.Values["value"].(string); ok {
 		rec.Value = []byte(v)
 	}
-	if v, ok := m.Values[correlationHeader].(string); ok {
-		rec.CorrelationID = v
-	}
 	return rec
+}
+
+// redisHeaders pulls the trace headers out of the stream values (everything but the
+// key/value payload) into a map the propagator can read.
+func redisHeaders(m redis.XMessage) map[string]string {
+	h := make(map[string]string, len(m.Values))
+	for k, v := range m.Values {
+		if k == "key" || k == "value" {
+			continue
+		}
+		if s, ok := v.(string); ok {
+			h[k] = s
+		}
+	}
+	return h
 }

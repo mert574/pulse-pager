@@ -67,8 +67,8 @@ func (r *EmailRunner) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		err := r.cons.Poll(ctx, func(rec bus.Record) error {
-			return r.handle(ctx, rec)
+		err := r.cons.Poll(ctx, func(recCtx context.Context, rec bus.Record) error {
+			return r.handle(recCtx, rec)
 		})
 		if err != nil {
 			if ctx.Err() != nil {

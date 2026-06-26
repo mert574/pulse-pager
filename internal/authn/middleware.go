@@ -12,6 +12,7 @@ import (
 
 	"pulse/internal/authz"
 	"pulse/internal/domain"
+	"pulse/internal/obs"
 )
 
 // Request -> principal resolution (RFC-003 section 6). The Identify middleware
@@ -125,6 +126,11 @@ func (a *Authenticator) Identify(next http.Handler) http.Handler {
 				OrgID: kp.OrgID,
 				Role:  kp.Role,
 			}
+			// Tag the trace's root span with the actor now that auth has run
+			// (RFC-021 section 4.2). An api key fixes the org and role here.
+			obs.SpanSetInt(r.Context(), "key_id", kp.KeyID)
+			obs.SpanSetInt(r.Context(), "org_id", kp.OrgID)
+			obs.SpanSetString(r.Context(), "role", string(kp.Role))
 			next.ServeHTTP(w, r.WithContext(WithPrincipal(r.Context(), p)))
 			return
 		}
@@ -145,6 +151,9 @@ func (a *Authenticator) Identify(next http.Handler) http.Handler {
 			UserID: vt.UserID,
 			Email:  vt.Email,
 		}
+		// Tag the trace's root span with the user; the org and role land in
+		// RequireOrg once the active org is resolved (RFC-021 section 4.2).
+		obs.SpanSetInt(r.Context(), "user_id", vt.UserID)
 		next.ServeHTTP(w, r.WithContext(WithPrincipal(r.Context(), p)))
 	})
 }
@@ -186,6 +195,8 @@ func (a *Authenticator) RequireOrg(next http.Handler) http.Handler {
 		}
 		p.OrgID = orgID
 		p.Role = role
+		obs.SpanSetInt(r.Context(), "org_id", orgID)
+		obs.SpanSetString(r.Context(), "role", string(role))
 		next.ServeHTTP(w, r.WithContext(WithPrincipal(r.Context(), p)))
 	})
 }

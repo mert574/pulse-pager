@@ -152,6 +152,7 @@ const en = {
   "state.error": "Something went wrong.",
   "state.retry": "Retry",
   "state.notFound": "Not found",
+  "error.traceId": "Trace ID (click to copy)",
 
   // monitor status labels (status-badge); always paired with color (RFC-013 9.1)
   "status.up": "Up",
@@ -901,6 +902,7 @@ const es: Record<MessageKey, string> = {
   "state.error": "Algo salió mal.",
   "state.retry": "Reintentar",
   "state.notFound": "No encontrado",
+  "error.traceId": "ID de traza (clic para copiar)",
   "status.up": "En línea",
   "status.down": "Caído",
   "status.disabled": "Desactivado",
@@ -1616,6 +1618,7 @@ const de: Record<MessageKey, string> = {
   "admin.billingEmpty": "Noch keine Abrechnungsaktivität.",
   "state.loading": "Lädt…",
   "state.error": "Etwas ist schiefgelaufen.",
+  "error.traceId": "Trace-ID (zum Kopieren klicken)",
   "state.retry": "Erneut versuchen",
   "state.notFound": "Nicht gefunden",
   "status.up": "Online",

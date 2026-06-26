@@ -139,6 +139,57 @@ describe("api client auth interceptor", () => {
     }
   });
 
+  // RFC-021 section 5: the client mints a W3C traceparent and sends it on every
+  // request, reuses it across the refresh-retry, and exposes the trace id on errors.
+  const TRACEPARENT = /^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/;
+
+  it("sends a well-formed traceparent on every request", async () => {
+    const { calls, restore } = installFetch(() => ok({}));
+    try {
+      await __test.request("/api/v1/me");
+      expect(calls).to.have.length(1);
+      expect(calls[0].headers.traceparent).to.match(TRACEPARENT);
+    } finally {
+      restore();
+    }
+  });
+
+  it("reuses the same traceparent across the refresh-retry", async () => {
+    const { calls, restore } = installFetch((c, n) =>
+      refreshUrl(c) ? ok(null) : n === 0 ? unauth() : ok({}),
+    );
+    try {
+      await __test.request("/api/v1/me");
+      const sent = calls
+        .filter((c) => !refreshUrl(c))
+        .map((c) => c.headers.traceparent);
+      expect(sent).to.have.length(2);
+      expect(sent[0]).to.match(TRACEPARENT);
+      expect(sent[0]).to.equal(sent[1]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("attaches the request's trace id to a thrown ApiError", async () => {
+    const { calls, restore } = installFetch(() =>
+      json(500, { error: { code: "internal", message: "boom" } }),
+    );
+    try {
+      let thrown: unknown;
+      try {
+        await __test.request("/api/v1/me");
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).to.be.instanceOf(ApiError);
+      const traceId = calls[0].headers.traceparent.split("-")[1];
+      expect((thrown as ApiError).traceId).to.equal(traceId);
+    } finally {
+      restore();
+    }
+  });
+
   it("echoes the CSRF cookie on unsafe methods only", async () => {
     document.cookie = "pulse_csrf=tok123";
     const { calls, restore } = installFetch(() => ok({}));

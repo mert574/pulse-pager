@@ -6,7 +6,7 @@ import { appContext, type AppContext } from "../state/context.js";
 import { client, ApiError } from "../api/client.js";
 import { can } from "../state/can.js";
 import { t } from "../i18n.js";
-import { toast } from "../toast.js";
+import { toast, toastError } from "../toast.js";
 import { publicStatusUrl } from "./status-page-url.js";
 import type { StatusPage } from "../api/types.js";
 
@@ -83,7 +83,7 @@ export class StatusPagesListView extends AppElement {
       toast(t("statusPages.deleted"), "success");
       this.pages = (this.pages ?? []).filter((p) => p.id !== page.id);
     } catch (err) {
-      toast(err instanceof ApiError ? err.message : t("state.error"), "error");
+      toastError(err, t("state.error"));
     }
   }
 
@@ -97,7 +97,7 @@ export class StatusPagesListView extends AppElement {
       toast(t(publish ? "statusPages.published" : "statusPages.unpublished"), "success");
       this.pages = (this.pages ?? []).map((p) => (p.id === page.id ? updated : p));
     } catch (err) {
-      toast(err instanceof ApiError ? err.message : t("state.error"), "error");
+      toastError(err, t("state.error"));
     } finally {
       this.toggling = null;
     }

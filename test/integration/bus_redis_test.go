@@ -49,7 +49,7 @@ func TestRedisBus(t *testing.T) {
 	if err := prod.Produce(ctx, topic, "m1", []byte("hello")); err != nil {
 		t.Fatalf("produce m1: %v", err)
 	}
-	rec := pollOne(ctx, t, cons, func(bus.Record) error { return nil })
+	rec := pollOne(ctx, t, cons, func(context.Context, bus.Record) error { return nil })
 	if rec.Topic != topic || rec.Key != "m1" || string(rec.Value) != "hello" {
 		t.Fatalf("round-trip mismatch: %+v", rec)
 	}
@@ -61,7 +61,7 @@ func TestRedisBus(t *testing.T) {
 	delivered := false
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		perr := cons.Poll(ctx, func(r bus.Record) error {
+		perr := cons.Poll(ctx, func(_ context.Context, r bus.Record) error {
 			if r.Key == "m2" {
 				delivered = true
 				return errors.New("boom")
@@ -80,7 +80,7 @@ func TestRedisBus(t *testing.T) {
 	}
 
 	// 3. redelivery: a later poll re-delivers the unacked m2 from the pending list.
-	rec2 := pollOne(ctx, t, cons, func(bus.Record) error { return nil })
+	rec2 := pollOne(ctx, t, cons, func(context.Context, bus.Record) error { return nil })
 	if rec2.Key != "m2" || string(rec2.Value) != "retry" {
 		t.Fatalf("expected redelivery of m2, got %+v", rec2)
 	}
@@ -88,15 +88,15 @@ func TestRedisBus(t *testing.T) {
 
 // pollOne polls until the handler sees one record, then returns it. The handler runs
 // inside the poll so a nil return acks the record.
-func pollOne(ctx context.Context, t *testing.T, cons *bus.Consumer, handler func(bus.Record) error) bus.Record {
+func pollOne(ctx context.Context, t *testing.T, cons *bus.Consumer, handler func(context.Context, bus.Record) error) bus.Record {
 	t.Helper()
 	var got bus.Record
 	seen := false
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		if err := cons.Poll(ctx, func(r bus.Record) error {
+		if err := cons.Poll(ctx, func(rctx context.Context, r bus.Record) error {
 			got, seen = r, true
-			return handler(r)
+			return handler(rctx, r)
 		}); err != nil {
 			t.Fatalf("poll: %v", err)
 		}
