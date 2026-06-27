@@ -51,7 +51,7 @@ services:
   # `make up` stays light. Bring it up with `make up-obs`, set PULSE_TRACING_ENABLED=true
   # and PULSE_OTLP_ENDPOINT=localhost:4317, then open Grafana at http://localhost:3000.
   otel-collector:
-    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.119.0
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.154.0
     profiles: ["obs"]
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
@@ -63,7 +63,7 @@ services:
       - tempo
 
   tempo:
-    image: grafana/tempo:2.6.1
+    image: grafana/tempo:2.9.0
     profiles: ["obs"]
     command: ["-config.file=/etc/tempo/tempo.yaml"]
     volumes:
@@ -73,7 +73,7 @@ services:
       - "3200:3200" # Tempo query API (Grafana reads this)
 
   grafana:
-    image: grafana/grafana:11.4.0
+    image: grafana/grafana:13.1.0
     profiles: ["obs"]
     environment:
       # Dev only: anonymous admin, no login. Prod gates Grafana behind the ingress

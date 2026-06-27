@@ -28,7 +28,9 @@ processors:
       - name: sample-rest
         type: probabilistic
         probabilistic:
-          sampling_percentage: 10
+          # Dev keeps everything so you see your own traces. Prod samples the boring
+          # ones (the k3s values use 10%, RFC-010 section 4.5).
+          sampling_percentage: 100
   batch: {}
 
 exporters:

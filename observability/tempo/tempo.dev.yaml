@@ -18,3 +18,21 @@ storage:
       path: /var/tempo/traces
     wal:
       path: /var/tempo/wal
+
+# Metrics-generator with the local-blocks processor so TraceQL metrics queries
+# (rate(), count_over_time(), quantile_over_time()) work. These are computed inside
+# Tempo, no Prometheus needed.
+metrics_generator:
+  processor:
+    local_blocks:
+      flush_to_storage: true
+  storage:
+    path: /var/tempo/generator/wal
+  traces_storage:
+    path: /var/tempo/generator/traces
+
+# Turn the generator's local-blocks processor on for the default tenant.
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [local-blocks]
