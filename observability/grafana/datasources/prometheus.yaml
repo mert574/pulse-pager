@@ -1,0 +1,16 @@
+# Provisioned Prometheus datasource (RFC-010 section 8: provisioned as code). Backs the
+# metrics dashboards, the Service Graph (Tempo writes service-graph series here), and the
+# exemplar -> trace jump (exemplarTraceIdDestinations links an exemplar's trace_id label
+# to the Tempo datasource).
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: false
+    jsonData:
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo

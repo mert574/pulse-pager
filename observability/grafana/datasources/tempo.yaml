@@ -9,3 +9,10 @@ datasources:
     access: proxy
     url: http://tempo:3200
     isDefault: true
+    jsonData:
+      # Service Graph reads the service-graph series Tempo remote-writes to Prometheus.
+      serviceMap:
+        datasourceUid: prometheus
+      # The node graph view of a trace's services.
+      nodeGraph:
+        enabled: true

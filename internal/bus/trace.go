@@ -4,10 +4,44 @@ import (
 	"context"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 
 	"pulse/internal/obs"
 )
+
+// busTracer is the instrumentation scope for the produce/consume spans.
+const busTracer = "pulse/bus"
+
+// startProduceSpan opens a PRODUCER span around a publish. The span is active while the
+// backend injects the trace context, so the consumed message's parent is this span; that
+// producer/consumer pair is what Tempo's service-graph processor turns into a
+// service-to-service edge (RFC-010 section 4.1, 4.2). sys is the backend ("kafka"/"redis").
+func startProduceSpan(ctx context.Context, sys, topic string) (context.Context, trace.Span) {
+	return otel.Tracer(busTracer).Start(ctx, topic+" publish",
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			attribute.String("messaging.system", sys),
+			attribute.String("messaging.destination.name", topic),
+			attribute.String("messaging.operation.name", "publish"),
+		),
+	)
+}
+
+// startConsumeSpan opens a CONSUMER span around handling one record. It is a child of the
+// producer span restored from the message headers, so the handler's own span (e.g.
+// check.execute) nests under it and the service graph draws the cross-service edge.
+func startConsumeSpan(ctx context.Context, sys, topic string) (context.Context, trace.Span) {
+	return otel.Tracer(busTracer).Start(ctx, topic+" process",
+		trace.WithSpanKind(trace.SpanKindConsumer),
+		trace.WithAttributes(
+			attribute.String("messaging.system", sys),
+			attribute.String("messaging.destination.name", topic),
+			attribute.String("messaging.operation.name", "process"),
+		),
+	)
+}
 
 // injectTrace writes the W3C trace context from ctx into a flat header map using the
 // global propagator (RFC-021 section 4.3, RFC-002 section 2.4). The two backends copy

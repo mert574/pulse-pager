@@ -55,13 +55,24 @@ type consumerBackend interface {
 	close()
 }
 
-// Producer publishes messages over the configured backend.
-type Producer struct{ b producerBackend }
+// Producer publishes messages over the configured backend. sys is the backend name
+// ("kafka"/"redis"), used only to tag the produce span (RFC-010 section 4.2).
+type Producer struct {
+	b   producerBackend
+	sys string
+}
 
-// Produce synchronously publishes one message, keyed for per-key ordering, and
-// carries the context's correlation id.
+// Produce synchronously publishes one message, keyed for per-key ordering. It wraps the
+// publish in a PRODUCER span so the backend injects this span's context into the message
+// headers, which is what links the consumer's span back to here (RFC-010 section 4.2).
 func (p *Producer) Produce(ctx context.Context, topic, key string, value []byte) error {
-	return p.b.produce(ctx, topic, key, value)
+	ctx, span := startProduceSpan(ctx, p.sys, topic)
+	defer span.End()
+	err := p.b.produce(ctx, topic, key, value)
+	if err != nil {
+		span.RecordError(err)
+	}
+	return err
 }
 
 // Ping checks backend connectivity (used by /readyz).
@@ -70,15 +81,29 @@ func (p *Producer) Ping(ctx context.Context) error { return p.b.ping(ctx) }
 // Close flushes and closes the producer.
 func (p *Producer) Close() { p.b.close() }
 
-// Consumer reads from a consumer group over the configured backend.
-type Consumer struct{ b consumerBackend }
+// Consumer reads from a consumer group over the configured backend. sys is the backend
+// name ("kafka"/"redis"), used only to tag the consume span (RFC-010 section 4.2).
+type Consumer struct {
+	b   consumerBackend
+	sys string
+}
 
-// Poll fetches a batch and calls handler for each record, passing a per-record
-// context that carries the trace restored from the message headers (RFC-021
-// section 4.3). It returns on context cancellation or the first handler error; an
-// errored record is left unacked and redelivered on a later poll.
+// Poll fetches a batch and calls handler for each record, passing a per-record context
+// that carries the trace restored from the message headers (RFC-021 section 4.3). It
+// wraps each record in a CONSUMER span (a child of the restored producer span) so the
+// handler's work nests under it and the service graph draws the cross-service edge. It
+// returns on context cancellation or the first handler error; an errored record is left
+// unacked and redelivered on a later poll.
 func (c *Consumer) Poll(ctx context.Context, handler func(context.Context, Record) error) error {
-	return c.b.poll(ctx, handler)
+	return c.b.poll(ctx, func(recCtx context.Context, rec Record) error {
+		recCtx, span := startConsumeSpan(recCtx, c.sys, rec.Topic)
+		defer span.End()
+		err := handler(recCtx, rec)
+		if err != nil {
+			span.RecordError(err)
+		}
+		return err
+	})
 }
 
 // Ping checks backend connectivity (used by /readyz).
@@ -93,7 +118,7 @@ func NewKafkaProducer(brokers []string) (*Producer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Producer{b: b}, nil
+	return &Producer{b: b, sys: "kafka"}, nil
 }
 
 // NewKafkaConsumer joins the group and subscribes to the topics over Kafka.
@@ -102,7 +127,7 @@ func NewKafkaConsumer(brokers []string, group string, topics ...string) (*Consum
 	if err != nil {
 		return nil, err
 	}
-	return &Consumer{b: b}, nil
+	return &Consumer{b: b, sys: "kafka"}, nil
 }
 
 // NewRedisProducer connects a Redis Streams-backed producer to addr.
@@ -111,7 +136,7 @@ func NewRedisProducer(addr string) (*Producer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Producer{b: b}, nil
+	return &Producer{b: b, sys: "redis"}, nil
 }
 
 // NewRedisConsumer joins the group and subscribes to the topics over Redis Streams.
@@ -120,5 +145,5 @@ func NewRedisConsumer(addr, group string, topics ...string) (*Consumer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Consumer{b: b}, nil
+	return &Consumer{b: b, sys: "redis"}, nil
 }

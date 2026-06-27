@@ -1,0 +1,33 @@
+# Prometheus for local dev (RFC-010 section 2): scrape each Pulse service's /metrics
+# and receive Tempo's service-graph metrics over remote-write so Grafana's Service
+# Graph works. The service binaries run on the host (not in this compose stack), so
+# they are scraped through host.docker.internal. Prod uses the k3s Prometheus
+# (deploy/observability). Remote-write receive and exemplar storage are turned on by
+# flags in docker-compose.yml, not here.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # One target per service so each carries a clean `service` label (the runtime serves
+  # /metrics on the health addr). Targets that are not running show as down, which is
+  # fine in dev where you run only the services you are working on.
+  - job_name: pulse
+    static_configs:
+      - targets: ["host.docker.internal:9080"]
+        labels: { service: api }
+      - targets: ["host.docker.internal:9081"]
+        labels: { service: billing }
+      - targets: ["host.docker.internal:9082"]
+        labels: { service: scheduler }
+      - targets: ["host.docker.internal:9083"]
+        labels: { service: worker }
+      - targets: ["host.docker.internal:9084"]
+        labels: { service: alerting }
+      - targets: ["host.docker.internal:9085"]
+        labels: { service: notifier }
+
+  # Tempo's own metrics, including the metrics-generator health.
+  - job_name: tempo
+    static_configs:
+      - targets: ["tempo:3200"]

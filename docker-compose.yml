@@ -62,6 +62,24 @@ services:
     depends_on:
       - tempo
 
+  # Prometheus stores the per-service /metrics scrape and receives Tempo's service-graph
+  # metrics over remote-write (RFC-010 section 2). remote-write receive backs the
+  # service graph; exemplar storage backs the metric->trace exemplar links (section 2.6).
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    profiles: ["obs"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-remote-write-receiver
+      - --enable-feature=exemplar-storage
+    volumes:
+      - ./observability/prometheus/prometheus.dev.yml:/etc/prometheus/prometheus.yml:ro
+    # The service binaries run on the host; this lets Prometheus reach them.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "9090:9090"
+
   tempo:
     image: grafana/tempo:2.9.0
     profiles: ["obs"]
@@ -71,6 +89,9 @@ services:
       - tempo-data:/var/tempo
     ports:
       - "3200:3200" # Tempo query API (Grafana reads this)
+    # Tempo's metrics-generator remote-writes the service graph to Prometheus.
+    depends_on:
+      - prometheus
 
   grafana:
     image: grafana/grafana:13.1.0
@@ -87,6 +108,7 @@ services:
       - "3000:3000"
     depends_on:
       - tempo
+      - prometheus
 
 volumes:
   tempo-data:

@@ -19,20 +19,29 @@ storage:
     wal:
       path: /var/tempo/wal
 
-# Metrics-generator with the local-blocks processor so TraceQL metrics queries
-# (rate(), count_over_time(), quantile_over_time()) work. These are computed inside
-# Tempo, no Prometheus needed.
+# Metrics-generator with two processors: local-blocks so TraceQL metrics queries
+# (rate(), quantile_over_time()) work inside Tempo, and service-graphs so Grafana's
+# Service Graph has data. The service-graph metrics are remote-written to Prometheus
+# (RFC-010 section 4); local-blocks stays internal to Tempo.
 metrics_generator:
   processor:
     local_blocks:
       flush_to_storage: true
+    service_graphs: {}
   storage:
     path: /var/tempo/generator/wal
+    # Send the generated service-graph series (and their exemplars) to Prometheus.
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write
+        send_exemplars: true
   traces_storage:
     path: /var/tempo/generator/traces
+  registry:
+    external_labels:
+      source: tempo
 
-# Turn the generator's local-blocks processor on for the default tenant.
+# Turn both generator processors on for the default tenant.
 overrides:
   defaults:
     metrics_generator:
-      processors: [local-blocks]
+      processors: [local-blocks, service-graphs]
