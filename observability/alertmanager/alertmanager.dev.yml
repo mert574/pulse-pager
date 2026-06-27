@@ -1,0 +1,13 @@
+# Alertmanager for local dev (RFC-010 section 7). Dev has no real paging vendor, so every
+# alert routes to a no-op receiver: firing alerts are still visible in the Alertmanager UI
+# (http://localhost:9093) and on the SLO dashboard, just not paged out. Prod swaps the
+# receiver for PagerDuty/Slack and routes by severity (RFC-011 picks the vendor).
+route:
+  receiver: dev-null
+  group_by: ["alertname", "service"]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 1h
+
+receivers:
+  - name: dev-null

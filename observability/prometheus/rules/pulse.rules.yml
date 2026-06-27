@@ -1,0 +1,111 @@
+# Pulse recording + alerting rules (RFC-010 sections 5.3, 7). Recording rules precompute
+# the SLI p99s and the availability ratios so dashboards and burn-rate alerts read a cheap
+# series instead of recomputing quantiles each query. Alerts carry a runbook + dashboard
+# annotation so a page is actionable (RFC-010 section 7.1). Thresholds are dev-reasonable
+# and tunable; prod values come with real-volume tuning (open question 1).
+groups:
+  - name: pulse-sli-recording
+    interval: 30s
+    rules:
+      # The three pipeline latency SLIs as recorded p99s (RFC-010 section 5.2).
+      - record: pulse:dispatch_lag:p99_5m
+        expr: histogram_quantile(0.99, sum(rate(pulse_schedule_dispatch_lag_seconds_bucket[5m])) by (le))
+      - record: pulse:verdict_latency:p99_5m
+        expr: histogram_quantile(0.99, sum(rate(pulse_verdict_latency_seconds_bucket[5m])) by (le))
+      - record: pulse:notify_latency:p99_5m
+        expr: histogram_quantile(0.99, sum(rate(pulse_pipeline_notify_latency_seconds_bucket[5m])) by (le))
+      # Control-plane availability = 1 - 5xx ratio, recorded over the burn-rate windows.
+      - record: pulse:api_error_ratio:5m
+        expr: |
+          sum(rate(pulse_http_requests_total{status="5xx"}[5m]))
+            / clamp_min(sum(rate(pulse_http_requests_total[5m])), 1)
+      - record: pulse:api_error_ratio:30m
+        expr: |
+          sum(rate(pulse_http_requests_total{status="5xx"}[30m]))
+            / clamp_min(sum(rate(pulse_http_requests_total[30m])), 1)
+      - record: pulse:api_error_ratio:1h
+        expr: |
+          sum(rate(pulse_http_requests_total{status="5xx"}[1h]))
+            / clamp_min(sum(rate(pulse_http_requests_total[1h])), 1)
+      - record: pulse:api_error_ratio:6h
+        expr: |
+          sum(rate(pulse_http_requests_total{status="5xx"}[6h]))
+            / clamp_min(sum(rate(pulse_http_requests_total[6h])), 1)
+
+  - name: pulse-slo-alerts
+    rules:
+      # Latency SLOs: page when the recorded p99 stays over target. Burn-rate is for the
+      # availability ratio below; for latency a sustained-breach alert is the right shape.
+      - alert: DispatchLagSLOBreached
+        expr: pulse:dispatch_lag:p99_5m > 5
+        for: 15m
+        labels: { severity: page }
+        annotations:
+          summary: "Scheduler dispatch lag p99 over 5s SLO"
+          description: "dispatch lag p99 is {{ $value | humanizeDuration }} (SLO 5s)."
+          runbook: error-budget-burn
+          dashboard: pulse-slo
+      - alert: VerdictLatencySLOBreached
+        expr: pulse:verdict_latency:p99_5m > 5
+        for: 15m
+        labels: { severity: page }
+        annotations:
+          summary: "Alerting verdict latency p99 over 5s SLO"
+          description: "verdict latency p99 is {{ $value | humanizeDuration }} (SLO 5s)."
+          runbook: error-budget-burn
+          dashboard: pulse-slo
+      - alert: NotifyLatencySLOBreached
+        expr: pulse:notify_latency:p99_5m > 30
+        for: 15m
+        labels: { severity: page }
+        annotations:
+          summary: "End-to-end notify latency p99 over 30s SLO"
+          description: "notify latency p99 is {{ $value | humanizeDuration }} (SLO 30s)."
+          runbook: error-budget-burn
+          dashboard: pulse-slo
+      # Control-plane availability burn-rate (RFC-010 section 5.5): multi-window,
+      # multi-burn-rate against the 99.9% SLO (budget 0.001). Fast burn pages, slow burn
+      # tickets. Two windows each so a brief blip does not page.
+      - alert: ApiErrorBudgetBurnFast
+        expr: pulse:api_error_ratio:1h > (14.4 * 0.001) and pulse:api_error_ratio:5m > (14.4 * 0.001)
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "API error budget burning fast (2% in 1h)"
+          description: "5xx ratio {{ $value | humanizePercentage }} is burning the 99.9% budget fast."
+          runbook: api-errors
+          dashboard: pulse-slo
+      - alert: ApiErrorBudgetBurnSlow
+        expr: pulse:api_error_ratio:6h > (6 * 0.001) and pulse:api_error_ratio:30m > (6 * 0.001)
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: "API error budget burning slowly (5% in 6h)"
+          description: "5xx ratio {{ $value | humanizePercentage }} is eroding the 99.9% budget."
+          runbook: api-errors
+          dashboard: pulse-slo
+
+  - name: pulse-operational-alerts
+    rules:
+      # Consumer lag threatening the pipeline SLOs (RFC-010 section 7.2). Threshold is
+      # dev-reasonable; tune against real volume and the HPA reaction time.
+      - alert: ConsumerLagHigh
+        expr: max by (group) (pulse_kafka_consumer_lag) > 1000
+        for: 10m
+        labels: { severity: page }
+        annotations:
+          summary: "Consumer lag high for group {{ $labels.group }}"
+          description: "{{ $labels.group }} is {{ $value }} messages behind; threatens the pipeline SLO."
+          runbook: kafka-lag
+          dashboard: pulse-pipeline
+      # A scrape target is down (the service stopped serving). billing may be down in dev
+      # where it is not run; in prod every service is up.
+      - alert: ServiceDown
+        expr: up{job="pulse"} == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "Service {{ $labels.service }} is down"
+          description: "Prometheus cannot scrape {{ $labels.service }} ({{ $labels.instance }})."
+          runbook: service-down
+          dashboard: pulse-overview

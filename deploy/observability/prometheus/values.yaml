@@ -25,10 +25,74 @@ server:
   service:
     type: ClusterIP
 
-# Keep the install lean: only the Prometheus server. The node / kube-state metrics and
-# Alertmanager come with the SLO dashboards + alerts thread, not this slice.
+# Recording + alerting rules (RFC-010 sections 5.3, 7). The chart writes serverFiles
+# entries into the server config and its default rule_files globs alerting_rules.yml, so
+# these load automatically. Mirror of observability/prometheus/rules/pulse.rules.yml
+# (the dev source of truth); keep the two in sync.
+serverFiles:
+  alerting_rules.yml:
+    groups:
+      - name: pulse-sli-recording
+        interval: 30s
+        rules:
+          - record: pulse:dispatch_lag:p99_5m
+            expr: histogram_quantile(0.99, sum(rate(pulse_schedule_dispatch_lag_seconds_bucket[5m])) by (le))
+          - record: pulse:verdict_latency:p99_5m
+            expr: histogram_quantile(0.99, sum(rate(pulse_verdict_latency_seconds_bucket[5m])) by (le))
+          - record: pulse:notify_latency:p99_5m
+            expr: histogram_quantile(0.99, sum(rate(pulse_pipeline_notify_latency_seconds_bucket[5m])) by (le))
+          - record: pulse:api_error_ratio:5m
+            expr: sum(rate(pulse_http_requests_total{status="5xx"}[5m])) / clamp_min(sum(rate(pulse_http_requests_total[5m])), 1)
+          - record: pulse:api_error_ratio:30m
+            expr: sum(rate(pulse_http_requests_total{status="5xx"}[30m])) / clamp_min(sum(rate(pulse_http_requests_total[30m])), 1)
+          - record: pulse:api_error_ratio:1h
+            expr: sum(rate(pulse_http_requests_total{status="5xx"}[1h])) / clamp_min(sum(rate(pulse_http_requests_total[1h])), 1)
+          - record: pulse:api_error_ratio:6h
+            expr: sum(rate(pulse_http_requests_total{status="5xx"}[6h])) / clamp_min(sum(rate(pulse_http_requests_total[6h])), 1)
+      - name: pulse-slo-alerts
+        rules:
+          - alert: DispatchLagSLOBreached
+            expr: pulse:dispatch_lag:p99_5m > 5
+            for: 15m
+            labels: { severity: page }
+            annotations: { summary: "Scheduler dispatch lag p99 over 5s SLO", runbook: error-budget-burn, dashboard: pulse-slo }
+          - alert: VerdictLatencySLOBreached
+            expr: pulse:verdict_latency:p99_5m > 5
+            for: 15m
+            labels: { severity: page }
+            annotations: { summary: "Alerting verdict latency p99 over 5s SLO", runbook: error-budget-burn, dashboard: pulse-slo }
+          - alert: NotifyLatencySLOBreached
+            expr: pulse:notify_latency:p99_5m > 30
+            for: 15m
+            labels: { severity: page }
+            annotations: { summary: "End-to-end notify latency p99 over 30s SLO", runbook: error-budget-burn, dashboard: pulse-slo }
+          - alert: ApiErrorBudgetBurnFast
+            expr: pulse:api_error_ratio:1h > (14.4 * 0.001) and pulse:api_error_ratio:5m > (14.4 * 0.001)
+            for: 5m
+            labels: { severity: page }
+            annotations: { summary: "API error budget burning fast (2% in 1h)", runbook: api-errors, dashboard: pulse-slo }
+          - alert: ApiErrorBudgetBurnSlow
+            expr: pulse:api_error_ratio:6h > (6 * 0.001) and pulse:api_error_ratio:30m > (6 * 0.001)
+            for: 15m
+            labels: { severity: ticket }
+            annotations: { summary: "API error budget burning slowly (5% in 6h)", runbook: api-errors, dashboard: pulse-slo }
+      - name: pulse-operational-alerts
+        rules:
+          - alert: ConsumerLagHigh
+            expr: max by (group) (pulse_kafka_consumer_lag) > 1000
+            for: 10m
+            labels: { severity: page }
+            annotations: { summary: "Consumer lag high for group {{ $labels.group }}", runbook: kafka-lag, dashboard: pulse-pipeline }
+          - alert: ServiceDown
+            expr: up{job="pulse"} == 0
+            for: 2m
+            labels: { severity: page }
+            annotations: { summary: "Service {{ $labels.service }} is down", runbook: service-down, dashboard: pulse-overview }
+
+# Alertmanager (bundled subchart) routes the firing alerts. The chart default config is a
+# no-op receiver; prod sets the real PagerDuty/Slack routing by severity (RFC-010 7.1).
 alertmanager:
-  enabled: false
+  enabled: true
 prometheus-pushgateway:
   enabled: false
 prometheus-node-exporter:

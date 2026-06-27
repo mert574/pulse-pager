@@ -11,6 +11,9 @@ services --scrape /metrics------------------------------------------------------
 
 Trace and log join both ways in Grafana: a span links to its logs (Tempo
 `tracesToLogsV2`), and a log line links to its trace by `trace_id` (Loki derived field).
+Prometheus evaluates the recording + alerting rules (RFC-010 sections 5.3, 7) and routes
+firing alerts to the bundled Alertmanager. Grafana ships three provisioned dashboards
+(overview, pipeline end-to-end, SLO + error budget).
 
 The dev equivalent runs in docker-compose (`make up-obs`, configs in the top-level
 `observability/`). This dir is the cluster version: Helm values over the upstream charts.

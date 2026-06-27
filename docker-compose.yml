@@ -75,11 +75,26 @@ services:
       - --enable-feature=exemplar-storage
     volumes:
       - ./observability/prometheus/prometheus.dev.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/rules:/etc/prometheus/rules:ro
     # The service binaries run on the host; this lets Prometheus reach them.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
       - "9090:9090"
+    depends_on:
+      - alertmanager
+
+  # Alertmanager routes firing alerts (RFC-010 section 7). Dev routes to a no-op receiver;
+  # alerts are still visible in its UI on :9093.
+  alertmanager:
+    image: prom/alertmanager:v0.28.0
+    profiles: ["obs"]
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+    volumes:
+      - ./observability/alertmanager/alertmanager.dev.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
 
   # Loki receives the services' logs over its native OTLP endpoint (the collector
   # forwards them, RFC-010 section 3). Grafana joins a trace to its logs by trace_id.
