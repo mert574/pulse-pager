@@ -1,17 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="Pulse Pager">
-  <rect width="1200" height="630" fill="#3a2a20"/>
-  <!-- logo badge, scaled up from the 32x32 mark -->
-  <g transform="translate(110,175) scale(8.4)">
-    <rect x="2" y="2" width="28" height="28" rx="7" fill="#5b4231"/>
+  <style><![CDATA[
+    @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;800;900&family=JetBrains+Mono:wght@500&display=swap');
+    .disp { font-family: 'Archivo', Helvetica, Arial, sans-serif; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  ]]></style>
+  <!-- ink page, the broadsheet masthead palette -->
+  <rect width="1200" height="630" fill="#191309"/>
+  <!-- a brand rule down the left margin, like a dateline -->
+  <rect x="0" y="0" width="10" height="630" fill="#6b3f1f"/>
+  <!-- logo badge: squared brand tile, cream pulse, tan ping -->
+  <g transform="translate(120,200) scale(7.4)">
+    <rect x="2" y="2" width="28" height="28" fill="#6b3f1f"/>
     <path d="M6 18 H10.5 L12.5 18 L15 9 L18.5 24 L20.5 18 H26"
-          fill="none" stroke="#f7efe0" stroke-width="2.4"
+          fill="none" stroke="#f3e8d4" stroke-width="2.4"
           stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="23.5" cy="9" r="2.4" fill="#d98a4f"/>
+    <circle cx="23.5" cy="9" r="2.4" fill="#b58044"/>
   </g>
-  <text x="430" y="285" font-family="Helvetica, Arial, sans-serif" font-size="86" font-weight="700" fill="#f7efe0">Pulse Pager</text>
-  <text x="433" y="346" font-family="Helvetica, Arial, sans-serif" font-size="38" fill="#d9c9b6">Know before your customers do.</text>
-  <!-- CTA -->
-  <rect x="433" y="382" width="232" height="62" rx="31" fill="#d98a4f"/>
-  <text x="549" y="423" font-family="Helvetica, Arial, sans-serif" font-size="30" font-weight="700" fill="#3a2a20" text-anchor="middle">Start free &#8594;</text>
-  <text x="692" y="423" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#d9c9b6">pulsepager.com</text>
+  <!-- mono eyebrow -->
+  <text x="402" y="221" class="mono" font-size="21" letter-spacing="4.4" fill="#b58044">UPTIME MONITORING</text>
+  <!-- the masthead wordmark -->
+  <text x="398" y="332" class="disp" font-size="104" font-weight="900" letter-spacing="-3" fill="#f3e8d4">PULSE PAGER</text>
+  <!-- tagline -->
+  <text x="402" y="390" class="disp" font-size="33" font-weight="500" fill="#c9b89f">Know before your customers do.</text>
+  <!-- sharp CTA + url -->
+  <rect x="402" y="426" width="252" height="60" fill="#b58044"/>
+  <text x="528" y="465" class="disp" font-size="25" font-weight="800" letter-spacing="1.4" fill="#191309" text-anchor="middle">START FREE &#8594;</text>
+  <text x="690" y="465" class="mono" font-size="23" fill="#b3a68f">pulsepager.com</text>
 </svg>
