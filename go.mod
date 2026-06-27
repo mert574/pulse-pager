@@ -5,6 +5,7 @@ go 1.26.4
 require (
 	github.com/PaddleHQ/paddle-go-sdk/v5 v5.2.0
 	github.com/coreos/go-oidc/v3 v3.19.0
+	github.com/exaring/otelpgx v0.11.1
 	github.com/getkin/kin-openapi v0.140.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.10.0

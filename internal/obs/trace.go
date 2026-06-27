@@ -82,6 +82,15 @@ func SpanSetInt(ctx context.Context, key string, value int64) {
 	}
 }
 
+// AddEvent records a span event (a timestamped, log-like marker) on the active span,
+// if one is recording. Use it for notable steps inside a request so they show on the
+// trace (RFC-010). No-op when nothing is recording.
+func AddEvent(ctx context.Context, name string, attrs ...attribute.KeyValue) {
+	if s := trace.SpanFromContext(ctx); s.IsRecording() {
+		s.AddEvent(name, trace.WithAttributes(attrs...))
+	}
+}
+
 // TraceID returns the active span's trace id as a hex string, or "" if there is
 // no valid trace context. The api uses it as the correlation id so every log line
 // carries the same id as the trace (RFC-021 section 7).

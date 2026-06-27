@@ -318,7 +318,7 @@ func (b *busCheckJobPublisher) PublishCheckJob(ctx context.Context, job events.C
 // section 4.2). With tracing off the tracer is a no-op, so this just costs the
 // propagator extract.
 func chain(h http.Handler, log *slog.Logger, m *httpMetrics) http.Handler {
-	inner := recoverMW(log)(requestIDMW(routeAttrMW(m.instrument(h))))
+	inner := recoverMW(log)(requestIDMW(routeAttrMW(observeMW(log, m, h))))
 	return otelhttp.NewHandler(inner, "api.request")
 }
 
@@ -342,7 +342,8 @@ func recoverMW(log *slog.Logger) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if rec := recover(); rec != nil {
-					log.Error("panic in handler", "err", rec, "path", r.URL.Path)
+					obs.LoggerFrom(r.Context(), log).Error("panic in handler", "err", rec, "path", r.URL.Path)
+					obs.AddEvent(r.Context(), "panic", attribute.String("err", fmt.Sprint(rec)))
 					writeEnvelope(w, http.StatusInternalServerError, "internal", "internal error")
 				}
 			}()
@@ -394,14 +395,30 @@ func newHTTPMetrics(reg *prometheus.Registry) *httpMetrics {
 	return m
 }
 
-// instrument records the count, status, and latency of each request.
-func (m *httpMetrics) instrument(next http.Handler) http.Handler {
+// observeMW records the count, status, and latency of each request, and logs one
+// structured access line per request carrying the trace id (RFC-010 metrics + logs).
+// The log's correlation_id matches the trace, so a log line jumps to its trace.
+func observeMW(log *slog.Logger, m *httpMetrics, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(sw, r)
+		dur := time.Since(start)
 		m.requests.WithLabelValues(r.Method, http.StatusText(sw.status)).Inc()
-		m.latency.WithLabelValues(r.Method).Observe(time.Since(start).Seconds())
+		m.latency.WithLabelValues(r.Method).Observe(dur.Seconds())
+
+		// http.route is set by the mux during the call above; fall back to the raw
+		// path for a request that matched no route (404).
+		route := r.Pattern
+		if route == "" {
+			route = r.URL.Path
+		}
+		obs.LoggerFrom(r.Context(), log).Info("request",
+			"method", r.Method,
+			"route", route,
+			"status", sw.status,
+			"duration_ms", dur.Milliseconds(),
+		)
 	})
 }
 

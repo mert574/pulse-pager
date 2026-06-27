@@ -13,6 +13,7 @@ import (
 	"errors"
 	"strconv"
 
+	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -33,9 +34,17 @@ type Pool struct {
 	cipher secretCipher // nil = no encryption of secret columns
 }
 
-// Open dials Postgres and verifies the connection with a ping.
+// Open dials Postgres and verifies the connection with a ping. It installs the otelpgx
+// query tracer, so every query becomes a span under the caller's request span (RFC-010
+// db spans). Query parameter values are not recorded (they can carry PII, RFC-021
+// section 10). With tracing off the tracer's spans are no-ops, so it costs nothing.
 func Open(ctx context.Context, dsn string) (*Pool, error) {
-	pool, err := pgxpool.New(ctx, dsn)
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	cfg.ConnConfig.Tracer = otelpgx.NewTracer(otelpgx.WithTrimSQLInSpanName())
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
