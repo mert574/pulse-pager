@@ -371,28 +371,58 @@ func requestIDMW(next http.Handler) http.Handler {
 }
 
 // httpMetrics holds the request counter and latency histogram registered on the
-// shared registry (RFC-010 2.5: per-service SLI metrics live on the same registry).
+// shared registry (RFC-010 section 2.5.1). The labels follow the cardinality rules:
+// `route` is the templated path (never a concrete id), `status` is the family
+// (2xx/3xx/...), and `route_class` splits read vs write for the per-class SLO.
 type httpMetrics struct {
 	requests *prometheus.CounterVec
-	latency  *prometheus.HistogramVec
+	duration *prometheus.HistogramVec
 }
 
 func newHTTPMetrics(reg *prometheus.Registry) *httpMetrics {
 	m := &httpMetrics{
 		requests: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "pulse_api_http_requests_total",
-			Help: "Count of HTTP requests by method and status.",
-		}, []string{"method", "status"}),
-		latency: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "pulse_api_http_request_duration_seconds",
-			Help:    "HTTP request duration by method.",
+			Name: "pulse_http_requests_total",
+			Help: "HTTP requests by route_class, method, and status family.",
+		}, []string{"route_class", "method", "status"}),
+		duration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "pulse_http_request_duration_seconds",
+			Help:    "HTTP request duration by route, method, status family, and route_class.",
 			Buckets: prometheus.DefBuckets,
-		}, []string{"method"}),
+		}, []string{"route", "method", "status", "route_class"}),
 	}
 	if reg != nil {
-		reg.MustRegister(m.requests, m.latency)
+		reg.MustRegister(m.requests, m.duration)
 	}
 	return m
+}
+
+// statusFamily buckets a status code to its family so the metric label stays low
+// cardinality (the exact code lives on the trace span, RFC-010 section 2.4).
+func statusFamily(code int) string {
+	switch {
+	case code >= 500:
+		return "5xx"
+	case code >= 400:
+		return "4xx"
+	case code >= 300:
+		return "3xx"
+	case code >= 200:
+		return "2xx"
+	default:
+		return "1xx"
+	}
+}
+
+// routeClass splits read from write so the api latency SLO can target each separately
+// (PRD-012). Safe methods are read; everything else is write.
+func routeClass(method string) string {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return "read"
+	default:
+		return "write"
+	}
 }
 
 // observeMW records the count, status, and latency of each request, and logs one
@@ -404,15 +434,18 @@ func observeMW(log *slog.Logger, m *httpMetrics, next http.Handler) http.Handler
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(sw, r)
 		dur := time.Since(start)
-		m.requests.WithLabelValues(r.Method, http.StatusText(sw.status)).Inc()
-		m.latency.WithLabelValues(r.Method).Observe(dur.Seconds())
 
-		// http.route is set by the mux during the call above; fall back to the raw
-		// path for a request that matched no route (404).
+		// http.route is set by the mux during the call above. A request that matched no
+		// route (404) gets "unmatched" rather than the raw path, so a flood of unknown
+		// paths cannot blow up the label cardinality (RFC-010 section 2.5.1).
 		route := r.Pattern
 		if route == "" {
-			route = r.URL.Path
+			route = "unmatched"
 		}
+		family := statusFamily(sw.status)
+		class := routeClass(r.Method)
+		m.requests.WithLabelValues(class, r.Method, family).Inc()
+		obs.ObserveWithTrace(r.Context(), m.duration.WithLabelValues(route, r.Method, family, class), dur.Seconds())
 		obs.LoggerFrom(r.Context(), log).Info("request",
 			"method", r.Method,
 			"route", route,
