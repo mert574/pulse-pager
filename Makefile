@@ -55,6 +55,18 @@ up:
 down:
 	docker compose down -v
 
+# Bring up the infra plus the trace stack (collector + Tempo + Grafana, the "obs"
+# compose profile). Grafana on http://localhost:3000; set PULSE_TRACING_ENABLED=true
+# and PULSE_OTLP_ENDPOINT=localhost:4317 for the services to export (RFC-021).
+.PHONY: up-obs
+up-obs:
+	docker compose --profile obs up -d
+
+# Stop the obs stack (and infra) without wiping volumes, so the dev db survives.
+.PHONY: down-obs
+down-obs:
+	docker compose --profile obs down
+
 # Run the real api against your local infra. The app does not read .env itself, so
 # this sources it (set -a auto-exports every var it defines) before go run. Needs
 # `make up` and a populated .env (PULSE_POSTGRES_DSN etc). Serves on :8081.

@@ -5,6 +5,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -12,12 +13,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// SetupTracing wires an OpenTelemetry tracer provider. In the barebones it uses
-// the stdout exporter when enabled; when disabled it leaves the global provider
-// as the OTel default no-op, so tracing calls are cheap and harmless. The real
-// OTLP-to-collector exporter (RFC-010 section 1.3) swaps in here later without
-// touching callers. Returns a shutdown func to flush spans on exit.
-func SetupTracing(ctx context.Context, service string, enabled bool) (func(context.Context) error, error) {
+// SetupTracing wires an OpenTelemetry tracer provider. When disabled it leaves the
+// global provider as the OTel default no-op, so tracing calls are cheap and harmless.
+// When enabled it exports OTLP to the collector if otlpEndpoint is set (RFC-010
+// section 4.3), else to stdout for local dev without the collector stack. Tail
+// sampling lives at the collector, so the service exports every span it records.
+// Returns a shutdown func to flush spans on exit.
+func SetupTracing(ctx context.Context, service string, enabled bool, otlpEndpoint string) (func(context.Context) error, error) {
 	// Set the global W3C propagator up front, even when tracing is off, so trace
 	// context travels across the api edge and the bus (inject/extract are otherwise
 	// silent no-ops). With tracing off the tracer is still the no-op, so this just
@@ -30,7 +32,7 @@ func SetupTracing(ctx context.Context, service string, enabled bool) (func(conte
 		return func(context.Context) error { return nil }, nil
 	}
 
-	exp, err := stdouttrace.New(stdouttrace.WithoutTimestamps())
+	exp, err := newSpanExporter(ctx, otlpEndpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -48,6 +50,20 @@ func SetupTracing(ctx context.Context, service string, enabled bool) (func(conte
 	)
 	otel.SetTracerProvider(tp)
 	return tp.Shutdown, nil
+}
+
+// newSpanExporter builds the OTLP gRPC exporter to the collector when otlpEndpoint is
+// set, else the stdout exporter for local dev without the stack. OTLP is plaintext
+// (insecure): in dev it is localhost, and in the cluster it is in-namespace traffic to
+// the collector, both inside the trust boundary (RFC-011 section 7).
+func newSpanExporter(ctx context.Context, otlpEndpoint string) (sdktrace.SpanExporter, error) {
+	if otlpEndpoint == "" {
+		return stdouttrace.New(stdouttrace.WithoutTimestamps())
+	}
+	return otlptracegrpc.New(ctx,
+		otlptracegrpc.WithEndpoint(otlpEndpoint),
+		otlptracegrpc.WithInsecure(),
+	)
 }
 
 // SpanSetString sets a string attribute on the active span, if one is recording.

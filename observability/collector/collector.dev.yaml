@@ -1,0 +1,45 @@
+# OTel Collector for local dev (RFC-010 section 4.3): receive OTLP from the services,
+# tail-sample, export to Tempo. The prod Helm values reuse this pipeline shape; only
+# the exporter target and scale differ.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Tail sampling needs the whole trace, so it buffers until the trace completes
+  # (RFC-010 section 4.5). Keep 100% of error traces and 100% of slow ones; sample the
+  # rest. The boring-trace rate is a placeholder pending real-volume tuning (RFC-010
+  # open question 1), fine for dev where you want to see your own traces anyway.
+  tail_sampling:
+    decision_wait: 5s
+    policies:
+      - name: errors
+        type: status_code
+        status_code:
+          status_codes: [ERROR]
+      - name: slow
+        type: latency
+        latency:
+          threshold_ms: 1000
+      - name: sample-rest
+        type: probabilistic
+        probabilistic:
+          sampling_percentage: 10
+  batch: {}
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [tail_sampling, batch]
+      exporters: [otlp/tempo]

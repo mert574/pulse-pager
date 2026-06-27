@@ -1,0 +1,20 @@
+# Minimal single-binary Tempo for local dev: OTLP ingest from the collector, traces
+# on the local filesystem. Prod uses an object-store backend at scale (RFC-010 section 4,
+# storage/retention is open question 1).
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/traces
+    wal:
+      path: /var/tempo/wal

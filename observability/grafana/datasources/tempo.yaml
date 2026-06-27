@@ -1,0 +1,11 @@
+# Provisioned Tempo datasource so traces are searchable out of the box, no UI setup
+# (RFC-010 section 8: provisioned as code, the repo is the source of truth). Paste a
+# trace id from an error toast or a log line into Grafana's Tempo "Search by TraceID".
+apiVersion: 1
+datasources:
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: http://tempo:3200
+    isDefault: true

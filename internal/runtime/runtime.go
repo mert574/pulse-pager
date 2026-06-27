@@ -118,7 +118,7 @@ func (s *Service) ConnectBusConsumer(group string, topics ...string) (*bus.Consu
 // Run sets up tracing, serves the health endpoints, and blocks until a signal
 // or a fatal health-server error, then shuts everything down with a timeout.
 func (s *Service) Run(ctx context.Context) error {
-	traceShutdown, err := obs.SetupTracing(ctx, string(s.Cfg.Service), s.Cfg.TracingEnabled)
+	traceShutdown, err := obs.SetupTracing(ctx, string(s.Cfg.Service), s.Cfg.TracingEnabled, s.Cfg.OTLPEndpoint)
 	if err != nil {
 		return err
 	}

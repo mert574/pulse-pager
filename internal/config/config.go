@@ -54,6 +54,10 @@ type Config struct {
 	HealthAddr     string
 	Region         string
 	TracingEnabled bool
+	// OTLPEndpoint is the OTel collector address (host:port) spans export to when
+	// tracing is on (RFC-010 section 4.3). Empty falls back to the stdout exporter
+	// for local dev without the collector stack.
+	OTLPEndpoint string
 
 	PostgresDSN  string
 	RedisAddr    string
@@ -209,6 +213,7 @@ func Load(service Service) (*Config, error) {
 	if cfg.TracingEnabled, err = parseBool("PULSE_TRACING_ENABLED", false); err != nil {
 		return nil, err
 	}
+	cfg.OTLPEndpoint = os.Getenv("PULSE_OTLP_ENDPOINT")
 	if cfg.BlockPrivateNetworks, err = parseBool("PULSE_BLOCK_PRIVATE_NETWORKS", false); err != nil {
 		return nil, err
 	}
