@@ -98,6 +98,11 @@ type Runner struct {
 	webhooks   WebhookStore
 	webhookCfg orgWebhookConfig
 
+	// avgLatency returns a monitor's recent average latency (ms) for the alert email's
+	// "vs the 7-day average" line; nil disables it (the email shows the raw latency).
+	// Wired with WithAvgLatency so a lookup failure never blocks an alert.
+	avgLatency func(ctx context.Context, orgID, monitorID int64) (*int, error)
+
 	// metrics holds the notifier SLI metrics; always non-nil (defaulted unregistered,
 	// replaced by WithMetrics), so the record sites need no nil check.
 	metrics *metrics
@@ -155,6 +160,14 @@ func WithWebhooks(store WebhookStore) RunnerOption {
 // it the Runner keeps its unregistered default, so recording is a harmless no-op (tests).
 func WithMetrics(reg *prometheus.Registry) RunnerOption {
 	return func(r *Runner) { r.metrics = newMetrics(reg) }
+}
+
+// WithAvgLatency wires a lookup of a monitor's recent average latency, shown in the
+// alert email next to the failing check's latency. nil (the default) leaves the email
+// showing the raw latency with no comparison. The lookup runs once per dispatched
+// alert; an error is logged and skipped, never blocking delivery.
+func WithAvgLatency(f func(ctx context.Context, orgID, monitorID int64) (*int, error)) RunnerOption {
+	return func(r *Runner) { r.avgLatency = f }
 }
 
 // WithWebhookDelivery overrides the org-webhook delivery tuning (attempts, backoff,
@@ -383,6 +396,17 @@ func (r *Runner) dedup(ctx context.Context, orgID int64, dedupID string) (first 
 // outcomes. The Manager owns retry/backoff/concurrency; the recorder only watches.
 func (r *Runner) dispatch(ctx context.Context, ev events.NotifyEvent, channels []*domain.Channel) {
 	nev := r.buildEvent(ev)
+
+	// Enrich the alert email with the monitor's recent average latency, so it can show
+	// how far the failing check is off the norm. Best-effort: a lookup error or no data
+	// just leaves the raw latency, never holding up the alert.
+	if r.avgLatency != nil && nev.Check.LatencyMs != nil {
+		if avg, err := r.avgLatency(ctx, ev.OrgID, ev.MonitorID); err != nil {
+			r.log.WarnContext(ctx, "avg latency lookup failed", "err", err, "monitor", ev.MonitorID)
+		} else {
+			nev.AvgLatencyMs = avg
+		}
+	}
 
 	col := newCollector()
 	recMgr := r.recordingManager(col)

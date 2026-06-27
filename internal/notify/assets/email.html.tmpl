@@ -5,72 +5,93 @@
   bulletproof table-wrapped buttons so Outlook renders them. The logo is an inline
   cid image (see buildMessage), so nothing is fetched or blocked.
 
-  html/template escapes every {{.Field}} for its context, so user-controlled values
-  (monitor names, org names, error text) are safe. The `raw` calls emit the Outlook
-  conditional comments, which html/template would otherwise strip. The whole palette
-  lives here (this template is the presentation layer): page #ece2d2, card #fffdf9,
-  header #5b4231, cream #f7efe0, caramel #d98a4f, body #4a3526, heading #3a2a1d,
-  muted #8a7257, hairline #ece0cc, zebra #faf5ec.
+  Swiss/broadsheet look, matching the web app: an ink masthead nameplate over a
+  brand rule, hairline-ruled fact rows, mono uppercase micro-labels, a sharp-cornered
+  brand button, and a diamond colophon. Red is reserved for the "down" banner;
+  everything else is the brown brand. html/template escapes every {{.Field}} for its
+  context, so user values (monitor names, org names, error text) are safe. The `raw`
+  calls emit the Outlook conditional comments, which html/template would otherwise
+  strip. The whole palette lives here (this template is the presentation layer): page
+  #ece4d4, card #f4f0e8, ink #191309, brand #6b3f1f, tan #b58044, cream #f3e8d4, body
+  #44352a, muted #8a7257, hairline #ddd4c4.
 */ -}}
-{{- /* css-typed so html/template trusts it in the style attributes; an untyped
-       string here is filtered to the ZgotmplZ sentinel and the font is lost. Leads
-       with system-ui (the standard "OS UI font" keyword) and keeps the vendor names
-       as fallbacks for older clients. */ -}}
+{{- /* css-typed so html/template trusts these in style attributes; an untyped string
+       in a CSS context is filtered to the ZgotmplZ sentinel and the rule is dropped.
+       $font leads with system-ui (the standard "OS UI font" keyword); $mono is the
+       micro-label and colophon face, falling back through the common monospaces. */ -}}
 {{- $font := css "system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" -}}
+{{- $mono := css "'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" -}}
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head>
-<body style="margin:0;padding:0;background:#ece2d2;">
+<body style="margin:0;padding:0;background:#ece4d4;">
 {{- if .Preheader}}
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">{{.Preheader}}</div>
 {{- end}}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ece2d2;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ece4d4;">
 <tr><td align="center" style="padding:32px 16px;">
 {{raw "<!--[if mso]><table role=\"presentation\" width=\"600\" align=\"center\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tr><td><![endif]-->"}}
-<table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#fffdf9;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(58,42,29,0.08);">
-<tr><td style="background:#5b4231;padding:16px 32px;text-align:center;">
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center"><tr>
-<td style="vertical-align:middle;padding-right:12px;"><img src="{{.LogoSrc}}" width="168" height="168" alt="Pulse Pager" style="display:block;width:168px;height:168px;border:0;outline:none;"></td>
-<td style="vertical-align:middle;"><span style="font-family:{{$font}};font-size:24px;font-weight:700;letter-spacing:-0.01em;color:#f7efe0;">Pulse Pager</span></td>
+<table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#f4f0e8;border:1px solid #ddd4c4;">
+{{- /* Masthead: an ink nameplate (cream logo + wordmark) with a mono kicker, over a
+       3px brand rule that reads like a dateline rule. */ -}}
+<tr><td style="background:#191309;padding:17px 28px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+<td align="left" style="vertical-align:middle;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+<td style="vertical-align:middle;padding-right:11px;"><img src="{{.LogoSrc}}" width="40" height="40" alt="Pulse Pager" style="display:block;width:40px;height:40px;border:0;outline:none;"></td>
+<td style="vertical-align:middle;"><span style="font-family:{{$font}};font-size:19px;font-weight:800;letter-spacing:0.03em;text-transform:uppercase;color:#f3e8d4;">Pulse Pager</span></td>
+</tr></table>
+</td>
+<td align="right" style="vertical-align:middle;"><span style="font-family:{{$mono}};font-size:10px;font-weight:500;letter-spacing:0.16em;text-transform:uppercase;color:#b58044;">Uptime Monitoring</span></td>
 </tr></table>
 </td></tr>
-<tr><td style="padding:32px;">
+<tr><td style="height:3px;background:#6b3f1f;font-size:0;line-height:0;">&nbsp;</td></tr>
+{{- /* Masthead: the dominant uppercase headline on paper, set the way the app sets a
+       page title (big black Archivo-style display, hairline rule under), with the
+       status as a small eyebrow above it. This is the broadsheet signature. */ -}}
+<tr><td style="padding:28px 28px 24px;border-bottom:1px solid #ddd4c4;">
 {{- with .Banner}}
-{{- $c := "#9a5a34"}}{{- $bg := "#f6ecdd"}}
-{{- if eq .Tone "down"}}{{$c = "#c0392b"}}{{$bg = "#fbeae7"}}{{end}}
-{{- if eq .Tone "ok"}}{{$c = "#1f9254"}}{{$bg = "#e9f6ee"}}{{end}}
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;"><tr><td style="background:{{$bg | css}};border-radius:999px;padding:7px 16px;font-family:{{$font}};"><span style="color:{{$c | css}};font-size:13px;">&#9679;</span><span style="color:{{$c | css}};font-size:13px;font-weight:700;letter-spacing:0.08em;">&nbsp;{{.Label | upper}}</span></td></tr></table>
+{{- /* status eyebrow: a sharp box, mono uppercase, a colored square. brand by default,
+       red only for down, green for recovery. */ -}}
+{{- $c := "#6b3f1f"}}{{- $bg := "#efe6d6"}}{{- $br := "#cdbf9f"}}
+{{- if eq .Tone "down"}}{{$c = "#cf2a0c"}}{{$bg = "#f8e4dd"}}{{$br = "#e6b3a4"}}{{end}}
+{{- if eq .Tone "ok"}}{{$c = "#3f7a35"}}{{$bg = "#e7f0e2"}}{{$br = "#b6cdaa"}}{{end}}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 18px;"><tr><td style="background:{{$bg | css}};border:1px solid {{$br | css}};padding:7px 13px;font-family:{{$mono}};"><span style="color:{{$c | css}};font-size:11px;line-height:1;">&#9642;</span><span style="color:{{$c | css}};font-size:11px;font-weight:700;letter-spacing:0.14em;">&nbsp;{{.Label | upper}}</span></td></tr></table>
 {{- end}}
 {{- if .Heading}}
-<h1 style="margin:0 0 12px;font-family:{{$font}};font-size:22px;line-height:1.3;font-weight:700;color:#3a2a1d;">{{.Heading}}</h1>
+<h1 style="margin:0;font-family:{{$font}};font-size:42px;line-height:0.9;font-weight:900;letter-spacing:-0.035em;text-transform:uppercase;color:#191309;">{{.Heading}}</h1>
 {{- end}}
+</td></tr>
+{{- /* Body: the supporting copy, the fact ledger, and the action. */ -}}
+<tr><td style="padding:26px 28px 28px;">
 {{- if .Intro}}
-<p style="margin:0 0 20px;font-family:{{$font}};font-size:15px;line-height:1.6;color:#4a3526;">{{.Intro}}</p>
+<p style="margin:0 0 22px;font-family:{{$font}};font-size:15px;line-height:1.62;color:#44352a;">{{.Intro}}</p>
 {{- end}}
 {{- if .Rows}}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 4px;">
-{{- range $i, $r := .Rows}}
-<tr><td style="{{if odd $i}}background:#faf5ec;{{end}}padding:11px 12px;font-family:{{$font}};font-size:13px;color:#8a7257;white-space:nowrap;vertical-align:top;border-radius:6px 0 0 6px;">{{$r.Label}}</td><td style="{{if odd $i}}background:#faf5ec;{{end}}padding:11px 12px;font-family:{{$font}};font-size:14px;font-weight:500;color:#4a3526;word-break:break-word;vertical-align:top;border-radius:0 6px 6px 0;">{{$r.Value}}</td></tr>
+{{- /* fact ledger: mono uppercase label, ink value, hairline rule under each row. */ -}}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0;border-top:1px solid #ddd4c4;">
+{{- range .Rows}}
+<tr><td style="width:34%;padding:11px 14px 11px 0;border-bottom:1px solid #ddd4c4;font-family:{{$mono}};font-size:10.5px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#8a7257;white-space:nowrap;vertical-align:top;">{{.Label}}</td><td style="padding:11px 0;border-bottom:1px solid #ddd4c4;font-family:{{$font}};font-size:14px;font-weight:500;color:#191309;word-break:break-word;vertical-align:top;">{{.Value}}</td></tr>
 {{- end}}
 </table>
 {{- end}}
 {{- with .Button}}
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 4px;"><tr><td align="center" bgcolor="#5b4231" style="border-radius:10px;"><a href="{{.URL}}" target="_blank" style="display:inline-block;padding:14px 30px;font-family:{{$font}};font-size:15px;font-weight:600;line-height:1;color:#f7efe0;text-decoration:none;border-radius:10px;">{{.Label}}</a></td></tr></table>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:28px 0 4px;"><tr><td align="center" bgcolor="#6b3f1f" style="border-radius:0;"><a href="{{.URL}}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:{{$font}};font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;line-height:1;color:#f3e8d4;text-decoration:none;">{{.Label}}</a></td></tr></table>
 {{- end}}
 {{- if .Note}}
-<p style="margin:20px 0 0;font-family:{{$font}};font-size:13px;line-height:1.6;color:#8a7257;">{{.Note}}</p>
+<p style="margin:22px 0 0;font-family:{{$font}};font-size:13px;line-height:1.6;color:#8a7257;">{{.Note}}</p>
 {{- end}}
 {{- with .Callout}}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 0;"><tr><td style="background:#faf5ec;border-left:3px solid #d98a4f;border-radius:8px;padding:14px 16px;"><div style="font-family:{{$font}};font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#8a7257;margin:0 0 5px;">{{.Title}}</div><div style="font-family:{{$font}};font-size:13px;line-height:1.55;color:#4a3526;">{{.Body}}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 0;"><tr><td style="background:#ece4d4;border-left:3px solid #6b3f1f;padding:14px 16px;"><div style="font-family:{{$mono}};font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#8a7257;margin:0 0 6px;">{{.Title}}</div><div style="font-family:{{$font}};font-size:13px;line-height:1.55;color:#44352a;">{{.Body}}</div>
 {{- if and .LinkURL .LinkLabel}}
-<div style="margin-top:8px;"><a href="{{.LinkURL}}" target="_blank" style="font-family:{{$font}};font-size:13px;font-weight:600;color:#d98a4f;text-decoration:none;">{{.LinkLabel}} &rarr;</a></div>
+<div style="margin-top:9px;"><a href="{{.LinkURL}}" target="_blank" style="font-family:{{$font}};font-size:13px;font-weight:700;color:#6b3f1f;text-decoration:none;">{{.LinkLabel}} &rarr;</a></div>
 {{- end}}
 </td></tr></table>
 {{- end}}
 </td></tr>
-<tr><td style="padding:22px 32px;border-top:1px solid #ece0cc;">
+<tr><td style="padding:20px 28px 24px;border-top:1px solid #ddd4c4;">
 {{- if .Footer}}
-<p style="margin:0 0 6px;font-family:{{$font}};font-size:12px;line-height:1.5;color:#8a7257;">{{.Footer}}</p>
+<p style="margin:0 0 9px;font-family:{{$font}};font-size:12px;line-height:1.55;color:#8a7257;">{{.Footer}}</p>
 {{- end}}
-<p style="margin:0;font-family:{{$font}};font-size:12px;line-height:1.5;color:#8a7257;">Pulse Pager &middot; open-source uptime monitoring &middot; <a href="https://pulsepager.com" style="color:#d98a4f;text-decoration:none;">pulsepager.com</a></p>
+<p style="margin:0;font-family:{{$mono}};font-size:10px;letter-spacing:0.12em;text-transform:uppercase;line-height:1.7;color:#8a7257;">Pulse Pager <span style="color:#b58044;">&#9670;</span> Uptime Monitoring <span style="color:#b58044;">&#9670;</span> <a href="https://pulsepager.com" style="color:#6b3f1f;text-decoration:none;">pulsepager.com</a></p>
 </td></tr>
 </table>
 {{raw "<!--[if mso]></td></tr></table><![endif]-->"}}

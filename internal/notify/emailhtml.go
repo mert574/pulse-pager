@@ -31,14 +31,13 @@ const emailLogoCID = "pulselogo"
 //go:embed assets/email.html.tmpl
 var emailTemplateSrc string
 
-// emailTemplate is the branded shell, parsed once at startup. The funcs cover the
-// three things the template context needs: raw emits the Outlook conditional
-// comments (html/template would strip them), css passes a trusted color into a
-// style attribute, and odd zebra-stripes the fact table.
+// emailTemplate is the branded shell, parsed once at startup. The funcs cover what
+// the template context needs: raw emits the Outlook conditional comments
+// (html/template would strip them), css passes a trusted color into a style
+// attribute, and upper uppercases the status banner label.
 var emailTemplate = template.Must(template.New("email").Funcs(template.FuncMap{
 	"raw":   func(s string) template.HTML { return template.HTML(s) },
 	"css":   func(s string) template.CSS { return template.CSS(s) },
-	"odd":   func(i int) bool { return i%2 == 1 },
 	"upper": strings.ToUpper,
 }).Parse(emailTemplateSrc))
 
@@ -62,6 +61,16 @@ func channelsURL(orgID string) string {
 		return ""
 	}
 	return appBaseURL + "/orgs/" + orgID + "/channels"
+}
+
+// incidentURL is the SPA page for one incident, or "" when the base URL or either id
+// is missing (then the down alert shows no "view incident" button). The path mirrors
+// the SPA route /orgs/:orgId/incidents/:id.
+func incidentURL(orgID, incidentID int64) string {
+	if appBaseURL == "" || orgID == 0 || incidentID == 0 {
+		return ""
+	}
+	return appBaseURL + "/orgs/" + orgIDString(orgID) + "/incidents/" + strconv.FormatInt(incidentID, 10)
 }
 
 // orgIDString renders the current int64 org id as the string the email layer works

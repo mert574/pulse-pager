@@ -126,6 +126,14 @@ type EmailIntent struct {
 // it is handed, so the flow stays enumeration-safe; the notifier just sends the link.
 type MagicLinkRequested struct {
 	Email string `json:"email"`
+	// Country (a CF-IPCountry code) and UserAgent describe the request that asked for
+	// the link, captured by the api handler. The sign-in email turns them into a
+	// "requested from" / "device" section so the recipient can spot a request they did
+	// not start. Country-level only: Cloudflare gives the country free, not the city,
+	// and the origin never sees a meaningful client IP behind the proxy. Both optional;
+	// empty when not captured (older intents, no Cloudflare) and the email omits them.
+	Country   string `json:"country,omitempty"`
+	UserAgent string `json:"user_agent,omitempty"`
 }
 
 // InvitationRequested asks the notifier to mint a fresh invite token, write its hash

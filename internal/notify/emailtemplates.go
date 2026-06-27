@@ -45,16 +45,16 @@ func alertEmailHTML(ev Event) string {
 			{Label: "Monitor", Value: name},
 			{Label: "URL", Value: ev.Monitor.URL},
 			{Label: "Was down for", Value: humanDuration(dur)},
-			{Label: "Down since", Value: humanTime(ev.Incident.StartedAt)},
+			{Label: "Down since", Value: timeWithRel(ev.Incident.StartedAt, ev.SentAt)},
 		}
 		if ev.Incident.EndedAt != nil {
-			rows = append(rows, EmailRow{Label: "Recovered at", Value: humanTime(*ev.Incident.EndedAt)})
+			rows = append(rows, EmailRow{Label: "Recovered at", Value: timeWithRel(*ev.Incident.EndedAt, ev.SentAt)})
 		}
 		if ev.Check.StatusCode != nil {
-			rows = append(rows, EmailRow{Label: "Status", Value: fmt.Sprintf("HTTP %d", *ev.Check.StatusCode)})
+			rows = append(rows, EmailRow{Label: "Status", Value: httpStatusText(*ev.Check.StatusCode)})
 		}
 		if ev.Check.LatencyMs != nil {
-			rows = append(rows, EmailRow{Label: "Latency", Value: fmt.Sprintf("%dms", *ev.Check.LatencyMs)})
+			rows = append(rows, EmailRow{Label: "Latency", Value: latencyWithAvg(*ev.Check.LatencyMs, ev.AvgLatencyMs)})
 		}
 		return RenderEmailHTML(EmailContent{
 			Preheader: fmt.Sprintf("%s is back up after %s", name, humanDuration(dur)),
@@ -70,19 +70,28 @@ func alertEmailHTML(ev Event) string {
 		{Label: "Monitor", Value: name},
 		{Label: "URL", Value: ev.Monitor.URL},
 	}
-	if reason := failureReason(ev); reason != "" {
-		rows = append(rows, EmailRow{Label: "Reason", Value: reason})
+	if ev.Check.FailureReason != nil {
+		if reason := reasonText(*ev.Check.FailureReason); reason != "" {
+			rows = append(rows, EmailRow{Label: "Reason", Value: reason})
+		}
 	}
 	if ev.Check.StatusCode != nil {
-		rows = append(rows, EmailRow{Label: "Status", Value: fmt.Sprintf("HTTP %d", *ev.Check.StatusCode)})
+		rows = append(rows, EmailRow{Label: "Status", Value: httpStatusText(*ev.Check.StatusCode)})
 	}
 	if ev.Check.LatencyMs != nil {
-		rows = append(rows, EmailRow{Label: "Latency", Value: fmt.Sprintf("%dms", *ev.Check.LatencyMs)})
+		rows = append(rows, EmailRow{Label: "Latency", Value: latencyWithAvg(*ev.Check.LatencyMs, ev.AvgLatencyMs)})
 	}
 	if ev.Check.ErrorText != nil && *ev.Check.ErrorText != "" {
 		rows = append(rows, EmailRow{Label: "Error", Value: *ev.Check.ErrorText})
 	}
-	rows = append(rows, EmailRow{Label: "Down since", Value: humanTime(ev.Incident.StartedAt)})
+	rows = append(rows, EmailRow{Label: "Down since", Value: timeWithRel(ev.Incident.StartedAt, ev.SentAt)})
+
+	// Primary action: open the incident in the app. Dropped when the base URL or
+	// incident id is missing (e.g. tests), leaving just the callout link.
+	var button *EmailButton
+	if u := incidentURL(ev.OrgID, ev.Incident.ID); u != "" {
+		button = &EmailButton{Label: "View incident", URL: u}
+	}
 
 	return RenderEmailHTML(EmailContent{
 		Preheader: fmt.Sprintf("%s is down", name),
@@ -90,17 +99,9 @@ func alertEmailHTML(ev Event) string {
 		Heading:   name + " is down",
 		Intro:     "Pulse Pager just opened an incident for this monitor. Here's what we saw.",
 		Rows:      rows,
+		Button:    button,
 		Callout:   alertCallout(ev),
 	})
-}
-
-// failureReason returns just the failure reason string (no "Reason:" prefix or
-// HTTP suffix; the status code is its own row in the HTML).
-func failureReason(ev Event) string {
-	if ev.Check.FailureReason != nil {
-		return string(*ev.Check.FailureReason)
-	}
-	return ""
 }
 
 // TestEmail renders the "test message" a user sends to confirm a channel works.
@@ -185,8 +186,11 @@ func InviteEmail(orgName, inviter, role, acceptURL, locale string) (subject, tex
 
 // MagicLinkEmail renders the passwordless sign-in email, localized to the locale
 // (RFC-014). The verify URL carries the raw token and stays on its own line in the
-// text part so the login flow can read it back.
-func MagicLinkEmail(verifyURL, locale string) (subject, text, html string) {
+// text part so the login flow can read it back. country (a CF-IPCountry code) and
+// userAgent describe where the request came from; when either resolves the email shows
+// a "requested from" / "device" section so the recipient can spot a sign-in they
+// didn't start. Both empty (older intents, tests, no Cloudflare) shows no such section.
+func MagicLinkEmail(verifyURL, locale, country, userAgent string) (subject, text, html string) {
 	switch {
 	case strings.HasPrefix(locale, "de"):
 		subject = "Dein Anmeldelink fur Pulse Pager"
@@ -195,6 +199,7 @@ func MagicLinkEmail(verifyURL, locale string) (subject, text, html string) {
 			Preheader: "Dein Anmeldelink fur Pulse Pager",
 			Heading:   "Bei Pulse Pager anmelden",
 			Intro:     "Klicke auf den Button, um dich bei Pulse Pager anzumelden.",
+			Rows:      signInRows(country, userAgent, "Angefordert von", "Gerat", "Unbekannt"),
 			Button:    &EmailButton{Label: "Anmelden", URL: verifyURL},
 			Note:      "Dieser Link ist 15 Minuten gultig und kann nur einmal verwendet werden. Wenn du das nicht warst, ignoriere diese E-Mail.",
 			Footer:    "Aus Sicherheitsgrunden gib diesen Link niemals weiter.",
@@ -207,6 +212,7 @@ func MagicLinkEmail(verifyURL, locale string) (subject, text, html string) {
 			Preheader: "Tu enlace para iniciar sesion en Pulse Pager",
 			Heading:   "Inicia sesion en Pulse Pager",
 			Intro:     "Haz clic en el boton para iniciar sesion en Pulse Pager.",
+			Rows:      signInRows(country, userAgent, "Solicitado desde", "Dispositivo", "Desconocido"),
 			Button:    &EmailButton{Label: "Iniciar sesion", URL: verifyURL},
 			Note:      "Este enlace es valido durante 15 minutos y solo se puede usar una vez. Si no fuiste tu, ignora este correo.",
 			Footer:    "Por seguridad, nunca compartas este enlace con nadie.",
@@ -219,6 +225,7 @@ func MagicLinkEmail(verifyURL, locale string) (subject, text, html string) {
 		Preheader: "Your Pulse Pager sign-in link",
 		Heading:   "Sign in to Pulse Pager",
 		Intro:     "Click the button below to sign in to Pulse Pager.",
+		Rows:      signInRows(country, userAgent, "Requested from", "Device", "Unknown"),
 		Button:    &EmailButton{Label: "Sign in", URL: verifyURL},
 		Note:      "This link is valid for 15 minutes and can only be used once. If this wasn't you, you can ignore this email.",
 		Footer:    "For your security, never share this link with anyone.",

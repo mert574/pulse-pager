@@ -123,12 +123,15 @@ func buildSamples() []sample {
 	subj, text, html = notify.InviteEmail("Acme Inc", inviter, "admin", "https://app.pulsepager.com/invitations/inv_8f2c1a9b4d", "es")
 	add("06-invite-es", "Invite (ES)", subj, text, html)
 
-	// 5) Magic-link sign-in (English, German, Spanish).
-	subj, text, html = notify.MagicLinkEmail("https://app.pulsepager.com/auth/email/verify?token=ml_3a7d9e2f", "en")
+	// 5) Magic-link sign-in (English, German, Spanish). Sample request country (a
+	// CF-IPCountry code) and device so the "requested from" / "device" section shows.
+	const sampleCountry = "DE"
+	const sampleUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+	subj, text, html = notify.MagicLinkEmail("https://app.pulsepager.com/auth/email/verify?token=ml_3a7d9e2f", "en", sampleCountry, sampleUA)
 	add("07-magiclink-en", "Sign-in (EN)", subj, text, html)
-	subj, text, html = notify.MagicLinkEmail("https://app.pulsepager.com/auth/email/verify?token=ml_3a7d9e2f", "de")
+	subj, text, html = notify.MagicLinkEmail("https://app.pulsepager.com/auth/email/verify?token=ml_3a7d9e2f", "de", sampleCountry, sampleUA)
 	add("08-magiclink-de", "Sign-in (DE)", subj, text, html)
-	subj, text, html = notify.MagicLinkEmail("https://app.pulsepager.com/auth/email/verify?token=ml_3a7d9e2f", "es")
+	subj, text, html = notify.MagicLinkEmail("https://app.pulsepager.com/auth/email/verify?token=ml_3a7d9e2f", "es", sampleCountry, sampleUA)
 	add("09-magiclink-es", "Sign-in (ES)", subj, text, html)
 
 	return out
@@ -158,7 +161,8 @@ func downEvent() notify.Event {
 			StatusCode:    ptrInt(503),
 			LatencyMs:     ptrInt(842),
 		},
-		SentAt: started,
+		AvgLatencyMs: ptrInt(360),
+		SentAt:       started,
 	}
 }
 
@@ -182,6 +186,7 @@ func recoveryEvent() notify.Event {
 			StatusCode: ptrInt(200),
 			LatencyMs:  ptrInt(96),
 		},
+		AvgLatencyMs:    ptrInt(104),
 		DurationSeconds: ptrInt(900),
 		SentAt:          ended,
 	}

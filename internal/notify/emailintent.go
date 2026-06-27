@@ -121,7 +121,7 @@ func (r *EmailRunner) sendMagicLink(ctx context.Context, in events.EmailIntent) 
 	if err != nil {
 		return fmt.Errorf("mint magic link for %s: %w", p.Email, err)
 	}
-	subject, body, html := MagicLinkEmail(appBaseURL+"/auth/email/verify?token="+raw, in.Locale)
+	subject, body, html := MagicLinkEmail(appBaseURL+"/auth/email/verify?token="+raw, in.Locale, p.Country, p.UserAgent)
 	if err := r.mailer.Send(ctx, Mail{To: p.Email, From: r.fromAccount, Subject: subject, Body: body, HTML: html}); err != nil {
 		return fmt.Errorf("send magic link to %s: %w", p.Email, err)
 	}

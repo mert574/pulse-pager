@@ -67,9 +67,16 @@ func (s *Server) handleEmailStart(w http.ResponseWriter, r *http.Request) {
 	// neutrally. The key is the email (no org context for a sign-in link).
 	if s.email != nil {
 		_ = s.email.PublishEmail(r.Context(), email, events.EmailIntent{
-			Type:      events.EmailMagicLink,
-			Locale:    magicLinkLocale(r),
-			MagicLink: &events.MagicLinkRequested{Email: email},
+			Type:   events.EmailMagicLink,
+			Locale: magicLinkLocale(r),
+			MagicLink: &events.MagicLinkRequested{
+				Email: email,
+				// CF-IPCountry is the country Cloudflare resolved for the request, set on
+				// every plan including free. Empty when not behind Cloudflare (dev), and
+				// the email then omits the location line.
+				Country:   r.Header.Get("CF-IPCountry"),
+				UserAgent: r.Header.Get("User-Agent"),
+			},
 		})
 	}
 

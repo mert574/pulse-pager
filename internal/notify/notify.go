@@ -30,7 +30,11 @@ type Event struct {
 	Incident        domain.Incident
 	Check           domain.CheckResult
 	DurationSeconds *int // set on recovery only
-	SentAt          time.Time
+	// AvgLatencyMs is the monitor's recent (7-day) average latency, set by the Runner
+	// when an avg-latency lookup is wired (WithAvgLatency). nil when unknown; the
+	// email then shows the raw latency with no comparison. Email-only enrichment.
+	AvgLatencyMs *int
+	SentAt       time.Time
 	// Test marks a "send test message" delivery. Providers render a clearly
 	// labelled test instead of a real down/recovery message.
 	Test bool

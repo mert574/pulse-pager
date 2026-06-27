@@ -413,6 +413,27 @@ func (p *Pool) ListResults(ctx context.Context, orgID, monitorID int64, since ti
 	return out, nil
 }
 
+// AvgLatencyMs returns a monitor's average latency in ms over its recent healthy
+// checks (the last 7 days), or nil when there are none to average. The notifier shows
+// it in the alert email so the reader sees how far the failing check's latency is off
+// the norm. Org-scoped, via WithOrg.
+func (p *Pool) AvgLatencyMs(ctx context.Context, orgID, monitorID int64) (*int, error) {
+	var avg *int
+	err := p.WithOrg(ctx, orgID, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
+			SELECT round(avg(latency_ms))::int
+			FROM check_results
+			WHERE monitor_id = $1 AND org_id = $2
+				AND healthy AND latency_ms IS NOT NULL
+				AND checked_at > now() - interval '7 days'`,
+			monitorID, orgID).Scan(&avg)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return avg, nil
+}
+
 // ListIncidents returns one monitor's incidents newest-first, paged by a cursor (the
 // started_at to read before). limit caps the page. Org-scoped, via WithOrg.
 func (p *Pool) ListIncidents(ctx context.Context, orgID, monitorID int64, before *time.Time, limit int) ([]*domain.Incident, error) {

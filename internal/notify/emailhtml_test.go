@@ -68,8 +68,9 @@ func TestAlertEmailHasTextAndHTML(t *testing.T) {
 	if !strings.Contains(text, "Down since:") || !strings.Contains(text, "Reason:") {
 		t.Errorf("text part missing facts:\n%s", text)
 	}
-	// HTML part is the branded card.
-	for _, want := range []string{"Prod API health is down", "status_mismatch", "HTTP 503", "DOWN"} {
+	// HTML part is the branded card: the reason reads in plain words and the status
+	// carries its meaning, not the raw enum / bare code.
+	for _, want := range []string{"Prod API health is down", "Unexpected status code", "HTTP 503 Service Unavailable", "DOWN"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("html missing %q", want)
 		}
@@ -168,12 +169,16 @@ func TestInviteAndMagicLinkKeepURLInText(t *testing.T) {
 		t.Errorf("invite html missing inviter:\n%s", html)
 	}
 
-	_, mtext, mhtml := MagicLinkEmail("https://app.test/auth/email/verify?token=tok456", "en")
+	_, mtext, mhtml := MagicLinkEmail("https://app.test/auth/email/verify?token=tok456", "en", "DE", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/124.0 Safari/537.36")
 	if !strings.Contains(mtext, "https://app.test/auth/email/verify?token=tok456\n") {
 		t.Errorf("magic-link text dropped the verify URL:\n%s", mtext)
 	}
 	if !strings.Contains(mhtml, "Sign in") {
 		t.Error("magic-link html missing CTA")
+	}
+	// the request-context section shows the resolved country and a readable device
+	if !strings.Contains(mhtml, "Germany") || !strings.Contains(mhtml, "Chrome on macOS") {
+		t.Errorf("magic-link html missing the request location section:\n%s", mhtml)
 	}
 }
 
@@ -186,7 +191,7 @@ func TestNoEmailRendersZgotmplZ(t *testing.T) {
 	_, _, rec := AlertEmail(recoveryEvent())
 	_, _, test := TestEmail("Ops", "the Team email channel works", 42)
 	_, _, inv := InviteEmail("Acme", "Jane (jane@acme.com)", "admin", "https://app.test/invitations/t", "en")
-	_, _, magic := MagicLinkEmail("https://app.test/auth/email/verify?token=t", "en")
+	_, _, magic := MagicLinkEmail("https://app.test/auth/email/verify?token=t", "en", "US", "Mozilla/5.0 (X11; Linux x86_64) Firefox/126.0")
 	for name, html := range map[string]string{
 		"down": down, "recovery": rec, "test": test, "invite": inv, "magic-link": magic,
 	} {
