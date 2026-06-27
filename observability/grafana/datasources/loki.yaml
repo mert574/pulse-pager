@@ -1,0 +1,20 @@
+# Provisioned Loki datasource (RFC-010 section 8). The derived field turns the trace_id
+# carried on each log line into a link straight to the Tempo trace, so logs -> trace is
+# one click (trace -> logs is wired on the Tempo datasource via tracesToLogsV2).
+apiVersion: 1
+datasources:
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: false
+    jsonData:
+      derivedFields:
+        - name: trace_id
+          # trace_id arrives as structured metadata from the OTLP ingest path.
+          matcherType: label
+          matcherRegex: trace_id
+          datasourceUid: tempo
+          url: "${__value.raw}"
+          urlDisplayLabel: "View trace"

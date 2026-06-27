@@ -16,3 +16,12 @@ datasources:
       # The node graph view of a trace's services.
       nodeGraph:
         enabled: true
+      # Jump from a span to its logs in Loki, filtered to the same trace.
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+        filterByTraceID: true
+        tags:
+          - key: service.name
+            value: service_name

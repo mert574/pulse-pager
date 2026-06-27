@@ -6,6 +6,7 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -194,9 +195,18 @@ func (s *Service) Run(ctx context.Context) error {
 	}
 	s.AddCloser(traceShutdown)
 
+	// Ship logs over OTLP to the collector -> Loki, gated on the same flag/endpoint as
+	// tracing (RFC-010 section 3). Off => stdout only.
+	logShutdown, err := obs.SetupLogging(ctx, string(s.Cfg.Service), s.Cfg.TracingEnabled, s.Cfg.OTLPEndpoint)
+	if err != nil {
+		return err
+	}
+	s.AddCloser(logShutdown)
+
 	h := obs.NewHealthServer(s.Cfg.HealthAddr, s.Reg, s.checks...)
 	errc := h.Start()
-	s.Log.Info("service started", "health_addr", s.Cfg.HealthAddr, "region", s.Cfg.Region)
+	s.Log.Info(fmt.Sprintf("%s started: health/metrics on %s, region %s", s.Cfg.Service, s.Cfg.HealthAddr, s.Cfg.Region),
+		"health_addr", s.Cfg.HealthAddr, "region", s.Cfg.Region)
 
 	sigctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()

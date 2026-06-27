@@ -38,6 +38,11 @@ exporters:
     endpoint: tempo:4317
     tls:
       insecure: true
+  # Loki ingests OTLP natively at /otlp/v1/logs; otlphttp appends /v1/logs to this.
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
 
 service:
   pipelines:
@@ -45,3 +50,9 @@ service:
       receivers: [otlp]
       processors: [tail_sampling, batch]
       exporters: [otlp/tempo]
+    # Logs are not sampled (RFC-010 section 3): every line is kept, joined to its trace
+    # by trace_id. The services push logs over the same OTLP endpoint as traces.
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/loki]

@@ -1,0 +1,48 @@
+# Loki for the k3s cluster, values over the grafana/loki chart in single-binary mode.
+# Receives logs over its native OTLP endpoint (the collector forwards them, RFC-010
+# section 3); Grafana joins a trace to its logs by trace_id. Filesystem storage on a PVC;
+# prod at scale moves to an object store (RFC-010 open question 1). Mirrors the dev
+# compose Loki (observability/loki/loki.dev.yaml).
+fullnameOverride: pulse-loki
+
+deploymentMode: SingleBinary
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 10Gi
+
+# Single-node mode: no microservices targets, no caches, no multi-AZ.
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  schemaConfig:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  storage:
+    type: filesystem
+  limits_config:
+    # OTLP ingestion writes the resource/scope/log attributes as structured metadata.
+    allow_structured_metadata: true
+    volume_enabled: true
+
+# Don't deploy the chart's bundled gateway/canary; the collector talks to the
+# single-binary Service directly and Grafana queries it in-cluster.
+gateway:
+  enabled: false
+lokiCanary:
+  enabled: false
+test:
+  enabled: false

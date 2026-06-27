@@ -61,6 +61,7 @@ services:
       - "4318:4318" # OTLP HTTP
     depends_on:
       - tempo
+      - loki
 
   # Prometheus stores the per-service /metrics scrape and receives Tempo's service-graph
   # metrics over remote-write (RFC-010 section 2). remote-write receive backs the
@@ -79,6 +80,18 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "9090:9090"
+
+  # Loki receives the services' logs over its native OTLP endpoint (the collector
+  # forwards them, RFC-010 section 3). Grafana joins a trace to its logs by trace_id.
+  loki:
+    image: grafana/loki:3.3.2
+    profiles: ["obs"]
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./observability/loki/loki.dev.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100" # Loki HTTP (push + query)
 
   tempo:
     image: grafana/tempo:2.9.0
@@ -124,3 +137,4 @@ services:
 
 volumes:
   tempo-data:
+  loki-data:

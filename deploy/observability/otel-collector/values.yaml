@@ -69,11 +69,21 @@ config:
       endpoint: pulse-tempo.pulse-system.svc.cluster.local:4317
       tls:
         insecure: true
+    # Loki ingests OTLP natively at /otlp/v1/logs; otlphttp appends /v1/logs.
+    otlphttp/loki:
+      endpoint: http://pulse-loki.pulse-system.svc.cluster.local:3100/otlp
+      tls:
+        insecure: true
   service:
     pipelines:
-      logs: null
       metrics: null
       traces:
         receivers: [otlp]
         processors: [memory_limiter, tail_sampling, batch]
         exporters: [otlp/tempo]
+      # Logs are not sampled: every line kept, joined to its trace by trace_id (RFC-010
+      # section 3). Services push logs over the same OTLP endpoint as traces.
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlphttp/loki]

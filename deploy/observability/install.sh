@@ -22,6 +22,9 @@ helm upgrade --install pulse-prometheus prometheus-community/prometheus --versio
 helm upgrade --install pulse-tempo grafana/tempo --version 1.24.4 \
   -n "$NS" --create-namespace -f "$DIR/tempo/values.yaml"
 
+helm upgrade --install pulse-loki grafana/loki --version 6.24.0 \
+  -n "$NS" --create-namespace -f "$DIR/loki/values.yaml"
+
 helm upgrade --install pulse-otel-collector open-telemetry/opentelemetry-collector --version 0.159.1 \
   -n "$NS" --create-namespace -f "$DIR/otel-collector/values.yaml"
 

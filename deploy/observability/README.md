@@ -1,12 +1,16 @@
-# Observability stack (k3s) — trace + metrics pipeline
+# Observability stack (k3s) — trace + metrics + logs pipeline
 
-In-cluster trace + metrics pipeline for the k3s cluster (RFC-011 / RFC-010):
+In-cluster trace + metrics + logs pipeline for the k3s cluster (RFC-011 / RFC-010):
 
 ```
-services --OTLP--> otel-collector (tail sampling) --OTLP--> Tempo --service graph--> Prometheus
-services --scrape /metrics------------------------------------------------------->  Prometheus
-                                                                  Tempo, Prometheus <-- Grafana
+services --OTLP traces--> otel-collector (tail sampling) --OTLP--> Tempo --service graph--> Prometheus
+services --OTLP logs----> otel-collector ----------------> Loki (OTLP ingest)
+services --scrape /metrics------------------------------------------------------>  Prometheus
+                                                           Tempo, Prometheus, Loki <-- Grafana
 ```
+
+Trace and log join both ways in Grafana: a span links to its logs (Tempo
+`tracesToLogsV2`), and a log line links to its trace by `trace_id` (Loki derived field).
 
 The dev equivalent runs in docker-compose (`make up-obs`, configs in the top-level
 `observability/`). This dir is the cluster version: Helm values over the upstream charts.
@@ -21,6 +25,7 @@ target is k3s (lightweight, CNCF-conformant), so standard Helm and manifests app
 | Prometheus | `prometheus-community/prometheus` | 27.5.1 |
 | Collector | `open-telemetry/opentelemetry-collector` | 0.159.1 |
 | Tempo | `grafana/tempo` (single binary) | 1.24.4 |
+| Loki | `grafana/loki` (single binary) | 6.24.0 |
 | Grafana | `grafana/grafana` | 10.5.15 |
 
 The Prometheus chart version is a best guess; confirm it against
@@ -34,10 +39,10 @@ helm repo add grafana https://grafana.github.io/helm-charts
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
 
-./install.sh        # idempotent: namespace + the four helm upgrade --install
+./install.sh        # idempotent: namespace + the five helm upgrade --install
 ```
 
-`install.sh` creates the `pulse-system` namespace and installs all four with the values
+`install.sh` creates the `pulse-system` namespace and installs all five with the values
 files here. Re-run it to apply changes.
 
 ## Point the services at the collector

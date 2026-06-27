@@ -56,6 +56,15 @@ datasources:
             datasourceUid: prometheus
           nodeGraph:
             enabled: true
+          # Jump from a span to its logs in Loki, filtered to the same trace.
+          tracesToLogsV2:
+            datasourceUid: loki
+            spanStartTimeShift: "-5m"
+            spanEndTimeShift: "5m"
+            filterByTraceID: true
+            tags:
+              - key: service.name
+                value: service_name
       - name: Prometheus
         type: prometheus
         uid: prometheus
@@ -67,3 +76,18 @@ datasources:
           exemplarTraceIdDestinations:
             - name: trace_id
               datasourceUid: tempo
+      - name: Loki
+        type: loki
+        uid: loki
+        access: proxy
+        url: http://pulse-loki.pulse-system.svc.cluster.local:3100
+        isDefault: false
+        jsonData:
+          # Each log line carries its trace_id as structured metadata; link it to Tempo.
+          derivedFields:
+            - name: trace_id
+              matcherType: label
+              matcherRegex: trace_id
+              datasourceUid: tempo
+              url: "${__value.raw}"
+              urlDisplayLabel: "View trace"

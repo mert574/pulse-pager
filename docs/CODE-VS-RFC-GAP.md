@@ -142,12 +142,17 @@ The reuse map is the part of the plan the code actually supports today. The rest
   Collector + Tempo + Prometheus + Grafana.
 - RFC-010: `/metrics` per service, Prometheus client, OTel traces over Kafka headers, Loki
   logs, the committed SLOs and dashboards.
-- Still pending: the Loki logs pillar (the trace-id <-> log join), the SLO dashboards and
-  Alertmanager rules, and the §2.4 common infra metrics (kafka consumer lag, db/redis pool
-  gauges, DLQ counter, `pulse_up`). A few §2.5 metrics wait on unbuilt features: SSRF-block
-  and notification-retry counters (need a hook in checker / the notify Manager),
-  `pulse_coverage_degraded_total` (multi-region verdict), and the scheduler leader/rebuild
-  metrics (no leader election yet).
+- Logs pillar built: every service ships its slog lines over OTLP (the otelslog bridge ->
+  the collector -> Loki), carrying `trace_id` as structured metadata, so a log links to its
+  trace and a span links to its logs in Grafana, both ways. Only `service_name` is a Loki
+  index label (cardinality discipline); per-check detail is debug, business events
+  (incident opened/closed, notification delivered) are info. Dev (`observability/`) and k3s
+  (`deploy/observability/`) both run Collector + Tempo + Prometheus + Loki + Grafana.
+- Still pending: the SLO dashboards (beyond the starter overview board) and the
+  Alertmanager rules, the §2.4 DLQ counter (no DLQ yet), and a few §2.5 metrics that wait
+  on unbuilt features: SSRF-block and notification-retry counters (need a hook in checker /
+  the notify Manager), `pulse_coverage_degraded_total` (multi-region verdict), and the
+  scheduler leader/rebuild metrics (no leader election yet).
 
 ### 14. Deployment: single binary vs Kubernetes multi-region
 
