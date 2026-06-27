@@ -226,7 +226,7 @@ func NewRunner(mgr *Manager, registry *Registry, store Store, cache DedupCache, 
 // loop: poll, handle, and commit-after-process (a returned error leaves the offset
 // uncommitted so the event redelivers, kept safe by the dedup id).
 func (r *Runner) Run(ctx context.Context) error {
-	r.log.Info("notifier started")
+	r.log.Info("notifier started, consuming notify.events")
 	for {
 		if ctx.Err() != nil {
 			return nil
@@ -284,7 +284,8 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) (err error) {
 	}
 	if !first {
 		r.metrics.dedupSuppressions.WithLabelValues(ev.EventType).Inc()
-		r.log.Info("notify event already handled, skipping", "monitor", ev.MonitorID, "type", ev.EventType, "dedup", dedupID)
+		r.log.InfoContext(ctx, fmt.Sprintf("skipping duplicate %s notification for monitor %d", ev.EventType, ev.MonitorID),
+			"monitor", ev.MonitorID, "type", ev.EventType, "dedup", dedupID)
 		return nil
 	}
 
@@ -299,10 +300,15 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) (err error) {
 	if len(channels) == 0 {
 		// Zero-channel monitor is a supported no-op success for the per-channel path
 		// (RFC-007 3.3, PRD-003 AC4), but org webhooks are org-level and still fire.
-		r.log.Info("notify event for monitor with no channels, nothing to send to channels", "monitor", ev.MonitorID, "type", ev.EventType)
+		r.log.InfoContext(ctx, fmt.Sprintf("%s notification for monitor %d: no channels attached", ev.EventType, ev.MonitorID),
+			"monitor", ev.MonitorID, "type", ev.EventType)
 	} else {
 		r.dispatch(ctx, ev, channels)
 		obs.AddEvent(ctx, "notify.delivered")
+		// Business event at info, ctx-carried so it joins to the trace (RFC-010 §3).
+		r.log.InfoContext(ctx, fmt.Sprintf("delivered %s notification for monitor %d to %d channel(s)", ev.EventType, ev.MonitorID, len(channels)),
+			"monitor", ev.MonitorID, "incident", ev.IncidentID, "type", ev.EventType,
+			"channels", len(channels))
 		// End-to-end notify SLI (RFC-010 section 2.5.5 / section 5): the triggering
 		// check's checked_at to our outbound send returning, with the trace id as an
 		// exemplar. Recorded only when we actually delivered to channels. v1 includes the
@@ -416,8 +422,9 @@ func (r *Runner) dispatch(ctx context.Context, ev events.NotifyEvent, channels [
 			r.log.Warn("record delivery outcome", "err", err, "channel", ch.ID, "incident", ev.IncidentID)
 		}
 		if res.err != nil {
-			r.log.Warn("notify delivery failed", "channel", ch.ID, "type", ch.Type,
-				"incident", ev.IncidentID, "attempts", res.attempts, "err", res.err)
+			r.log.WarnContext(ctx, fmt.Sprintf("delivery failed: channel %d (%s) for monitor %d after %d attempt(s): %v",
+				ch.ID, ch.Type, ev.MonitorID, res.attempts, res.err),
+				"channel", ch.ID, "type", ch.Type, "incident", ev.IncidentID, "attempts", res.attempts, "err", res.err)
 		}
 	}
 }

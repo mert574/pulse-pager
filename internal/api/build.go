@@ -195,6 +195,8 @@ func Build(ctx context.Context, d Deps) (*Server, http.Handler, error) {
 		Billing: billingProvider,
 		// Audit: emits audit.events for operator billing actions (nil when no producer).
 		Audit: auditPub,
+		// Log: records control-plane business events (monitor/channel/member changes, logins).
+		Log: d.Log,
 	})
 
 	handler := chain(srv.Router(), d.Log, newHTTPMetrics(d.Reg))
@@ -342,7 +344,7 @@ func recoverMW(log *slog.Logger) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if rec := recover(); rec != nil {
-					obs.LoggerFrom(r.Context(), log).Error("panic in handler", "err", rec, "path", r.URL.Path)
+					obs.LoggerFrom(r.Context(), log).ErrorContext(r.Context(), "panic in handler", "err", rec, "path", r.URL.Path)
 					obs.AddEvent(r.Context(), "panic", attribute.String("err", fmt.Sprint(rec)))
 					writeEnvelope(w, http.StatusInternalServerError, "internal", "internal error")
 				}
@@ -446,7 +448,17 @@ func observeMW(log *slog.Logger, m *httpMetrics, next http.Handler) http.Handler
 		class := routeClass(r.Method)
 		m.requests.WithLabelValues(class, r.Method, family).Inc()
 		obs.ObserveWithTrace(r.Context(), m.duration.WithLabelValues(route, r.Method, family, class), dur.Seconds())
-		obs.LoggerFrom(r.Context(), log).Info("request",
+		// The request line for the message. r.Pattern already includes the method ("GET
+		// /x"); for an unmatched route fall back to method + actual path.
+		reqLine := r.Pattern
+		if reqLine == "" {
+			reqLine = r.Method + " " + r.URL.Path
+		}
+		// InfoContext so the OTLP log bridge stamps the request's trace_id and the access
+		// line joins to its trace in Grafana (RFC-010 section 3). The message reads like an
+		// access line on its own; the facts are also fields for querying.
+		obs.LoggerFrom(r.Context(), log).InfoContext(r.Context(),
+			fmt.Sprintf("%s -> %d in %dms", reqLine, sw.status, dur.Milliseconds()),
 			"method", r.Method,
 			"route", route,
 			"status", sw.status,

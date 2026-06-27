@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -51,6 +52,7 @@ func (s *Server) handleDevLogin(w http.ResponseWriter, r *http.Request) {
 		writeEnvelope(w, http.StatusInternalServerError, "internal", "could not issue session")
 		return
 	}
+	s.log.InfoContext(r.Context(), fmt.Sprintf("dev login: %s (user %d)", email, userID), "user", userID, "email", email, "method", "dev")
 	w.WriteHeader(http.StatusNoContent)
 }
 

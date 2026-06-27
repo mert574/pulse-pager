@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -108,6 +109,8 @@ func (s *Server) CreateChannel(ctx context.Context, req apigen.CreateChannelRequ
 	if err := s.store.CreateChannel(ctx, ch, s.registry.SecretKeys); err != nil {
 		return nil, err
 	}
+	s.log.InfoContext(ctx, fmt.Sprintf("channel created: %d \"%s\" (%s)", ch.ID, ch.Name, ch.Type),
+		"channel", ch.ID, "type", ch.Type, "org", p.OrgID, "user", p.UserID)
 	return apigen.CreateChannel201JSONResponse(s.channelDTO(ch)), nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -104,6 +105,8 @@ func (s *Server) CreateAPIKey(ctx context.Context, req apigen.CreateAPIKeyReques
 	if err != nil {
 		return nil, err
 	}
+	s.log.InfoContext(ctx, fmt.Sprintf("api key created: %d \"%s\" (%s)", k.ID, name, role),
+		"api_key", k.ID, "role", role, "org", p.OrgID, "user", p.UserID)
 	return apigen.CreateAPIKey201JSONResponse(apigen.APIKeyCreated{
 		Key:    apiKeyDTO(stored),
 		Secret: secret,

@@ -355,6 +355,8 @@ func (s *Server) CreateInvitation(ctx context.Context, req apigen.CreateInvitati
 	}
 	inv.State = domain.InvitePending
 	s.publishInviteEmail(ctx, inv, org.Name)
+	s.log.InfoContext(ctx, fmt.Sprintf("member invited: %s as %s to org %d", email, role, p.OrgID),
+		"email", email, "role", role, "org", p.OrgID, "user", p.UserID)
 	return apigen.CreateInvitation201JSONResponse(invitationDTO(inv)), nil
 }
 

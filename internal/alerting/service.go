@@ -18,6 +18,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"time"
@@ -113,7 +114,7 @@ func newMetrics(reg *prometheus.Registry) *metrics {
 // the handler returns an error to leave the offset uncommitted for redelivery, so
 // a Postgres blip retries cleanly (RFC-006 section 10). Mirrors worker.Runner.
 func (r *Runner) Run(ctx context.Context) error {
-	r.log.Info("alerting started")
+	r.log.Info("alerting started, consuming check.results")
 	for {
 		if ctx.Err() != nil {
 			return nil
@@ -173,7 +174,7 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) (err error) {
 	m, err := r.store.GetMonitor(ctx, res.OrgID, res.MonitorID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			r.log.Warn("monitor gone, dropping result", "monitor", res.MonitorID)
+			r.log.WarnContext(ctx, fmt.Sprintf("monitor %d gone, dropping result", res.MonitorID), "monitor", res.MonitorID)
 			return nil
 		}
 		return err
@@ -187,7 +188,7 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) (err error) {
 	state, err := r.store.GetAlertState(ctx, m.OrgID, m.ID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			r.log.Warn("monitor gone, dropping result", "monitor", res.MonitorID)
+			r.log.WarnContext(ctx, fmt.Sprintf("monitor %d gone, dropping result", res.MonitorID), "monitor", res.MonitorID)
 			return nil
 		}
 		return err
@@ -224,11 +225,24 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) (err error) {
 		case ActionOpenIncident:
 			obs.AddEvent(ctx, "incident.opened")
 			r.metrics.incidentsOpened.WithLabelValues(verdict.Region).Inc()
+			// A new incident is a warn (something is down), ctx-carried so it joins to
+			// the trace (RFC-010 §3).
+			reason := ""
+			if verdict.FailureReason != nil {
+				reason = string(*verdict.FailureReason)
+			}
+			r.log.WarnContext(ctx, fmt.Sprintf("incident OPENED: monitor %d \"%s\" down from %s (%s)",
+				m.ID, m.Name, verdict.Region, reason),
+				"monitor", m.ID, "incident", applied.Incident.ID, "region", verdict.Region, "reason", reason)
 		case ActionCloseIncident:
 			obs.AddEvent(ctx, "incident.closed")
 			// The alerting consume path only closes on recovery; disabled/manual closes
 			// happen on the api side (RFC-006). So this path is always "recovered".
 			r.metrics.incidentsClosed.WithLabelValues(verdict.Region, string(domain.CloseRecovered)).Inc()
+			r.log.InfoContext(ctx, fmt.Sprintf("incident closed: monitor %d \"%s\" recovered from %s",
+				m.ID, m.Name, verdict.Region),
+				"monitor", m.ID, "incident", applied.Incident.ID, "region", verdict.Region,
+				"reason", string(domain.CloseRecovered))
 		}
 	}
 
@@ -238,8 +252,11 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) (err error) {
 		r.emit(ctx, m, applied.Incident, verdict, decision.Notify.Type, decision.Notify.WarnDays)
 	}
 
-	r.log.Info("result applied",
-		"monitor", m.ID, "healthy", verdict.Healthy,
+	// Per-result verdict at debug (the incident open/close events above are the info-level
+	// signal). ctx-carried so it joins to the trace (RFC-010 §3).
+	r.log.DebugContext(ctx, fmt.Sprintf("verdict: monitor %d %s from %s",
+		m.ID, healthyWord(verdict.Healthy), verdict.Region),
+		"monitor", m.ID, "healthy", verdict.Healthy, "region", verdict.Region,
 		"action", decision.Action, "applied", applied.Applied)
 	return nil
 }
@@ -295,6 +312,14 @@ func (r *Runner) emit(ctx context.Context, m *domain.Monitor, inc *domain.Incide
 	if err := r.prod.Produce(ctx, bus.TopicNotifyEvents, strconv.FormatInt(m.ID, 10), payload); err != nil {
 		r.log.Warn("emit notify event", "err", err, "monitor", m.ID)
 	}
+}
+
+// healthyWord renders a verdict for a log message.
+func healthyWord(healthy bool) string {
+	if healthy {
+		return "healthy"
+	}
+	return "unhealthy"
 }
 
 // dedupKey is hex(sha256(incident_id ":" event_type[":" warnDays])), stable per

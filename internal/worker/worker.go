@@ -11,6 +11,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"time"
@@ -124,7 +125,7 @@ func resultLabel(r *domain.CheckResult) string {
 
 // Run consumes jobs until the context is cancelled.
 func (r *Runner) Run(ctx context.Context) error {
-	r.log.Info("worker started", "region", r.region)
+	r.log.Info(fmt.Sprintf("worker started, running checks for region %s", r.region), "region", r.region)
 	for {
 		if ctx.Err() != nil {
 			return nil
@@ -225,9 +226,20 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) (err error) {
 		}
 	}
 
-	r.log.Info("check done",
-		"monitor", result.MonitorID, "region", result.Region,
-		"healthy", result.Healthy, "reason", reasonStr(result.FailureReason))
+	// Descriptive, self-contained message (the body reads on its own in stdout and Loki),
+	// with the facts also as fields for querying. InfoContext so the OTLP bridge stamps
+	// the check's trace_id (RFC-010 section 3). A failed check is a warn with the reason.
+	if result.Healthy {
+		r.log.InfoContext(ctx, fmt.Sprintf("check ok: monitor %d (%s) from %s -> %d in %dms",
+			m.ID, m.URL, job.Region, statusInt(result.StatusCode), latencyMs(result)),
+			"monitor", m.ID, "region", job.Region, "status", statusInt(result.StatusCode),
+			"latency_ms", latencyMs(result), "url", m.URL)
+	} else {
+		r.log.WarnContext(ctx, fmt.Sprintf("check failed: monitor %d (%s) from %s -> %s",
+			m.ID, m.URL, job.Region, reasonStr(result.FailureReason)),
+			"monitor", m.ID, "region", job.Region, "reason", reasonStr(result.FailureReason),
+			"status", statusInt(result.StatusCode), "url", m.URL)
+	}
 	return nil
 }
 
@@ -278,6 +290,23 @@ func reasonStr(r *domain.FailureReason) string {
 		return ""
 	}
 	return string(*r)
+}
+
+// statusInt unwraps a *int status code for a log attribute, or 0 when there is none
+// (connection error / timeout / blocked).
+func statusInt(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
+// latencyMs unwraps the check latency for a log attribute, or 0 when there is none.
+func latencyMs(r *domain.CheckResult) int {
+	if r.LatencyMs == nil {
+		return 0
+	}
+	return *r.LatencyMs
 }
 
 // reasonLabel is the failure_reason metric label: the reason string, or "none" when the

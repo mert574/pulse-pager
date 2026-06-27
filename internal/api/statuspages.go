@@ -144,6 +144,8 @@ func (s *Server) CreateStatusPage(ctx context.Context, req apigen.CreateStatusPa
 	if err != nil {
 		return nil, err
 	}
+	s.log.InfoContext(ctx, fmt.Sprintf("status page created: %d \"%s\" (/%s)", created.ID, created.Name, created.Slug),
+		"status_page", created.ID, "slug", created.Slug, "org", p.OrgID, "user", p.UserID)
 	return apigen.CreateStatusPage201JSONResponse(statusPageDTO(full, savedEntries)), nil
 }
 

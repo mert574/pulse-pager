@@ -15,6 +15,7 @@ package api
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -128,6 +129,10 @@ type Server struct {
 	// audit emits audit.events for operator billing actions (RFC-018 8). Nil skips the
 	// emit (dev/test without a bus); the action still happens.
 	audit AuditPublisher
+
+	// log records control-plane business events (monitor/channel/member changes, logins)
+	// with the request's trace id. Defaults to slog.Default() when nil.
+	log *slog.Logger
 }
 
 // EmailPublisher publishes a transactional email intent onto email.events for the
@@ -184,6 +189,8 @@ type Config struct {
 	Billing billing.Provider
 	// Audit emits audit.events for operator billing actions. Optional; nil skips it.
 	Audit AuditPublisher
+	// Log records control-plane business events; defaults to slog.Default() when nil.
+	Log *slog.Logger
 }
 
 // New builds the identity API server.
@@ -236,7 +243,16 @@ func New(cfg Config) *Server {
 		cfAccess:       cfg.CFAccess,
 		billing:        cfg.Billing,
 		audit:          cfg.Audit,
+		log:            logOrDefault(cfg.Log),
 	}
+}
+
+// logOrDefault returns l, or the slog default when nil, so handlers can always log.
+func logOrDefault(l *slog.Logger) *slog.Logger {
+	if l == nil {
+		return slog.Default()
+	}
+	return l
 }
 
 // --- StrictServerInterface: account / me ---

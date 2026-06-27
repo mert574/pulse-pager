@@ -157,6 +157,8 @@ func (s *Server) CreateMonitor(ctx context.Context, req apigen.CreateMonitorRequ
 		return nil, err
 	}
 	s.publishChanged(ctx, p.OrgID, m.ID)
+	s.log.InfoContext(ctx, fmt.Sprintf("monitor created: %d \"%s\" %s", m.ID, m.Name, m.URL),
+		"monitor", m.ID, "org", p.OrgID, "user", p.UserID, "enabled", m.Enabled)
 	// No synchronous first check here: the scheduler dispatches a brand-new (never
 	// checked) enabled monitor on its next tick (internal/scheduler dispatchDue), so it
 	// gets checked right away through the normal pipeline, and the per-region live state
@@ -216,6 +218,8 @@ func (s *Server) UpdateMonitor(ctx context.Context, req apigen.UpdateMonitorRequ
 		return nil, err
 	}
 	s.publishChanged(ctx, p.OrgID, updated.ID)
+	s.log.InfoContext(ctx, fmt.Sprintf("monitor updated: %d \"%s\" %s", updated.ID, updated.Name, updated.URL),
+		"monitor", updated.ID, "org", p.OrgID, "user", p.UserID, "enabled", updated.Enabled)
 	return apigen.UpdateMonitor200JSONResponse(monitorDTO(updated)), nil
 }
 
@@ -238,6 +242,7 @@ func (s *Server) DeleteMonitor(ctx context.Context, req apigen.DeleteMonitorRequ
 		return nil, err
 	}
 	s.publishChanged(ctx, p.OrgID, id)
+	s.log.InfoContext(ctx, fmt.Sprintf("monitor deleted: %d", id), "monitor", id, "org", p.OrgID, "user", p.UserID)
 	return apigen.DeleteMonitor204Response{}, nil
 }
 

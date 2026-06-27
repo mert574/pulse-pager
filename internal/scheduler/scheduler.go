@@ -96,7 +96,7 @@ func newMetrics(reg *prometheus.Registry) *metrics {
 func (d *Dispatcher) Run(ctx context.Context) error {
 	t := time.NewTicker(d.tick)
 	defer t.Stop()
-	d.log.Info("scheduler started", "tick", d.tick.String())
+	d.log.Info(fmt.Sprintf("scheduler started, scanning for due monitors every %s", d.tick), "tick", d.tick.String())
 	for {
 		select {
 		case <-ctx.Done():
@@ -219,4 +219,6 @@ func (d *Dispatcher) dispatch(ctx context.Context, m *domain.Monitor, dispatched
 			}
 		}
 	}
+	d.log.InfoContext(ctx, fmt.Sprintf("dispatched monitor %d to %v (every %ds)", m.ID, regions, m.IntervalSeconds),
+		"monitor", m.ID, "regions", regions, "lag_seconds", lag)
 }
