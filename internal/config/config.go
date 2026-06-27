@@ -198,7 +198,7 @@ func Load(service Service) (*Config, error) {
 	cfg := &Config{
 		Service:    service,
 		LogLevel:   withDefault("PULSE_LOG_LEVEL", "info"),
-		HealthAddr: withDefault("PULSE_HEALTH_ADDR", ":8080"),
+		HealthAddr: withDefault("PULSE_HEALTH_ADDR", ":9080"),
 		Region:     withDefault("PULSE_REGION", region.Default),
 	}
 	// Fail closed on an unknown region: a worker set to a region no plan or topic
@@ -301,7 +301,7 @@ func Load(service Service) (*Config, error) {
 func loadBilling() (BillingConfig, error) {
 	bc := BillingConfig{
 		Provider:     withDefault("PULSE_BILLING_PROVIDER", "stub"),
-		Addr:         withDefault("PULSE_BILLING_ADDR", ":8082"),
+		Addr:         withDefault("PULSE_BILLING_ADDR", ":8081"),
 		PaddleAPIKey: os.Getenv("PULSE_PADDLE_API_KEY"),
 	}
 	bc.APIBase = paddleAPIBase(bc.PaddleAPIKey)

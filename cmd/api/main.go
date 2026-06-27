@@ -71,7 +71,7 @@ func main() {
 
 	apiAddr := os.Getenv("PULSE_API_ADDR")
 	if apiAddr == "" {
-		apiAddr = ":8081"
+		apiAddr = ":8080"
 	}
 	apiSrv := &http.Server{
 		Addr:              apiAddr,

@@ -83,7 +83,7 @@ an already-initialized one. Day-to-day schema changes go through goose migration
 (forward-only, never drops data), and `make migrate-create name=<snake_case>` scaffolds
 a new one. To wipe a dev db and start clean, `make reset` then `make schema`.
 
-Run the control-plane API (`make run` sources `.env` and serves on `:8081`):
+Run the control-plane API (`make run` sources `.env` and serves on `:8080`):
 
 ```sh
 make run
@@ -93,14 +93,14 @@ make run
 Run the check pipeline (each service on its own health port):
 
 ```sh
-PULSE_HEALTH_ADDR=:8082 go run ./cmd/scheduler
-PULSE_HEALTH_ADDR=:8083 PULSE_REGION=home go run ./cmd/worker
-PULSE_HEALTH_ADDR=:8084 go run ./cmd/alerting
-PULSE_HEALTH_ADDR=:8085 go run ./cmd/notifier
+PULSE_HEALTH_ADDR=:9082 go run ./cmd/scheduler
+PULSE_HEALTH_ADDR=:9083 go run ./cmd/worker
+PULSE_HEALTH_ADDR=:9084 go run ./cmd/alerting
+PULSE_HEALTH_ADDR=:9085 go run ./cmd/notifier
 ```
 
 For multi-region, run another worker with a different `PULSE_REGION` (for example
-`eu-west`) on its own port. It consumes that region's jobs from
+`us-west`) on its own port. It consumes that region's jobs from
 `check.jobs.<region>`, so adding a region to a monitor starts checking from it
 with no redeploy.
 
@@ -110,9 +110,9 @@ The services talk over Kafka by default. For a single node with no broker, set
 Check a service is up:
 
 ```sh
-curl -s localhost:8080/healthz   # -> ok
-curl -s localhost:8080/readyz    # -> {"status":"ready"} once Postgres/Redis/Kafka are reachable
-curl -s localhost:8080/metrics   # Prometheus metrics
+curl -s localhost:9080/healthz   # -> ok
+curl -s localhost:9080/readyz    # -> {"status":"ready"} once Postgres/Redis/Kafka are reachable
+curl -s localhost:9080/metrics   # Prometheus metrics
 ```
 
 Shut infra down (with volumes):
@@ -127,9 +127,9 @@ The Lit SPA lives in `web/`. Two easy ways to browse it without setting up OAuth
 
 ```sh
 # Option A: dev-auth stub. Self-contained fake session + sample data, no infra.
-make dev   # serves on :8081 to match the SPA dev-server proxy
+make dev   # serves on :8080 to match the SPA dev-server proxy
 
-# the SPA dev server, which proxies /api, /auth, /healthz to :8081
+# the SPA dev server, which proxies /api, /auth to :8080 and /healthz to :9080
 cd web && npm install && npm run dev   # http://localhost:5173
 ```
 

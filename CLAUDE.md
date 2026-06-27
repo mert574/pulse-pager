@@ -44,7 +44,9 @@ no quick "drop everything" command for a real database by design.
 Run one Go test: `go test ./internal/api/ -run TestName -v`
 Run one integration test: `go test -tags integration -run TestName ./test/integration/`
 
-Frontend (in `web/`): `npm run dev` (Vite on :5173, proxies /api,/auth,/healthz to :8080), `npm test` (web-test-runner), `npm run typecheck`, `npm run build`.
+Frontend (in `web/`): `npm run dev` (Vite on :5173, proxies /api,/auth to the api on :8080 and /healthz to the health server on :9080), `npm test` (web-test-runner), `npm run typecheck`, `npm run build`.
+
+Service ports (canonical): app ports default `:8080` (api 8080, billing 8081), health/metrics default `:9080` (api 9080, billing 9081, scheduler 9082, worker 9083, alerting 9084, notifier 9085). Defaults are uniform (8080/9080) so any one service runs without overrides; override `PULSE_API_ADDR` / `PULSE_BILLING_ADDR` / `PULSE_HEALTH_ADDR` per service to run several on one host.
 
 ### Integration tests need colima socket overrides
 

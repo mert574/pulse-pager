@@ -35,9 +35,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": { target: "http://localhost:8081", changeOrigin: false },
-      "/auth": { target: "http://localhost:8081", changeOrigin: false },
-      "/healthz": { target: "http://localhost:8081", changeOrigin: false },
+      "/api": { target: "http://localhost:8080", changeOrigin: false },
+      "/auth": { target: "http://localhost:8080", changeOrigin: false },
+      // /healthz is served by the health/metrics server, not the api app port.
+      "/healthz": { target: "http://localhost:9080", changeOrigin: false },
       // Browser spans (RFC-021 phase 2) export here; forward to the OTel collector's
       // OTLP/HTTP receiver so it stays same-origin (no CORS) in dev.
       "/v1/traces": { target: "http://localhost:4318", changeOrigin: true },
