@@ -21,28 +21,24 @@
   <meta name="twitter:description" content="How to authenticate to the Pulse Pager API with a role-scoped API key.">
   <meta name="twitter:image" content="https://pulsepager.com/assets/og.png">
   <link rel="stylesheet" href="../assets/styles.css">
+  <script src="../assets/site.js"></script>
   <link rel="icon" type="image/svg+xml" href="../assets/logo.svg" media="(prefers-color-scheme: light)">
   <link rel="icon" type="image/svg+xml" href="../assets/logo-dark.svg" media="(prefers-color-scheme: dark)">
 </head>
 <body>
-  <nav class="nav">
-    <div class="nav-inner">
-      <a class="nav-brand" href="../"><img class="logo" src="../assets/logo.svg" alt="" width="22" height="22">Pulse Pager</a>
-      <input type="checkbox" id="nav-toggle" class="nav-toggle" hidden>
-      <label for="nav-toggle" class="nav-burger" aria-label="Toggle menu"><span></span><span></span><span></span></label>
-      <div class="nav-links">
-        <a href="../">Overview</a>
-        <a href="../api.html">API reference</a>
-        <a class="active" href="./authentication.html">Authentication</a>
-        <a href="../pricing.html">Pricing</a>
-        <a href="https://github.com/mert574/pulse-pager">GitHub</a>
-        <a href="https://app.pulsepager.com">Sign in</a>
+  <pulse-header active="auth" base="../"></pulse-header>
+
+  <div class="masthead">
+    <div class="wrap">
+      <div>
+        <p class="eyebrow">Developer guide</p>
+        <h1 class="h1">Authentication</h1>
       </div>
     </div>
-  </nav>
+  </div>
 
-  <div class="container">
-    <h1>Authentication</h1>
+  <div class="container wrap">
+   <div class="prose">
     <p class="lead">
       The Pulse Pager REST API authenticates with per-org, role-scoped API keys. A key belongs to one
       org and can do exactly what its role can do, never more.
@@ -142,16 +138,10 @@
       Read the full set of operations and schemas in the
       <a href="../api.html">API reference</a>.
     </p>
+   </div>
   </div>
 
-  <footer>
-    Pulse Pager docs &middot; <a href="../api.html">API reference</a> &middot;
-    <a href="../pricing.html">Pricing</a> &middot;
-    <a href="../terms.html">Terms</a> &middot;
-    <a href="../privacy.html">Privacy</a> &middot;
-    <a href="../refund.html">Refunds</a> &middot;
-    <a href="mailto:hi@pulsepager.com">Contact</a>
-  </footer>
+  <pulse-footer base="../"></pulse-footer>
   <!-- Simple Analytics (cookieless; collect-dnt=true counts Do-Not-Track visitors too) -->
   <script data-collect-dnt="true" async src="https://scripts.simpleanalyticscdn.com/latest.js"></script>
   <noscript><img src="https://queue.simpleanalyticscdn.com/noscript.gif?collect-dnt=true" alt="" referrerpolicy="no-referrer-when-downgrade"/></noscript>

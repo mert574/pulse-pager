@@ -21,6 +21,7 @@
   <meta name="twitter:description" content="The Pulse Pager REST API reference, generated from the OpenAPI 3 spec.">
   <meta name="twitter:image" content="https://pulsepager.com/assets/og.png">
   <link rel="stylesheet" href="./assets/styles.css">
+  <script src="./assets/site.js"></script>
   <link rel="icon" type="image/svg+xml" href="./assets/logo.svg" media="(prefers-color-scheme: light)">
   <link rel="icon" type="image/svg+xml" href="./assets/logo-dark.svg" media="(prefers-color-scheme: dark)">
   <style>
@@ -29,21 +30,16 @@
   </style>
 </head>
 <body>
-  <nav class="nav">
-    <div class="nav-inner">
-      <a class="nav-brand" href="./"><img class="logo" src="./assets/logo.svg" alt="" width="22" height="22">Pulse Pager</a>
-      <input type="checkbox" id="nav-toggle" class="nav-toggle" hidden>
-      <label for="nav-toggle" class="nav-burger" aria-label="Toggle menu"><span></span><span></span><span></span></label>
-      <div class="nav-links">
-        <a href="./">Overview</a>
-        <a class="active" href="./api.html">API reference</a>
-        <a href="./guides/authentication.html">Authentication</a>
-        <a href="./pricing.html">Pricing</a>
-        <a href="https://github.com/mert574/pulse-pager">GitHub</a>
-        <a href="https://app.pulsepager.com">Sign in</a>
+  <pulse-header active="api" base="./"></pulse-header>
+
+  <div class="masthead">
+    <div class="wrap">
+      <div>
+        <p class="eyebrow">Built from api/openapi/v1.yaml</p>
+        <h1 class="h1">API reference</h1>
       </div>
     </div>
-  </nav>
+  </div>
 
   <!--
     Redoc renders the reference in the browser from the local spec copy.
@@ -52,15 +48,7 @@
     external dependency and is used at view time only.
   -->
   <div id="redoc-host"></div>
-  <footer>
-    Pulse Pager docs &middot; <a href="https://github.com/mert574/pulse-pager">GitHub</a> &middot;
-    <a href="./">Overview</a> &middot;
-    <a href="./pricing.html">Pricing</a> &middot;
-    <a href="./terms.html">Terms</a> &middot;
-    <a href="./privacy.html">Privacy</a> &middot;
-    <a href="./refund.html">Refunds</a> &middot;
-    <a href="mailto:hi@pulsepager.com">Contact</a>
-  </footer>
+  <pulse-footer base="./"></pulse-footer>
   <script src="https://cdn.redocly.com/redoc/latest/bundles/redoc.standalone.js"></script>
   <script>
     // Theme Redoc to match the site's caramellatte palette so the menu and badges

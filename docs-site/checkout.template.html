@@ -7,13 +7,14 @@
   <!-- A transient checkout page reached via Paddle's _ptxn link; never index it. -->
   <meta name="robots" content="noindex,nofollow">
   <link rel="stylesheet" href="./assets/styles.css">
+  <script src="./assets/site.js"></script>
   <link rel="icon" type="image/svg+xml" href="./assets/logo.svg" media="(prefers-color-scheme: light)">
   <link rel="icon" type="image/svg+xml" href="./assets/logo-dark.svg" media="(prefers-color-scheme: dark)">
 </head>
 <body>
-  <div class="container checkout-page">
-    <a class="nav-brand" href="./"><img class="logo" src="./assets/logo.svg" alt="" width="22" height="22">{{PROJECT_NAME}}</a>
-    <h1>Complete your purchase</h1>
+  <div class="checkout-page">
+    <a class="brand" href="./"><span class="sq"></span>{{PROJECT_NAME}}</a>
+    <h1 class="h1" style="font-size:32px;margin:1rem 0 1.5rem">Complete your purchase</h1>
 
     <!-- Paddle renders the inline checkout (line items, totals, payment form) here. -->
     <div class="checkout-container"></div>

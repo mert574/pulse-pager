@@ -8,26 +8,24 @@
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="{{SITE_URL}}/terms.html">
   <link rel="stylesheet" href="./assets/styles.css">
+  <script src="./assets/site.js"></script>
   <link rel="icon" type="image/svg+xml" href="./assets/logo.svg" media="(prefers-color-scheme: light)">
   <link rel="icon" type="image/svg+xml" href="./assets/logo-dark.svg" media="(prefers-color-scheme: dark)">
 </head>
 <body>
-  <nav class="nav">
-    <div class="nav-inner">
-      <a class="nav-brand" href="{{SITE_URL}}"><img class="logo" src="./assets/logo.svg" alt="" width="22" height="22">{{PROJECT_NAME}}</a>
-      <div class="nav-links">
-        <a href="./pricing.html">Pricing</a>
-        <a class="active" href="./terms.html">Terms</a>
-        <a href="./privacy.html">Privacy</a>
-        <a href="./refund.html">Refunds</a>
+  <pulse-header base="./"></pulse-header>
+
+  <div class="masthead">
+    <div class="wrap">
+      <div>
+        <p class="eyebrow">Last updated {{EFFECTIVE_DATE}}</p>
+        <h1 class="h1">Terms of Service</h1>
       </div>
     </div>
-  </nav>
+  </div>
 
-  <div class="container">
-    <h1>Terms of Service</h1>
-    <p>Last updated: {{EFFECTIVE_DATE}}</p>
-
+  <div class="container wrap">
+   <div class="prose">
     <p>
       These terms are a binding agreement between you and {{SELLER_NAME}} ("we", "us"),
       the operator of {{PROJECT_NAME}} (the "Service"), a hosted uptime-monitoring
@@ -127,15 +125,10 @@
     <p>
       Questions about these terms: <a href="mailto:{{CONTACT_EMAIL}}">{{CONTACT_EMAIL}}</a>.
     </p>
+   </div>
   </div>
 
-  <footer>
-    {{PROJECT_NAME}} &middot;
-    <a href="./terms.html">Terms</a> &middot;
-    <a href="./privacy.html">Privacy</a> &middot;
-    <a href="./refund.html">Refunds</a> &middot;
-    <a href="mailto:{{CONTACT_EMAIL}}">Contact</a>
-  </footer>
+  <pulse-footer base="./"></pulse-footer>
   <script data-collect-dnt="true" async src="https://scripts.simpleanalyticscdn.com/latest.js"></script>
   <noscript><img src="https://queue.simpleanalyticscdn.com/noscript.gif?collect-dnt=true" alt="" referrerpolicy="no-referrer-when-downgrade"/></noscript>
 </body>

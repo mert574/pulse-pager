@@ -21,28 +21,23 @@
   <meta name="twitter:description" content="Pulse Pager Cloud pricing: Free to Custom plans priced by check frequency, with monitors, regions, retention, status pages, API and SSO. Self-host free.">
   <meta name="twitter:image" content="https://pulsepager.com/assets/og.png">
   <link rel="stylesheet" href="./assets/styles.css">
+  <script src="./assets/site.js"></script>
   <link rel="icon" type="image/svg+xml" href="./assets/logo.svg" media="(prefers-color-scheme: light)">
   <link rel="icon" type="image/svg+xml" href="./assets/logo-dark.svg" media="(prefers-color-scheme: dark)">
 </head>
 <body>
-  <nav class="nav">
-    <div class="nav-inner">
-      <a class="nav-brand" href="./"><img class="logo" src="./assets/logo.svg" alt="" width="22" height="22">Pulse Pager</a>
-      <input type="checkbox" id="nav-toggle" class="nav-toggle" hidden>
-      <label for="nav-toggle" class="nav-burger" aria-label="Toggle menu"><span></span><span></span><span></span></label>
-      <div class="nav-links">
-        <a href="./">Overview</a>
-        <a href="./api.html">API reference</a>
-        <a href="./guides/authentication.html">Authentication</a>
-        <a class="active" href="./pricing.html">Pricing</a>
-        <a href="https://github.com/mert574/pulse-pager">GitHub</a>
-        <a href="https://app.pulsepager.com">Sign in</a>
+  <pulse-header active="pricing" base="./"></pulse-header>
+
+  <div class="masthead">
+    <div class="wrap">
+      <div>
+        <p class="eyebrow">Pulse Pager Cloud</p>
+        <h1 class="h1">Cloud pricing</h1>
       </div>
     </div>
-  </nav>
+  </div>
 
-  <div class="container">
-    <h1>Cloud pricing</h1>
+  <div class="container wrap">
     <p class="lead">
       These plans are for Pulse Pager Cloud, our managed hosting. Pulse Pager is open source, so you
       can also <a href="https://github.com/mert574/pulse-pager">self-host it for free</a> with no plan at all.
@@ -176,15 +171,7 @@
     </p>
   </div>
 
-  <footer>
-    Pulse Pager docs &middot; <a href="https://github.com/mert574/pulse-pager">GitHub</a> &middot;
-    <a href="./api.html">API reference</a> &middot;
-    <a href="./">Overview</a> &middot;
-    <a href="./terms.html">Terms</a> &middot;
-    <a href="./privacy.html">Privacy</a> &middot;
-    <a href="./refund.html">Refunds</a> &middot;
-    <a href="mailto:hi@pulsepager.com">Contact</a>
-  </footer>
+  <pulse-footer base="./"></pulse-footer>
   <!-- Simple Analytics (cookieless; collect-dnt=true counts Do-Not-Track visitors too) -->
   <script data-collect-dnt="true" async src="https://scripts.simpleanalyticscdn.com/latest.js"></script>
   <noscript><img src="https://queue.simpleanalyticscdn.com/noscript.gif?collect-dnt=true" alt="" referrerpolicy="no-referrer-when-downgrade"/></noscript>

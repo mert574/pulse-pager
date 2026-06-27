@@ -1,17 +1,57 @@
-/* Light theme matching the app's daisyUI "caramellatte" palette (web/src/styles/app.css):
-   warm cream surfaces, warm-brown text, black primary, caramel accent. Values are the
-   theme's own tokens (daisyui/theme/caramellatte.css). */
+/* Pulse Pager docs site design system.
+
+   The "Swiss" editorial look: warm cream paper, near-black ink, Archivo for the
+   big display type, Inter for body, JetBrains Mono for labels and code. It is the
+   same language as the app's sample dashboard, adapted from a sidebar app shell to
+   a normal top-nav docs site (folio strip, sticky top nav, broadsheet masthead,
+   colophon footer). Light and dark are both first-class.
+
+   The shared chrome (folio, nav, footer) is rendered by the <pulse-header> and
+   <pulse-footer> web components in site.js, so pages do not repeat that markup;
+   this file styles those plus the page-level pieces (masthead, cards, tables,
+   plans, prose). */
+
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* Design tokens. Light is the default; dark is applied two ways: automatically by
+   the OS preference (unless the visitor forced light), and explicitly when the
+   theme toggle sets .theme-dark on <html>. The dark values are the same numbers in
+   all three blocks. */
 :root {
-  --bg: oklch(98% 0.016 73.684);          /* base-100 */
-  --bg-soft: oklch(95% 0.038 75.164);     /* base-200 */
-  --border: oklch(90% 0.076 70.697);      /* base-300 */
-  --text: oklch(40% 0.123 38.172);        /* base-content */
-  --text-dim: oklch(52% 0.07 48);         /* dimmed base-content */
-  --primary: oklch(0% 0 0);               /* primary (black) */
-  --primary-content: oklch(100% 0 0);     /* primary-content (white) */
-  --accent: oklch(46.44% 0.111 37.85);    /* accent (caramel) */
-  --code-bg: oklch(95% 0.038 75.164);     /* base-200 */
-  --max-width: 980px;
+  --bg:#f4f0e8; --paper:#ece4d4; --ink:#191309; --ink2:#5d5142; --ink3:#988a76;
+  --line:#191309; --hair:#ddd4c4;
+  --brand:#6b3f1f; --tan:#b58044; --cream:#f3e8d4;
+  --red:#cf2a0c;            /* reserved for "down" / destructive only */
+  --up:#3f7a35; --deg:#aa7008;
+  --tex:rgba(107,63,31,.07);
+  --folio-bg:var(--ink); --folio-fg:var(--bg);
+
+  --pad:clamp(20px, 5vw, 40px);
+  --maxw:1120px;
+  --font-disp:Archivo, 'Helvetica Neue', Arial, sans-serif;
+  --font-body:Inter, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.theme-light) {
+    --bg:#161514; --paper:#201e1b; --ink:#f1e8d7; --ink2:#b3a68f; --ink3:#7d7160;
+    --line:#f1e8d7; --hair:#302c27;
+    --brand:#c98a4e; --tan:#d9a567; --cream:#161514;
+    --red:#ff4f30;
+    --up:#52b85f; --deg:#dca33a;
+    --tex:rgba(217,165,103,.09);
+    --folio-bg:#221f1b; --folio-fg:var(--ink2);
+  }
+}
+:root.theme-dark {
+  --bg:#161514; --paper:#201e1b; --ink:#f1e8d7; --ink2:#b3a68f; --ink3:#7d7160;
+  --line:#f1e8d7; --hair:#302c27;
+  --brand:#c98a4e; --tan:#d9a567; --cream:#161514;
+  --red:#ff4f30;
+  --up:#52b85f; --deg:#dca33a;
+  --tex:rgba(217,165,103,.09);
+  --folio-bg:#221f1b; --folio-fg:var(--ink2);
 }
 
 * { box-sizing: border-box; }
@@ -20,309 +60,500 @@ html { scroll-behavior: smooth; }
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background: var(--bg);
-  color: var(--text);
-  line-height: 1.6;
+  color: var(--ink);
+  font-family: var(--font-body);
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
 }
 
-a { color: var(--accent); text-decoration: underline; }
-a:hover { opacity: 0.8; }
+.disp { font-family: var(--font-disp); }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-code, pre {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+a { color: var(--brand); text-decoration: underline; text-underline-offset: 2px; }
+a:hover { opacity: 0.78; }
+
+/* A shared centered measure so the chrome and content line up at every width. */
+.wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--pad); }
+
+/* ----------------------------------------------------------------------------
+   Folio: the dark dateline strip at the very top, with a slow brand marquee.
+---------------------------------------------------------------------------- */
+.folio {
+  background: var(--folio-bg);
+  color: var(--folio-fg);
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  white-space: nowrap;
 }
-
-code {
-  background: var(--code-bg);
-  padding: 0.15em 0.4em;
-  border-radius: 4px;
-  font-size: 0.9em;
+.folio .track {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: 9px 0;
+  animation: marq 105s linear infinite;
 }
+.folio .track b { font-weight: 500; padding: 0 44px; }
+.folio .track i { font-style: normal; width: 5px; height: 5px; background: var(--tan); transform: rotate(45deg); flex: none; }
+@keyframes marq { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) { .folio .track { animation: none; } }
 
-pre {
-  background: var(--code-bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 1rem 1.2rem;
-  overflow-x: auto;
-  font-size: 0.88rem;
-}
-
-pre code { background: none; padding: 0; }
-
-/* Top nav */
-.nav {
+/* ----------------------------------------------------------------------------
+   Top nav: brand left, section links and actions right. Sticky so it stays put
+   while the folio scrolls away above it.
+---------------------------------------------------------------------------- */
+.topbar {
   position: sticky;
   top: 0;
-  z-index: 10;
-  background: oklch(98% 0.016 73.684 / 0.85);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border);
+  z-index: 20;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
 }
-.nav-inner {
-  max-width: var(--max-width);
-  margin: 0 auto;
+.topbar-inner {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  padding: 0.85rem 1.2rem;
+  gap: 22px;
+  min-height: 62px;
+  padding-top: 10px;
+  padding-bottom: 10px;
 }
-.nav-brand {
-  font-weight: 700;
-  font-size: 1.1rem;
-  color: #5b4231; /* matches the dark coffee logo badge */
+.brand {
+  font-family: var(--font-disp);
+  font-weight: 900;
+  font-size: 18px;
+  letter-spacing: -.04em;
+  text-transform: uppercase;
+  color: var(--ink);
   text-decoration: none;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 10px;
+  flex: none;
 }
-.nav-brand .logo {
-  width: 22px; height: 22px; display: block; flex: none;
-}
-.nav-links { display: flex; gap: 1.2rem; margin-left: auto; flex-wrap: wrap; }
-.nav-links a { color: var(--text-dim); font-size: 0.95rem; text-decoration: none; }
-.nav-links a:hover { opacity: 1; }
-.nav-links a:hover, .nav-links a.active { color: var(--text); text-decoration: none; }
+.brand:hover { opacity: 1; }
+.brand .sq { width: 14px; height: 14px; background: var(--brand); flex: none; }
 
-/* Layout */
-.container {
-  max-width: var(--max-width);
-  margin: 0 auto;
-  padding: 2.5rem 1.2rem 4rem;
-}
-
-h1 { font-size: 2.1rem; line-height: 1.2; margin: 0 0 0.6rem; }
-h2 { font-size: 1.45rem; margin: 2.4rem 0 0.8rem; border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
-h3 { font-size: 1.1rem; margin: 1.6rem 0 0.5rem; }
-
-.lead { font-size: 1.15rem; color: var(--text-dim); margin: 0 0 1.6rem; }
-
-.hero {
-  padding: 1rem 0 2rem;
-}
-.btn {
-  display: inline-block;
-  background: var(--primary);
-  color: var(--primary-content);
+.topnav { display: flex; align-items: center; gap: 4px; margin-left: 14px; }
+.topnav a {
+  color: var(--ink2);
   text-decoration: none;
-  padding: 0.6rem 1.2rem;
-  border-radius: 8px;
+  font-size: 12px;
   font-weight: 600;
-  margin: 0.4rem 0.6rem 0.4rem 0;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  border-bottom: 2px solid transparent;
 }
-.btn:hover { text-decoration: none; opacity: 0.85; }
-.btn.secondary { background: var(--bg-soft); color: var(--text); border: 1px solid var(--border); }
+.topnav a:hover { color: var(--ink); opacity: 1; }
+.topnav a.on { color: var(--ink); border-bottom-color: var(--brand); }
 
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+.topactions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+
+/* Theme toggle: a small square that mirrors the brand mark. */
+.themebtn {
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1;
+}
+.themebtn:hover { background: var(--paper); }
+
+/* The hamburger is a label driving a hidden checkbox, so the menu opens with no
+   JS beyond the component that renders it. */
+.navtoggle { display: none; }
+.burger { display: none; }
+
+/* ----------------------------------------------------------------------------
+   Buttons.
+---------------------------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-disp);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  font-size: 12.5px;
+  background: var(--brand);
+  color: var(--cream);
+  border: 1px solid var(--brand);
+  padding: 10px 16px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.btn:hover { opacity: .88; text-decoration: none; }
+.btn.ghost, .btn.secondary {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+/* ----------------------------------------------------------------------------
+   Masthead: the broadsheet page title under the nav.
+---------------------------------------------------------------------------- */
+.masthead { border-bottom: 1px solid var(--line); }
+.masthead .wrap {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding-top: 30px;
+  padding-bottom: 26px;
+}
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--ink3);
+  margin: 0 0 12px;
+}
+.h1 {
+  font-family: var(--font-disp);
+  font-weight: 900;
+  font-size: clamp(38px, 7vw, 64px);
+  letter-spacing: -.045em;
+  text-transform: uppercase;
+  line-height: .86;
+  margin: 0;
+}
+.masthead-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+/* ----------------------------------------------------------------------------
+   Content container and long-form prose.
+---------------------------------------------------------------------------- */
+.container { padding-top: 36px; padding-bottom: 64px; }
+.container > * { max-width: 100%; }
+
+/* Reading column for paragraph-heavy pages (legal, guides). */
+.prose { max-width: 760px; }
+
+h2 {
+  font-family: var(--font-disp);
+  font-weight: 800;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin: 2.6rem 0 1rem;
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--line);
+}
+h3 {
+  font-family: var(--font-disp);
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: -.01em;
+  margin: 1.6rem 0 .5rem;
+}
+
+.lead {
+  font-size: 1.18rem;
+  line-height: 1.5;
+  color: var(--ink2);
+  margin: 0 0 1.4rem;
+  max-width: 720px;
+}
+
+p { margin: 0 0 1rem; }
+ul, ol { margin: 0 0 1.1rem; padding-left: 1.25rem; }
+li { padding: .15rem 0; }
+
+/* ----------------------------------------------------------------------------
+   Hero actions (landing page): a row of buttons under the lead.
+---------------------------------------------------------------------------- */
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 1.4rem 0 .4rem; }
+
+/* ----------------------------------------------------------------------------
+   Code.
+---------------------------------------------------------------------------- */
+code, pre { font-family: var(--font-mono); }
+code {
+  background: var(--paper);
+  border: 1px solid var(--hair);
+  padding: .08em .4em;
+  font-size: .86em;
+}
+pre {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 1rem 1.15rem;
+  overflow-x: auto;
+  font-size: .85rem;
+  line-height: 1.55;
+  margin: 0 0 1.2rem;
+}
+pre code { background: none; border: none; padding: 0; font-size: 1em; }
+
+/* ----------------------------------------------------------------------------
+   Cards.
+---------------------------------------------------------------------------- */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0;
+  margin: 1.6rem 0 2rem;
+  border: 1px solid var(--line);
+}
+/* Force exactly three columns (used for the feature grid on the landing page). */
+.cards.cols-3 { grid-template-columns: repeat(3, 1fr); }
+/* One hairline grid: each card draws its own right and bottom border so the
+   block reads as a ruled table, the way the dashboard rows do. */
 .card {
-  background: var(--bg-soft);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.2rem;
+  background: var(--paper);
+  border-right: 1px solid var(--hair);
+  border-bottom: 1px solid var(--hair);
+  padding: 1.3rem 1.4rem;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
-.card h3 { margin-top: 0; }
-.card p { color: var(--text-dim); margin: 0.4rem 0 0; font-size: 0.95rem; }
-/* Pin a card's link to the bottom so links line up across cards of unequal text length. */
-.card .card-link { margin-top: auto; padding-top: 0.8rem; }
+.card h3 { margin-top: 0; margin-bottom: .4rem; }
+.card p { color: var(--ink2); margin: 0; font-size: .95rem; }
+.card .card-link { margin-top: auto; padding-top: 1rem; font-family: var(--font-disp); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; font-size: 12px; }
+.card .card-link a { text-decoration: none; }
 
-/* Pricing table */
+/* ----------------------------------------------------------------------------
+   Note / callout, echoing the dashboard's striped alert banner.
+---------------------------------------------------------------------------- */
+.note {
+  position: relative;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 1rem 1.2rem 1rem 1.2rem;
+  margin: 1.4rem 0;
+  color: var(--ink);
+}
+.note::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 6px;
+  background-color: var(--brand);
+  background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.18) 0 1px, transparent 1px 7px);
+}
+.note strong { color: var(--ink); }
+.note p:last-child { margin-bottom: 0; }
+
+.muted { color: var(--ink3); font-size: .9rem; }
+
+/* ----------------------------------------------------------------------------
+   Tables (pricing comparison, auth status codes).
+---------------------------------------------------------------------------- */
 .table-wrap { overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: 0.92rem; }
-th, td { border: 1px solid var(--border); padding: 0.6rem 0.8rem; text-align: left; }
-th { background: var(--bg-soft); font-weight: 600; }
-td.feat { color: var(--text-dim); }
-tr:hover td { background: rgba(0,0,0,0.03); }
-.plan-free { color: #8c7350; }
-.plan-starter { color: #0e7490; }
-.plan-team { color: #7e22ce; }
-.plan-business { color: #b45309; }
-.plan-custom { color: #475569; }
+table { border-collapse: collapse; width: 100%; margin: 1rem 0 1.4rem; font-size: .92rem; }
+th, td { border: 1px solid var(--hair); padding: .6rem .8rem; text-align: left; vertical-align: top; }
+th {
+  background: var(--paper);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: .78rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--ink2);
+}
+td.feat { color: var(--ink2); }
+td.yes { color: var(--up); font-weight: 600; }
+td.no { color: var(--ink3); }
+tbody tr:hover td { background: var(--tex); }
 
-td.yes { color: #2e7d32; font-weight: 600; }
-td.no { color: var(--text-dim); }
-tbody tr:nth-child(even) td { background: rgba(0,0,0,0.018); }
+/* Plan name accents reuse the warm scale (no per-plan colors that fight the palette). */
+.plan-free, .plan-starter, .plan-team, .plan-business, .plan-custom { color: var(--brand); }
 
-/* Plan summary cards (the at-a-glance row above the comparison table) */
+/* ----------------------------------------------------------------------------
+   Plan summary cards.
+---------------------------------------------------------------------------- */
 .plans {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 1rem;
-  margin: 1.5rem 0 2.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0;
+  margin: 1.6rem 0 2.5rem;
+  border: 1px solid var(--line);
 }
 .plan {
   position: relative;
-  background: var(--bg-soft);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1.3rem 1.2rem;
+  background: var(--paper);
+  border-right: 1px solid var(--hair);
+  padding: 1.5rem 1.3rem 1.3rem;
   display: flex;
   flex-direction: column;
 }
-.plan.featured {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
-}
-/* Badge floats on the top border so it never shifts card content out of line. */
+.plan:last-child { border-right: none; }
+.plan.featured { background: var(--bg); box-shadow: inset 0 3px 0 var(--brand); }
 .plan .badge {
   position: absolute;
-  top: -0.65rem;
-  left: 1.2rem;
-  background: var(--accent);
-  color: var(--primary-content);
-  font-size: 0.66rem;
-  font-weight: 700;
+  top: 0; right: 0;
+  background: var(--brand);
+  color: var(--cream);
+  font-family: var(--font-mono);
+  font-size: .62rem;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 0.2rem 0.55rem;
-  border-radius: 999px;
+  letter-spacing: .08em;
+  padding: .25rem .5rem;
 }
-.plan .plan-tier { font-size: 1.2rem; font-weight: 700; margin: 0; }
-.plan .plan-for { color: var(--text-dim); font-size: 0.88rem; margin: 0.3rem 0 1rem; min-height: 2.6em; }
+.plan .plan-tier { font-family: var(--font-disp); font-size: 1.25rem; font-weight: 800; letter-spacing: -.02em; margin: 0; }
+.plan .plan-for { color: var(--ink2); font-size: .88rem; margin: .35rem 0 1rem; min-height: 2.6em; }
 .plan .plan-price {
-  font-size: 1.15rem;
-  font-weight: 700;
+  font-family: var(--font-disp);
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: -.02em;
   margin: 0 0 1rem;
   padding-bottom: 1rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--hair);
 }
-.plan .plan-price small { display: block; font-weight: 400; font-size: 0.78rem; color: var(--text-dim); }
-/* Annual price + saving, shown under the monthly headline. */
-.plan .plan-save { display: block; margin-top: 0.35rem; font-weight: 600; font-size: 0.76rem; color: var(--accent); }
-/* Small pill calling out the free trial above the feature list. */
-.plan .plan-trial { display: inline-block; align-self: flex-start; margin: 0 0 1rem; padding: 0.18rem 0.6rem; font-size: 0.74rem; font-weight: 600; color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; }
-.plan ul { list-style: none; padding: 0; margin: 0; font-size: 0.9rem; }
-.plan li { padding: 0.28rem 0; }
-.plan .contact-link { margin-top: auto; padding-top: 1rem; font-weight: 600; }
-
-/* Paddle checkout page (checkout.html): a narrow column holding the inline checkout. */
-.checkout-page { max-width: 560px; }
-.checkout-page .nav-brand { display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 700; margin-bottom: 1.5rem; }
-.checkout-page .checkout-container { margin: 1.5rem 0; min-height: 360px; }
-.checkout-page .checkout-help { color: var(--text-dim); font-size: 0.85rem; }
-
-.note {
-  background: oklch(94% 0.06 80);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
-  border-radius: 8px;
-  padding: 0.9rem 1.1rem;
-  margin: 1.2rem 0;
-  color: var(--text);
+.plan .plan-price small { display: block; font-family: var(--font-body); font-weight: 400; font-size: .76rem; color: var(--ink3); margin-top: .2rem; }
+.plan .plan-save { display: block; margin-top: .35rem; font-family: var(--font-body); font-weight: 600; font-size: .74rem; color: var(--brand); }
+.plan .plan-trial {
+  display: inline-block;
+  align-self: flex-start;
+  margin: 0 0 1rem;
+  padding: .18rem .55rem;
+  font-family: var(--font-mono);
+  font-size: .7rem;
+  color: var(--ink2);
+  border: 1px solid var(--hair);
 }
-.note strong { color: var(--text); }
+.plan ul { list-style: none; padding: 0; margin: 0; font-size: .9rem; }
+.plan li { padding: .3rem 0; border-bottom: 1px solid var(--hair); }
+.plan li:last-child { border-bottom: none; }
+.plan .contact-link { margin-top: auto; padding-top: 1rem; font-family: var(--font-disp); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; font-size: 12px; }
+.plan .contact-link a { text-decoration: none; }
 
-.muted { color: var(--text-dim); font-size: 0.9rem; }
-
-footer {
-  border-top: 1px solid var(--border);
-  color: var(--text-dim);
-  font-size: 0.88rem;
-  text-align: center;
-  padding: 2rem 1.2rem;
+/* ----------------------------------------------------------------------------
+   Colophon footer: oversized outline wordmark, ruled link grid, baseline bar.
+---------------------------------------------------------------------------- */
+.colophon { margin-top: 56px; }
+.cmark {
+  font-family: var(--font-disp);
+  font-weight: 900;
+  font-size: clamp(64px, 13vw, 120px);
+  letter-spacing: -.06em;
+  text-transform: uppercase;
+  line-height: .8;
+  color: transparent;
+  -webkit-text-stroke: 1px var(--hair);
+  padding: 30px var(--pad) 8px;
+  overflow: hidden;
+  white-space: nowrap;
 }
+.cgrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-top: 1px solid var(--hair);
+}
+.ccol { padding: 22px var(--pad); border-right: 1px solid var(--hair); }
+.ccol:last-child { border-right: none; }
+.ccol h4 {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink3);
+  margin: 0 0 12px;
+  font-weight: 500;
+}
+.ccol a { display: block; color: var(--ink2); text-decoration: none; font-size: 13px; padding: 4px 0; }
+.ccol a:hover { color: var(--brand); opacity: 1; }
+.baseline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  min-height: 58px;
+  padding: 12px var(--pad);
+  border-top: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink3);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.baseline a { color: var(--ink2); text-decoration: none; }
+.baseline a:hover { color: var(--brand); opacity: 1; }
+.baseline .copy { display: flex; align-items: center; gap: 12px; }
+.baseline .end { width: 11px; height: 11px; background: var(--brand); }
 
-/* Redoc host fills the viewport below the nav */
+/* ----------------------------------------------------------------------------
+   API reference (Redoc host) fills the space below the nav.
+---------------------------------------------------------------------------- */
 #redoc-host { background: var(--bg); }
 
-/* Mobile is the main audience, so the small-screen layout is designed, not
-   bolted on. The nav collapses into a hamburger, type and spacing scale down,
-   and the hero buttons go full width so they are easy to tap. */
+/* ----------------------------------------------------------------------------
+   Checkout page: a narrow centered column.
+---------------------------------------------------------------------------- */
+.checkout-page { max-width: 560px; margin: 0 auto; padding-top: 40px; padding-bottom: 64px; }
+.checkout-page .brand { margin-bottom: 1.5rem; }
+.checkout-page .checkout-container { margin: 1.5rem 0; min-height: 360px; }
+.checkout-page .checkout-help { color: var(--ink2); font-size: .9rem; }
 
-/* Hamburger toggle: hidden on desktop, shown under the breakpoint below. The
-   toggle is a real checkbox so the menu opens with no JS. It resets to closed
-   on every page load, which is what we want since the nav links navigate away. */
-.nav-burger { display: none; }
-
-@media (max-width: 720px) {
-  .nav-inner { gap: 0.75rem; padding: 1rem; }
-
-  .nav-burger {
+/* ----------------------------------------------------------------------------
+   Responsive: collapse the nav into a hamburger panel under the breakpoint.
+---------------------------------------------------------------------------- */
+@media (max-width: 860px) {
+  .burger {
     display: flex;
     flex-direction: column;
     justify-content: center;
     gap: 5px;
-    margin-left: auto;
-    width: 42px;
-    height: 42px;
+    width: 40px; height: 40px;
     padding: 9px;
-    border-radius: 8px;
+    margin-left: auto;
+    border: 1px solid var(--line);
     cursor: pointer;
   }
-  .nav-burger:hover { background: var(--bg-soft); }
-  .nav-burger span {
-    display: block;
-    height: 2px;
-    width: 100%;
-    background: var(--text);
-    border-radius: 2px;
-    transition: transform 0.2s ease, opacity 0.2s ease;
-  }
+  .burger span { display: block; height: 2px; width: 100%; background: var(--ink); transition: transform .2s ease, opacity .2s ease; }
 
-  /* The open menu drops below the bar as a full-width panel. .nav is sticky
-     (so it is a positioned ancestor); top:100% lands it just under the bar. */
-  .nav-links {
+  .topnav, .topactions {
     display: none;
     position: absolute;
     top: 100%;
-    left: 0;
-    right: 0;
+    left: 0; right: 0;
     flex-direction: column;
+    align-items: stretch;
     gap: 0;
-    margin-left: 0;
+    margin: 0;
     background: var(--bg);
-    border-bottom: 1px solid var(--border);
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.07);
+    border-bottom: 1px solid var(--line);
   }
-  .nav-toggle:checked ~ .nav-links { display: flex; }
-  .nav-links a {
-    padding: 0.85rem 1rem;
-    font-size: 1rem;
-    border-top: 1px solid var(--border);
-  }
-  .nav-links a.active { font-weight: 600; }
+  .topactions { top: 100%; border-top: 1px solid var(--hair); padding: 12px var(--pad); flex-direction: row; }
+  .navtoggle:checked ~ .topnav { display: flex; }
+  .navtoggle:checked ~ .topactions { display: flex; }
+  .topnav a { padding: 14px var(--pad); border-bottom: 1px solid var(--hair); border-left: none; }
+  .topnav a.on { border-bottom-color: var(--hair); color: var(--brand); }
 
-  /* Burger turns into an X while the menu is open. */
-  .nav-toggle:checked ~ .nav-burger span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
-  .nav-toggle:checked ~ .nav-burger span:nth-child(2) { opacity: 0; }
-  .nav-toggle:checked ~ .nav-burger span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+  .navtoggle:checked ~ .burger span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+  .navtoggle:checked ~ .burger span:nth-child(2) { opacity: 0; }
+  .navtoggle:checked ~ .burger span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 
-  .container { padding: 1.8rem 1rem 3rem; }
-  .hero { padding: 0.5rem 0 1.5rem; }
+  .topbar-inner { position: relative; flex-wrap: wrap; }
 
-  h1 { font-size: 1.7rem; }
-  h2 { font-size: 1.25rem; margin-top: 2rem; }
-  h3 { font-size: 1.05rem; }
-  .lead { font-size: 1.05rem; }
+  .cgrid { grid-template-columns: repeat(2, 1fr); }
+  .ccol:nth-child(2) { border-right: none; }
+  .ccol:nth-child(1), .ccol:nth-child(2) { border-bottom: 1px solid var(--hair); }
 
-  /* Plans become a horizontal carousel: one card plus a peek of the next, with
-     snap so each card settles into place. The grid is replaced by a flex row.
-     overflow-x makes overflow-y compute to auto, which would clip the featured
-     card's badge (it sits at top: -0.65rem), so we add top padding for it. */
-  .plans {
-    display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    -webkit-overflow-scrolling: touch;
-    gap: 0.9rem;
-    margin: 1.5rem 0 2rem;
-    padding: 0.85rem 0 0.6rem;
-  }
-  .plan {
-    flex: 0 0 78vw;
-    max-width: 300px;
-    scroll-snap-align: start;
-  }
+  .plans, .cards, .cards.cols-3 { grid-template-columns: 1fr; }
+  .plan { border-right: none; border-bottom: 1px solid var(--hair); }
+  .plan:last-child { border-bottom: none; }
+  .card { border-right: none; }
 
-  /* Keep table cells compact, but hold a min width so the comparison table
-     scrolls sideways instead of squashing its columns to nothing. */
-  th, td { padding: 0.5rem 0.6rem; }
   .table-wrap table { min-width: 560px; }
 }
 
 @media (max-width: 480px) {
-  /* Stacked, full-width buttons are the easiest one-thumb target. */
-  .hero .btn { display: block; width: 100%; margin: 0.5rem 0; text-align: center; }
+  .actions .btn { flex: 1 1 100%; justify-content: center; }
+  .cgrid { grid-template-columns: 1fr; }
+  .ccol { border-right: none; border-bottom: 1px solid var(--hair); }
+  .ccol:last-child { border-bottom: none; }
 }

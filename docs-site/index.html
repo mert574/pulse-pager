@@ -24,29 +24,24 @@
   {"@context":"https://schema.org","@type":"SoftwareApplication","name":"Pulse Pager","applicationCategory":"DeveloperApplication","operatingSystem":"Web","url":"https://pulsepager.com","description":"Open-source, API-first uptime monitoring. Watch your endpoints, open incidents, alert your team, and run status pages. Self-host free or use our cloud.","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
   </script>
   <link rel="stylesheet" href="./assets/styles.css">
+  <script src="./assets/site.js"></script>
   <link rel="icon" type="image/svg+xml" href="./assets/logo.svg" media="(prefers-color-scheme: light)">
   <link rel="icon" type="image/svg+xml" href="./assets/logo-dark.svg" media="(prefers-color-scheme: dark)">
 </head>
 <body>
-  <nav class="nav">
-    <div class="nav-inner">
-      <a class="nav-brand" href="./"><img class="logo" src="./assets/logo.svg" alt="" width="22" height="22">Pulse Pager</a>
-      <input type="checkbox" id="nav-toggle" class="nav-toggle" hidden>
-      <label for="nav-toggle" class="nav-burger" aria-label="Toggle menu"><span></span><span></span><span></span></label>
-      <div class="nav-links">
-        <a class="active" href="./">Overview</a>
-        <a href="./api.html">API reference</a>
-        <a href="./guides/authentication.html">Authentication</a>
-        <a href="./pricing.html">Pricing</a>
-        <a href="https://github.com/mert574/pulse-pager">GitHub</a>
-        <a href="https://app.pulsepager.com">Sign in</a>
+  <pulse-header active="overview" base="./"></pulse-header>
+
+  <div class="masthead">
+    <div class="wrap">
+      <div>
+        <p class="eyebrow">Open-source uptime monitoring</p>
+        <h1 class="h1">Know before<br>your customers do</h1>
       </div>
     </div>
-  </nav>
+  </div>
 
-  <div class="container">
+  <div class="container wrap">
     <section class="hero">
-      <h1>Know before your customers do.</h1>
       <p class="lead">
         Pulse Pager is open source uptime monitoring with an API-first design. It watches your
         endpoints, opens incidents when they break, notifies your team, and publishes status pages.
@@ -55,9 +50,11 @@
         Everything the app does you can also script through a documented REST API, so you can manage
         hundreds of monitors as code. Run it yourself, or use our cloud.
       </p>
-      <a class="btn" href="https://app.pulsepager.com">Start free</a>
-      <a class="btn secondary" href="https://github.com/mert574/pulse-pager">Get the source</a>
-      <a class="btn secondary" href="./api.html">Explore the API</a>
+      <div class="actions">
+        <a class="btn" href="https://app.pulsepager.com">Start free</a>
+        <a class="btn secondary" href="https://github.com/mert574/pulse-pager">Get the source</a>
+        <a class="btn secondary" href="./api.html">Explore the API</a>
+      </div>
     </section>
 
     <h2>Self-host or use the cloud</h2>
@@ -82,7 +79,7 @@
     </div>
 
     <h2>What Pulse Pager does</h2>
-    <div class="cards">
+    <div class="cards cols-3">
       <div class="card">
         <h3>Monitors</h3>
         <p>HTTP checks with method, headers, body, expected status, latency and body assertions, failure thresholds, and multi-region dispatch. Plus SSL-certificate monitoring that alerts you before a cert expires.</p>
@@ -133,16 +130,7 @@
     </div>
   </div>
 
-  <footer>
-    Pulse Pager docs &middot; built from <code>api/openapi/v1.yaml</code> &middot;
-    <a href="https://github.com/mert574/pulse-pager">GitHub</a> &middot;
-    <a href="./api.html">API reference</a> &middot;
-    <a href="./pricing.html">Pricing</a> &middot;
-    <a href="./terms.html">Terms</a> &middot;
-    <a href="./privacy.html">Privacy</a> &middot;
-    <a href="./refund.html">Refunds</a> &middot;
-    <a href="mailto:hi@pulsepager.com">Contact</a>
-  </footer>
+  <pulse-footer base="./"></pulse-footer>
   <!-- Simple Analytics (cookieless; collect-dnt=true counts Do-Not-Track visitors too) -->
   <script data-collect-dnt="true" async src="https://scripts.simpleanalyticscdn.com/latest.js"></script>
   <noscript><img src="https://queue.simpleanalyticscdn.com/noscript.gif?collect-dnt=true" alt="" referrerpolicy="no-referrer-when-downgrade"/></noscript>
