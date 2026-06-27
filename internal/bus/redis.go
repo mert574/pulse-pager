@@ -196,6 +196,10 @@ func (c *redisConsumer) dispatch(ctx context.Context, stream string, m redis.XMe
 func (c *redisConsumer) ping(ctx context.Context) error { return c.rdb.Ping(ctx).Err() }
 func (c *redisConsumer) close()                         { _ = c.rdb.Close() }
 
+// lag is a no-op for the Redis Streams backend: it has no consumer-group high-water-mark
+// lag the way Kafka does, so there is nothing to report (RFC-010 section 2.4).
+func (c *redisConsumer) lag(context.Context) ([]LagEntry, error) { return nil, nil }
+
 func toRedisRecord(stream string, m redis.XMessage) Record {
 	rec := Record{Topic: stream}
 	if v, ok := m.Values["key"].(string); ok {

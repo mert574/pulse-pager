@@ -3,6 +3,7 @@ package bus
 import (
 	"context"
 
+	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
@@ -35,7 +36,10 @@ func (p *kafkaProducer) ping(ctx context.Context) error { return p.cl.Ping(ctx) 
 func (p *kafkaProducer) close()                         { p.cl.Close() }
 
 // kafkaConsumer reads from a consumer group via franz-go.
-type kafkaConsumer struct{ cl *kgo.Client }
+type kafkaConsumer struct {
+	cl    *kgo.Client
+	group string
+}
 
 func newKafkaConsumer(brokers []string, group string, topics ...string) (*kafkaConsumer, error) {
 	cl, err := kgo.NewClient(
@@ -49,7 +53,30 @@ func newKafkaConsumer(brokers []string, group string, topics ...string) (*kafkaC
 	if err != nil {
 		return nil, err
 	}
-	return &kafkaConsumer{cl: cl}, nil
+	return &kafkaConsumer{cl: cl, group: group}, nil
+}
+
+// lag reports the group's per-partition lag via the admin client (RFC-010 section 2.4).
+func (c *kafkaConsumer) lag(ctx context.Context) ([]LagEntry, error) {
+	lags, err := kadm.NewClient(c.cl).Lag(ctx, c.group)
+	if err != nil {
+		return nil, err
+	}
+	dl, ok := lags[c.group]
+	if !ok {
+		return nil, nil
+	}
+	if dl.FetchErr != nil {
+		return nil, dl.FetchErr
+	}
+	var out []LagEntry
+	for _, l := range dl.Lag.Sorted() {
+		if l.Lag < 0 {
+			continue // no committed offset yet; not meaningful lag
+		}
+		out = append(out, LagEntry{Topic: l.Topic, Partition: l.Partition, Lag: l.Lag})
+	}
+	return out, nil
 }
 
 func (c *kafkaConsumer) poll(ctx context.Context, handler func(context.Context, Record) error) error {

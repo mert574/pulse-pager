@@ -52,7 +52,16 @@ type producerBackend interface {
 type consumerBackend interface {
 	poll(ctx context.Context, handler func(context.Context, Record) error) error
 	ping(ctx context.Context) error
+	lag(ctx context.Context) ([]LagEntry, error)
 	close()
+}
+
+// LagEntry is one partition's consumer lag (messages behind the high-water mark),
+// the primary scale/health signal for the consumer services (RFC-010 section 2.4).
+type LagEntry struct {
+	Topic     string
+	Partition int32
+	Lag       int64
 }
 
 // Producer publishes messages over the configured backend. sys is the backend name
@@ -108,6 +117,11 @@ func (c *Consumer) Poll(ctx context.Context, handler func(context.Context, Recor
 
 // Ping checks backend connectivity (used by /readyz).
 func (c *Consumer) Ping(ctx context.Context) error { return c.b.ping(ctx) }
+
+// Lag returns the per-partition consumer lag for the group (RFC-010 section 2.4). The
+// Redis backend has no group-lag concept and returns nil; the runtime polls this to
+// drive the pulse_kafka_consumer_lag gauge.
+func (c *Consumer) Lag(ctx context.Context) ([]LagEntry, error) { return c.b.lag(ctx) }
 
 // Close leaves the group and closes the consumer.
 func (c *Consumer) Close() { c.b.close() }
