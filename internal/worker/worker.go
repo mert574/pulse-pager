@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"pulse/internal/bus"
 	"pulse/internal/checkstate"
 	"pulse/internal/domain"
@@ -62,13 +64,62 @@ type Runner struct {
 	state   checkstate.Store
 	region  string
 	log     *slog.Logger
+	metrics *metrics
 }
 
 // New builds a Runner. state is the per-(monitor, region) live-state store (Redis); it
 // may be nil (then the worker just runs checks without updating live state, e.g. in
-// tests or a no-Redis dev setup).
-func New(store ResultWriter, cons Consumer, prod Producer, chk Checker, ents Entitlements, state checkstate.Store, region string, log *slog.Logger) *Runner {
-	return &Runner{store: store, cons: cons, prod: prod, checker: chk, ents: ents, state: state, region: region, log: log}
+// tests or a no-Redis dev setup). reg is the Prometheus registry the SLI metrics
+// register on; nil leaves them unregistered (tests).
+func New(store ResultWriter, cons Consumer, prod Producer, chk Checker, ents Entitlements, state checkstate.Store, region string, log *slog.Logger, reg *prometheus.Registry) *Runner {
+	return &Runner{store: store, cons: cons, prod: prod, checker: chk, ents: ents, state: state, region: region, log: log, metrics: newMetrics(reg)}
+}
+
+// metrics holds the worker SLI metrics (RFC-010 section 2.5.3).
+type metrics struct {
+	jobsConsumed  *prometheus.CounterVec   // {region}
+	checkDuration *prometheus.HistogramVec // {region, result}
+	checkResults  *prometheus.CounterVec   // {region, healthy, failure_reason}
+	emitFailures  *prometheus.CounterVec   // {region}
+}
+
+// newMetrics builds the metrics and registers them on reg. A nil reg builds them
+// unregistered, so recording never panics in a test that passes no registry.
+func newMetrics(reg *prometheus.Registry) *metrics {
+	m := &metrics{
+		jobsConsumed: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "pulse_worker_jobs_consumed_total",
+			Help: "Check jobs consumed, by region.",
+		}, []string{"region"}),
+		checkDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "pulse_check_duration_seconds",
+			Help:    "Check execution time in seconds, by region and result (healthy/unhealthy/blocked).",
+			Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30},
+		}, []string{"region", "result"}),
+		checkResults: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "pulse_check_results_total",
+			Help: "Checks executed, by region, healthy, and failure_reason (none when healthy).",
+		}, []string{"region", "healthy", "failure_reason"}),
+		emitFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "pulse_check_result_emit_failures_total",
+			Help: "Failures emitting check.results to the bus, by region.",
+		}, []string{"region"}),
+	}
+	if reg != nil {
+		reg.MustRegister(m.jobsConsumed, m.checkDuration, m.checkResults, m.emitFailures)
+	}
+	return m
+}
+
+// resultLabel buckets a check outcome for the duration metric's `result` label.
+func resultLabel(r *domain.CheckResult) string {
+	if r.Healthy {
+		return "healthy"
+	}
+	if r.FailureReason != nil && *r.FailureReason == domain.ReasonBlockedTarget {
+		return "blocked"
+	}
+	return "unhealthy"
 }
 
 // Run consumes jobs until the context is cancelled.
@@ -113,6 +164,8 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) (err error) {
 	obs.SpanSetInt(ctx, "org_id", job.OrgID)
 	obs.SpanSetString(ctx, "region", job.Region)
 
+	r.metrics.jobsConsumed.WithLabelValues(job.Region).Inc()
+
 	m := job.Monitor
 	// Mark this region in-flight so the monitor's live element shows it "pinging" while
 	// the check runs (best-effort; never blocks the check). Every check drives this, not
@@ -122,9 +175,15 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) (err error) {
 	// Decide capture up front from the org's plan: an ungated org never has its
 	// response read for a snapshot, so it pays no hot-path cost (PRD-002 3.8, RFC-009).
 	capture := r.ents.For(job.OrgID).FailureSnapshot
+	checkStart := time.Now()
 	result := r.checker.Check(ctx, &m, capture)
 	result.OrgID = job.OrgID
 	result.Region = job.Region
+
+	// Check execution time and the result counters (RFC-010 section 2.5.3); the duration
+	// carries the trace id as an exemplar so a slow check links to its trace.
+	obs.ObserveWithTrace(ctx, r.metrics.checkDuration.WithLabelValues(job.Region, resultLabel(result)), time.Since(checkStart).Seconds())
+	r.metrics.checkResults.WithLabelValues(job.Region, strconv.FormatBool(result.Healthy), reasonLabel(result.FailureReason)).Inc()
 
 	// Record the outcome on the span so a slow or failing check is visible in the trace
 	// (the high-cardinality dimensions banned from metrics live here, RFC-010 section 4.1).
@@ -145,6 +204,7 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) (err error) {
 	// (ADR-0011), so the event is the authoritative output of the worker. A failed
 	// emit must redeliver, so it returns an error.
 	if err := r.emit(ctx, job, result); err != nil {
+		r.metrics.emitFailures.WithLabelValues(job.Region).Inc()
 		return err
 	}
 
@@ -216,6 +276,15 @@ func (r *Runner) emit(ctx context.Context, job events.CheckJob, result *domain.C
 func reasonStr(r *domain.FailureReason) string {
 	if r == nil {
 		return ""
+	}
+	return string(*r)
+}
+
+// reasonLabel is the failure_reason metric label: the reason string, or "none" when the
+// check was healthy (RFC-010 section 2.5.3 keeps the null case as a bounded label value).
+func reasonLabel(r *domain.FailureReason) string {
+	if r == nil {
+		return "none"
 	}
 	return string(*r)
 }

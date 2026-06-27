@@ -33,7 +33,10 @@ func NewHealthServer(addr string, reg *prometheus.Registry, checks ...ReadyCheck
 		_, _ = w.Write([]byte("ok"))
 	})
 	mux.HandleFunc("/readyz", h.handleReady)
-	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	// EnableOpenMetrics so histogram exemplars (the trace ids attached via
+	// ObserveWithTrace) are emitted in the exposition and Prometheus can scrape them
+	// (RFC-010 section 2.6).
+	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{EnableOpenMetrics: true}))
 	h.srv = &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	return h
 }

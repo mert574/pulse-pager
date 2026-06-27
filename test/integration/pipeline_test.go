@@ -132,11 +132,11 @@ func TestPipelineSchedulerToWorker(t *testing.T) {
 
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	go func() { _ = scheduler.New(pool, prod, nil, log, 500*time.Millisecond).Run(runCtx) }()
+	go func() { _ = scheduler.New(pool, prod, nil, log, 500*time.Millisecond, nil).Run(runCtx) }()
 	go func() {
-		_ = worker.New(pool, cons, prod, chk, entitlements.AllOn{}, nil, "eu-central", log).Run(runCtx)
+		_ = worker.New(pool, cons, prod, chk, entitlements.AllOn{}, nil, "eu-central", log, nil).Run(runCtx)
 	}()
-	go func() { _ = alerting.NewRunner(pool, alertCons, prod, log).Run(runCtx) }()
+	go func() { _ = alerting.NewRunner(pool, alertCons, prod, log, nil).Run(runCtx) }()
 
 	// Wait for the healthy result row and the failure snapshot to both land.
 	deadline := time.Now().Add(30 * time.Second)

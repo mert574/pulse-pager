@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"pulse/internal/bus"
 	"pulse/internal/domain"
@@ -58,16 +59,54 @@ type Producer interface {
 
 // Runner ties the check.results consume loop to the state machine and the writes.
 type Runner struct {
-	store  Store
-	cons   Consumer
-	prod   Producer
-	engine *Engine
-	log    *slog.Logger
+	store   Store
+	cons    Consumer
+	prod    Producer
+	engine  *Engine
+	log     *slog.Logger
+	metrics *metrics
 }
 
-// NewRunner builds a Runner. The engine is the reused pure state machine (New).
-func NewRunner(st Store, cons Consumer, prod Producer, log *slog.Logger) *Runner {
-	return &Runner{store: st, cons: cons, prod: prod, engine: New(), log: log}
+// NewRunner builds a Runner. The engine is the reused pure state machine (New). reg is
+// the Prometheus registry the SLI metrics register on; nil leaves them unregistered (tests).
+func NewRunner(st Store, cons Consumer, prod Producer, log *slog.Logger, reg *prometheus.Registry) *Runner {
+	return &Runner{store: st, cons: cons, prod: prod, engine: New(), log: log, metrics: newMetrics(reg)}
+}
+
+// metrics holds the alerting SLI metrics (RFC-010 section 2.5.4).
+type metrics struct {
+	verdictLatency  prometheus.Histogram
+	incidentsOpened *prometheus.CounterVec
+	incidentsClosed *prometheus.CounterVec
+	redeliveryNoops prometheus.Counter
+}
+
+// newMetrics builds the metrics and registers them on reg. A nil reg builds them
+// unregistered, so recording never panics in a test that passes no registry.
+func newMetrics(reg *prometheus.Registry) *metrics {
+	m := &metrics{
+		verdictLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "pulse_verdict_latency_seconds",
+			Help:    "Check-result to decision latency (decided_at - result.checked_at) in seconds.",
+			Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10},
+		}),
+		incidentsOpened: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "pulse_incidents_opened_total",
+			Help: "Incidents opened, by the region that triggered.",
+		}, []string{"region"}),
+		incidentsClosed: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "pulse_incidents_closed_total",
+			Help: "Incidents closed, by triggering region and close_reason.",
+		}, []string{"region", "close_reason"}),
+		redeliveryNoops: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "pulse_alerting_redelivery_noops_total",
+			Help: "Results that re-applied to already-advanced state and changed nothing.",
+		}),
+	}
+	if reg != nil {
+		reg.MustRegister(m.verdictLatency, m.incidentsOpened, m.incidentsClosed, m.redeliveryNoops)
+	}
+	return m
 }
 
 // Run consumes check.results until the context is cancelled. Commit-after-process:
@@ -163,9 +202,19 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) (err error) {
 	}
 	if applied.Skipped {
 		// the watermark dropped a redelivered or older round: a clean no-op
+		r.metrics.redeliveryNoops.Inc()
 		r.log.Debug("result already applied, skipped", "monitor", m.ID, "result_id", resultID)
 		return nil
 	}
+
+	// Verdict latency SLI (RFC-010 section 2.5.4): result.checked_at to the decision we
+	// just committed. Recorded only for a fresh decision (a skipped redelivery above is
+	// not a new decision), with the trace id as an exemplar.
+	lat := time.Since(res.CheckedAt).Seconds()
+	if lat < 0 {
+		lat = 0
+	}
+	obs.ObserveWithTrace(ctx, r.metrics.verdictLatency, lat)
 
 	// Stamp the incident on the span and mark the lifecycle change as an event so the
 	// trace shows where an incident opened or closed (RFC-010 section 4.1).
@@ -174,8 +223,12 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) (err error) {
 		switch decision.Action {
 		case ActionOpenIncident:
 			obs.AddEvent(ctx, "incident.opened")
+			r.metrics.incidentsOpened.WithLabelValues(verdict.Region).Inc()
 		case ActionCloseIncident:
 			obs.AddEvent(ctx, "incident.closed")
+			// The alerting consume path only closes on recovery; disabled/manual closes
+			// happen on the api side (RFC-006). So this path is always "recovered".
+			r.metrics.incidentsClosed.WithLabelValues(verdict.Region, string(domain.CloseRecovered)).Inc()
 		}
 	}
 

@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"pulse/internal/bus"
 	"pulse/internal/domain"
 	"pulse/internal/events"
@@ -95,6 +97,41 @@ type Runner struct {
 	// backoff, budget, client); the Runner fills sane defaults when it is zero.
 	webhooks   WebhookStore
 	webhookCfg orgWebhookConfig
+
+	// metrics holds the notifier SLI metrics; always non-nil (defaulted unregistered,
+	// replaced by WithMetrics), so the record sites need no nil check.
+	metrics *metrics
+}
+
+// metrics holds the notifier SLI metrics (RFC-010 section 2.5.5).
+type metrics struct {
+	pipelineNotify    prometheus.Histogram
+	notifications     *prometheus.CounterVec
+	dedupSuppressions *prometheus.CounterVec
+}
+
+// newMetrics builds the metrics and registers them on reg. A nil reg builds them
+// unregistered, so recording never panics when WithMetrics is not used (tests).
+func newMetrics(reg *prometheus.Registry) *metrics {
+	m := &metrics{
+		pipelineNotify: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "pulse_pipeline_notify_latency_seconds",
+			Help:    "End-to-end notify latency (triggering check.checked_at to our outbound send) in seconds.",
+			Buckets: []float64{0.5, 1, 2, 5, 10, 20, 30, 60},
+		}),
+		notifications: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "pulse_notifications_total",
+			Help: "Channel deliveries by channel_type, event_type, and outcome (delivered/failed).",
+		}, []string{"channel_type", "event_type", "outcome"}),
+		dedupSuppressions: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "pulse_notify_dedup_suppressions_total",
+			Help: "Duplicate notify events suppressed by the dedup id, by event_type.",
+		}, []string{"event_type"}),
+	}
+	if reg != nil {
+		reg.MustRegister(m.pipelineNotify, m.notifications, m.dedupSuppressions)
+	}
+	return m
 }
 
 // RunnerOption tweaks a Runner (mainly for tests: clock, dedup TTL).
@@ -112,6 +149,12 @@ func WithClock(now func() time.Time) RunnerOption { return func(r *Runner) { r.n
 // nil leaves org-webhook delivery off (the per-channel path is unchanged).
 func WithWebhooks(store WebhookStore) RunnerOption {
 	return func(r *Runner) { r.webhooks = store }
+}
+
+// WithMetrics registers the notifier SLI metrics on reg (RFC-010 section 2.5.5). Without
+// it the Runner keeps its unregistered default, so recording is a harmless no-op (tests).
+func WithMetrics(reg *prometheus.Registry) RunnerOption {
+	return func(r *Runner) { r.metrics = newMetrics(reg) }
 }
 
 // WithWebhookDelivery overrides the org-webhook delivery tuning (attempts, backoff,
@@ -151,6 +194,9 @@ func NewRunner(mgr *Manager, registry *Registry, store Store, cache DedupCache, 
 		log:      log,
 		dedupTTL: 24 * time.Hour,
 		now:      time.Now,
+		// Default to unregistered metrics so the record sites are nil-free; WithMetrics
+		// replaces this with the registered set in production.
+		metrics: newMetrics(nil),
 		webhookCfg: orgWebhookConfig{
 			// Defaults: a handful of attempts with squared-second backoff, and a 24h
 			// budget recomputed from the event time so a delayed redelivery still
@@ -234,6 +280,7 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) (err error) {
 		return fmt.Errorf("dedup %s: %w", dedupID, err)
 	}
 	if !first {
+		r.metrics.dedupSuppressions.WithLabelValues(ev.EventType).Inc()
 		r.log.Info("notify event already handled, skipping", "monitor", ev.MonitorID, "type", ev.EventType, "dedup", dedupID)
 		return nil
 	}
@@ -253,6 +300,15 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) (err error) {
 	} else {
 		r.dispatch(ctx, ev, channels)
 		obs.AddEvent(ctx, "notify.delivered")
+		// End-to-end notify SLI (RFC-010 section 2.5.5 / section 5): the triggering
+		// check's checked_at to our outbound send returning, with the trace id as an
+		// exemplar. Recorded only when we actually delivered to channels. v1 includes the
+		// third-party send time; stamping at send-issue to exclude it is a later refinement.
+		lat := r.now().Sub(ev.Check.CheckedAt).Seconds()
+		if lat < 0 {
+			lat = 0
+		}
+		obs.ObserveWithTrace(ctx, r.metrics.pipelineNotify, lat)
 	}
 
 	// Org-level outbound webhooks: a sibling fan-out for the whole org, independent of
@@ -352,6 +408,7 @@ func (r *Runner) dispatch(ctx context.Context, ev events.NotifyEvent, channels [
 			status = statusFailed
 			lastError = res.err.Error()
 		}
+		r.metrics.notifications.WithLabelValues(string(ch.Type), ev.EventType, status).Inc()
 		if err := r.store.RecordDelivery(ctx, ev.OrgID, ev.IncidentID, ch.ID, ev.EventType, status, res.attempts, lastError); err != nil {
 			r.log.Warn("record delivery outcome", "err", err, "channel", ch.ID, "incident", ev.IncidentID)
 		}

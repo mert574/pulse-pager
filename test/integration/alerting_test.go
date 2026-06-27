@@ -159,7 +159,7 @@ func runHandle(t *testing.T, pool *store.Pool, prod alerting.Producer, recs []bu
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cons := &feedConsumer{recs: recs, done: make(chan struct{})}
-	runner := alerting.NewRunner(pool, cons, prod, log)
+	runner := alerting.NewRunner(pool, cons, prod, log, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	stopped := make(chan struct{})

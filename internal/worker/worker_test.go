@@ -80,7 +80,7 @@ func jobRecord(t *testing.T) bus.Record {
 
 func newRunner(st ResultWriter, prod Producer, on bool) *Runner {
 	return New(st, nil, prod, fakeChecker{result: failingResult()}, gate{on: on}, nil, "eu-central",
-		slog.New(slog.NewTextHandler(io.Discard, nil)))
+		slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 }
 
 // fakeStateStore records the per-region HSet writes so a test can see the live-state
@@ -132,7 +132,7 @@ func TestHandle_SkipsSnapshotWhenNotEntitled(t *testing.T) {
 func TestHandle_UpdatesLiveStateForEveryCheck(t *testing.T) {
 	state := &fakeStateStore{}
 	r := New(&countingStore{}, nil, &fakeProducer{}, fakeChecker{result: failingResult()},
-		gate{on: false}, state, "eu-central", slog.New(slog.NewTextHandler(io.Discard, nil)))
+		gate{on: false}, state, "eu-central", slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 
 	// jobRecord builds a plain (scheduled) job for monitor 7, region home.
 	if err := r.handle(context.Background(), jobRecord(t)); err != nil {
@@ -158,7 +158,7 @@ func TestHandle_UpdatesLiveStateForEveryCheck(t *testing.T) {
 
 	// A nil store is a no-op (no panic, nothing written).
 	r2 := New(&countingStore{}, nil, &fakeProducer{}, fakeChecker{result: failingResult()},
-		gate{on: false}, nil, "eu-central", slog.New(slog.NewTextHandler(io.Discard, nil)))
+		gate{on: false}, nil, "eu-central", slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 	if err := r2.handle(context.Background(), jobRecord(t)); err != nil {
 		t.Fatalf("handle nil-store: %v", err)
 	}

@@ -66,7 +66,7 @@ func runWorkerOnce(t *testing.T, pool *store.Pool, prod worker.Producer, chk wor
 		recs: []bus.Record{{Topic: bus.CheckJobsTopic("eu-central"), Key: "1", Value: payload}},
 		done: make(chan struct{}),
 	}
-	runner := worker.New(pool, cons, prod, chk, entitlements.AllOn{}, nil, "eu-central", log)
+	runner := worker.New(pool, cons, prod, chk, entitlements.AllOn{}, nil, "eu-central", log, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	stopped := make(chan struct{})

@@ -39,7 +39,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	disp := scheduler.New(pg, prod, rd, svc.Log, time.Second)
+	disp := scheduler.New(pg, prod, rd, svc.Log, time.Second, svc.Reg)
 	loopCtx, cancel := context.WithCancel(context.Background())
 	go func() {
 		if err := disp.Run(loopCtx); err != nil {

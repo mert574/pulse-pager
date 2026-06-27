@@ -126,11 +126,28 @@ The reuse map is the part of the plan the code actually supports today. The rest
 - RFC-000 section 3 / RFC-013: the SPA is no longer embedded; nginx serves the static assets and proxies `/api`, with status pages served cache-first by nginx. Auth shifts from cookie-only to JWT handling.
 - Gap: the serving model is inverted (embedded vs nginx) and the SPA itself targets the v1 single-admin cookie world, not the multi-org JWT world (no org switcher, no OIDC login buttons wired to providers, the api client speaks the v1 shape).
 
-### 13. Observability: effectively none vs Prometheus/OTel/Loki + SLOs
+### 13. Observability: traces + core metrics built; logs/dashboards pending
 
-- Code: `log/slog` is the logging standard (good, RFC-010 keeps it), but there is no metrics endpoint, no tracing, no `internal/obs`.
-- RFC-010: `/metrics` per service, Prometheus client, OTel traces propagated over Kafka headers, Loki logs, the committed SLOs and dashboards.
-- Gap: no `internal/obs`, no Prometheus, no OTel, no SLO instrumentation. There is nothing to scrape and no trace to follow.
+- Code: `internal/obs` has the logger, the per-service Prometheus registry served at
+  `/metrics` (OpenMetrics, so exemplars are exposed), and the OTel tracer setup. Traces
+  are browser-rooted (RFC-021) and run end to end: the api edge span, DB spans (otelpgx),
+  and the full check pipeline as one trace (`schedule.dispatch -> check.execute ->
+  verdict.apply -> notify.deliver`) joined over the bus `traceparent` rail with
+  producer/consumer spans, so Tempo draws the service graph. The three SLO histograms
+  (`pulse_schedule_dispatch_lag_seconds`, `pulse_verdict_latency_seconds`,
+  `pulse_pipeline_notify_latency_seconds`) carry trace exemplars, plus the per-service
+  RED/lifecycle counters (jobs dispatched/consumed, check results + duration, incidents
+  opened/closed, notifications, dedup suppressions, redelivery no-ops). The dev stack
+  (`observability/`, `make up-obs`) and the k3s stack (`deploy/observability/`) both run
+  Collector + Tempo + Prometheus + Grafana.
+- RFC-010: `/metrics` per service, Prometheus client, OTel traces over Kafka headers, Loki
+  logs, the committed SLOs and dashboards.
+- Still pending: the Loki logs pillar (the trace-id <-> log join), the SLO dashboards and
+  Alertmanager rules, and the §2.4 common infra metrics (kafka consumer lag, db/redis pool
+  gauges, DLQ counter, `pulse_up`). A few §2.5 metrics wait on unbuilt features: SSRF-block
+  and notification-retry counters (need a hook in checker / the notify Manager),
+  `pulse_coverage_degraded_total` (multi-region verdict), and the scheduler leader/rebuild
+  metrics (no leader election yet).
 
 ### 14. Deployment: single binary vs Kubernetes multi-region
 

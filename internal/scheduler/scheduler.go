@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"pulse/internal/bus"
 	"pulse/internal/checkstate"
 	"pulse/internal/domain"
@@ -37,11 +39,12 @@ type MonitorLister interface {
 
 // Dispatcher fans out due checks.
 type Dispatcher struct {
-	store MonitorLister
-	prod  Producer
-	state checkstate.Store // live per-(monitor,region) state; nil = skip (dev/no-Redis)
-	log   *slog.Logger
-	tick  time.Duration
+	store   MonitorLister
+	prod    Producer
+	state   checkstate.Store // live per-(monitor,region) state; nil = skip (dev/no-Redis)
+	log     *slog.Logger
+	tick    time.Duration
+	metrics *metrics
 
 	mu      sync.Mutex
 	nextRun map[int64]time.Time // monitor id -> next dispatch time
@@ -49,12 +52,44 @@ type Dispatcher struct {
 
 // New builds a Dispatcher. tick is how often it scans for due monitors. state is the
 // live per-(monitor,region) state store (Redis); it may be nil (dev/no-Redis), in
-// which case the scheduler dispatches normally but writes no live state.
-func New(store MonitorLister, prod Producer, state checkstate.Store, log *slog.Logger, tick time.Duration) *Dispatcher {
+// which case the scheduler dispatches normally but writes no live state. reg is the
+// Prometheus registry the SLI metrics register on; nil leaves them unregistered (tests).
+func New(store MonitorLister, prod Producer, state checkstate.Store, log *slog.Logger, tick time.Duration, reg *prometheus.Registry) *Dispatcher {
 	if tick <= 0 {
 		tick = time.Second
 	}
-	return &Dispatcher{store: store, prod: prod, state: state, log: log, tick: tick, nextRun: map[int64]time.Time{}}
+	return &Dispatcher{store: store, prod: prod, state: state, log: log, tick: tick, metrics: newMetrics(reg), nextRun: map[int64]time.Time{}}
+}
+
+// metrics holds the scheduler's SLI metrics (RFC-010 section 2.5.2).
+type metrics struct {
+	dispatchLag    *prometheus.HistogramVec
+	jobsDispatched *prometheus.CounterVec
+	scheduleSize   prometheus.Gauge
+}
+
+// newMetrics builds the metrics and registers them on reg. A nil reg builds them
+// unregistered, so recording never panics in a test that passes no registry.
+func newMetrics(reg *prometheus.Registry) *metrics {
+	m := &metrics{
+		dispatchLag: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "pulse_schedule_dispatch_lag_seconds",
+			Help:    "Dispatch lag (dispatched_at - scheduled_at) in seconds, by region.",
+			Buckets: []float64{0.1, 0.5, 1, 2, 5, 10},
+		}, []string{"region"}),
+		jobsDispatched: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "pulse_schedule_jobs_dispatched_total",
+			Help: "Check jobs published, by region.",
+		}, []string{"region"}),
+		scheduleSize: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "pulse_schedule_size",
+			Help: "Enabled monitors the scheduler is tracking.",
+		}),
+	}
+	if reg != nil {
+		reg.MustRegister(m.dispatchLag, m.jobsDispatched, m.scheduleSize)
+	}
+	return m
 }
 
 // Run scans on each tick until the context is cancelled.
@@ -78,6 +113,7 @@ func (d *Dispatcher) dispatchDue(ctx context.Context, now time.Time) {
 		d.log.Error("list monitors", "err", err)
 		return
 	}
+	d.metrics.scheduleSize.Set(float64(len(monitors)))
 	for _, em := range monitors {
 		m := em.Monitor
 		interval := time.Duration(m.IntervalSeconds) * time.Second
@@ -109,14 +145,25 @@ func (d *Dispatcher) dispatchDue(ctx context.Context, now time.Time) {
 			continue // not due yet
 		}
 
-		d.dispatch(ctx, m, now)
+		// scheduledFor is when this round was due, so the dispatch-lag SLI measures how
+		// late we published vs the schedule (RFC-010 section 2.5.2): the seeded next-run
+		// for a seen monitor, the last-check + interval for an overdue one we just saw,
+		// and now (lag ~0) for a monitor that has never been checked.
+		scheduledFor := now
+		if seen {
+			scheduledFor = next
+		} else if em.LastCheckedAt != nil {
+			scheduledFor = em.LastCheckedAt.Add(interval)
+		}
+
+		d.dispatch(ctx, m, now, scheduledFor)
 		d.mu.Lock()
 		d.nextRun[m.ID] = now.Add(interval)
 		d.mu.Unlock()
 	}
 }
 
-func (d *Dispatcher) dispatch(ctx context.Context, m *domain.Monitor, scheduledAt time.Time) {
+func (d *Dispatcher) dispatch(ctx context.Context, m *domain.Monitor, dispatchedAt, scheduledFor time.Time) {
 	// Root of the automated check trace (RFC-010 section 4.1): a scheduled dispatch has
 	// no FE request behind it, so the scheduler starts the trace here. Each region job
 	// produced below carries this span's context over the bus, so every region's worker
@@ -125,6 +172,13 @@ func (d *Dispatcher) dispatch(ctx context.Context, m *domain.Monitor, scheduledA
 	defer end()
 	obs.SpanSetInt(ctx, "monitor_id", m.ID)
 	obs.SpanSetInt(ctx, "org_id", m.OrgID)
+
+	// How late this round published vs when it was due (never negative). Recorded per
+	// region below since the metric is region-labeled.
+	lag := dispatchedAt.Sub(scheduledFor).Seconds()
+	if lag < 0 {
+		lag = 0
+	}
 
 	regions := m.Regions
 	if len(regions) == 0 {
@@ -140,10 +194,10 @@ func (d *Dispatcher) dispatch(ctx context.Context, m *domain.Monitor, scheduledA
 	key := strconv.FormatInt(m.ID, 10)
 	for _, region := range regions {
 		job := events.CheckJob{
-			JobID:       fmt.Sprintf("%d:%s:%d", m.ID, region, scheduledAt.Unix()),
+			JobID:       fmt.Sprintf("%d:%s:%d", m.ID, region, dispatchedAt.Unix()),
 			OrgID:       m.OrgID,
 			Region:      region,
-			ScheduledAt: scheduledAt,
+			ScheduledAt: dispatchedAt,
 			Monitor:     *m,
 		}
 		payload, err := json.Marshal(job)
@@ -155,6 +209,8 @@ func (d *Dispatcher) dispatch(ctx context.Context, m *domain.Monitor, scheduledA
 			d.log.Error("dispatch job", "err", err, "monitor", m.ID, "region", region)
 			continue
 		}
+		obs.ObserveWithTrace(ctx, d.metrics.dispatchLag.WithLabelValues(region), lag)
+		d.metrics.jobsDispatched.WithLabelValues(region).Inc()
 		// Mark the region queued so the monitor's live element shows it "scheduled"
 		// until the worker picks it up. Best-effort; never blocks dispatch.
 		if d.state != nil {

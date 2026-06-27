@@ -43,7 +43,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	runner := alerting.NewRunner(pg, cons, prod, svc.Log)
+	runner := alerting.NewRunner(pg, cons, prod, svc.Log, svc.Reg)
 	loopCtx, cancel := context.WithCancel(context.Background())
 	go func() {
 		if err := runner.Run(loopCtx); err != nil {

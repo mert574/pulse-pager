@@ -48,7 +48,7 @@ func main() {
 
 	chk := checker.New(checker.Config{BlockPrivateNetworks: svc.Cfg.BlockPrivateNetworks})
 	// AllOn until per-plan gating ships (RFC-009); swap in the real resolver here.
-	runner := worker.New(pg, cons, prod, chk, entitlements.AllOn{}, rd, region, svc.Log)
+	runner := worker.New(pg, cons, prod, chk, entitlements.AllOn{}, rd, region, svc.Log, svc.Reg)
 	loopCtx, cancel := context.WithCancel(context.Background())
 	go func() {
 		if err := runner.Run(loopCtx); err != nil {

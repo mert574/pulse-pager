@@ -90,7 +90,7 @@ func main() {
 	// The alert/test emails link the recipient to their channels page; the notifier
 	// builds those emails, so it needs the SPA origin from config.
 	notify.SetAppBaseURL(svc.Cfg.AppBaseURL)
-	runner := notify.NewRunner(mgr, registry, pg, rd, cons, svc.Log, notify.WithWebhooks(pg))
+	runner := notify.NewRunner(mgr, registry, pg, rd, cons, svc.Log, notify.WithWebhooks(pg), notify.WithMetrics(svc.Reg))
 	// The email-intent consumer: the only sender of magic-link / invite / Team-email
 	// test mail. It mints tokens (Redis record for magic-link, invitation row for
 	// invite) at send time, so nothing usable rides the bus (RFC-019 section 5).

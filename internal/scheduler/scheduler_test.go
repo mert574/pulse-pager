@@ -82,7 +82,7 @@ func TestDispatcherSeedsFromPersistedLastCheck(t *testing.T) {
 			prod := &fakeProducer{}
 			d := New(&fakeLister{items: []store.EnabledMonitor{
 				{Monitor: mon(1, tc.interval), LastCheckedAt: tc.lastChecked},
-			}}, prod, nil, discardLog(), time.Second)
+			}}, prod, nil, discardLog(), time.Second, nil)
 
 			d.dispatchDue(context.Background(), now) // first tick after a "restart"
 
@@ -101,7 +101,7 @@ func TestDispatcherHoldsIntervalAfterDispatch(t *testing.T) {
 	prod := &fakeProducer{}
 	d := New(&fakeLister{items: []store.EnabledMonitor{
 		{Monitor: mon(1, 60), LastCheckedAt: nil}, // never checked -> dispatches now
-	}}, prod, nil, discardLog(), time.Second)
+	}}, prod, nil, discardLog(), time.Second, nil)
 
 	d.dispatchDue(context.Background(), now)
 	if prod.count() != 1 {
@@ -127,7 +127,7 @@ func TestDispatcherMarksRegionsScheduled(t *testing.T) {
 	m := &domain.Monitor{ID: 9, OrgID: 1, IntervalSeconds: 60, Regions: []string{"us-west", "us-east"}}
 	state := &fakeStateStore{}
 	d := New(&fakeLister{items: []store.EnabledMonitor{{Monitor: m, LastCheckedAt: nil}}},
-		&fakeProducer{}, state, discardLog(), time.Second)
+		&fakeProducer{}, state, discardLog(), time.Second, nil)
 
 	d.dispatchDue(context.Background(), now)
 
@@ -152,7 +152,7 @@ func TestDispatcherSSLIsAlwaysSingleRegion(t *testing.T) {
 	}
 	prod := &fakeProducer{}
 	d := New(&fakeLister{items: []store.EnabledMonitor{{Monitor: m, LastCheckedAt: nil}}},
-		prod, nil, discardLog(), time.Second)
+		prod, nil, discardLog(), time.Second, nil)
 
 	d.dispatchDue(context.Background(), now)
 
@@ -167,7 +167,7 @@ func TestDispatcherSSLIsAlwaysSingleRegion(t *testing.T) {
 	}
 	prod2 := &fakeProducer{}
 	d2 := New(&fakeLister{items: []store.EnabledMonitor{{Monitor: httpMon, LastCheckedAt: nil}}},
-		prod2, nil, discardLog(), time.Second)
+		prod2, nil, discardLog(), time.Second, nil)
 	d2.dispatchDue(context.Background(), now)
 	if prod2.count() != 3 {
 		t.Fatalf("http monitor dispatched %d jobs, want 3", prod2.count())
