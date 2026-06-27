@@ -20,6 +20,7 @@ import (
 	"pulse/internal/domain"
 	"pulse/internal/entitlements"
 	"pulse/internal/events"
+	"pulse/internal/obs"
 )
 
 // Checker runs one monitor's HTTP check (internal/checker.Checker). captureResponse
@@ -95,13 +96,22 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 }
 
-func (r *Runner) handle(ctx context.Context, rec bus.Record) error {
+func (r *Runner) handle(ctx context.Context, rec bus.Record) (err error) {
 	var job events.CheckJob
 	if err := json.Unmarshal(rec.Value, &job); err != nil {
 		// a malformed job is poison: log and drop rather than blocking the partition
 		r.log.Error("bad job payload, dropping", "err", err)
 		return nil
 	}
+
+	// Continue the check trace from the dispatch span the scheduler put on the job's
+	// bus headers (RFC-010 section 4.1). A failed emit returns an error to redeliver,
+	// so record it on the span via the named return.
+	ctx, end := obs.StartSpan(ctx, "check.execute")
+	defer func() { obs.SpanError(ctx, err); end() }()
+	obs.SpanSetInt(ctx, "monitor_id", job.Monitor.ID)
+	obs.SpanSetInt(ctx, "org_id", job.OrgID)
+	obs.SpanSetString(ctx, "region", job.Region)
 
 	m := job.Monitor
 	// Mark this region in-flight so the monitor's live element shows it "pinging" while
@@ -115,6 +125,17 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) error {
 	result := r.checker.Check(ctx, &m, capture)
 	result.OrgID = job.OrgID
 	result.Region = job.Region
+
+	// Record the outcome on the span so a slow or failing check is visible in the trace
+	// (the high-cardinality dimensions banned from metrics live here, RFC-010 section 4.1).
+	obs.SpanSetBool(ctx, "healthy", result.Healthy)
+	if result.StatusCode != nil {
+		obs.SpanSetInt(ctx, "status_code", int64(*result.StatusCode))
+	}
+	if result.LatencyMs != nil {
+		obs.SpanSetInt(ctx, "latency_ms", int64(*result.LatencyMs))
+	}
+	obs.AddEvent(ctx, "check.executed")
 
 	// Record the terminal per-region outcome (best-effort) so the live element flips
 	// this region to done/failed with its latency/status.

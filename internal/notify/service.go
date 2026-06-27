@@ -15,6 +15,7 @@ import (
 	"pulse/internal/bus"
 	"pulse/internal/domain"
 	"pulse/internal/events"
+	"pulse/internal/obs"
 )
 
 // channelIDKey is the in-memory-only key the Runner stuffs into a channel's config
@@ -202,12 +203,21 @@ func (r *Runner) Run(ctx context.Context) error {
 // It returns nil to commit and a non-nil error to leave the offset for redelivery.
 // An unparseable message is poison: log and drop (commit) rather than blocking the
 // partition (RFC-007 3.2).
-func (r *Runner) handle(ctx context.Context, rec bus.Record) error {
+func (r *Runner) handle(ctx context.Context, rec bus.Record) (err error) {
 	var ev events.NotifyEvent
 	if err := json.Unmarshal(rec.Value, &ev); err != nil {
 		r.log.Error("bad notify event, dropping", "err", err)
 		return nil
 	}
+
+	// Last hop of the check trace, continued from alerting's verdict.apply span (RFC-010
+	// section 4.1). A returned error redelivers the event, so record it on the span.
+	ctx, end := obs.StartSpan(ctx, "notify.deliver")
+	defer func() { obs.SpanError(ctx, err); end() }()
+	obs.SpanSetInt(ctx, "monitor_id", ev.MonitorID)
+	obs.SpanSetInt(ctx, "org_id", ev.OrgID)
+	obs.SpanSetInt(ctx, "incident_id", ev.IncidentID)
+	obs.SpanSetString(ctx, "event_type", ev.EventType)
 
 	dedupID := ev.DedupKey
 	if dedupID == "" {
@@ -242,6 +252,7 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) error {
 		r.log.Info("notify event for monitor with no channels, nothing to send to channels", "monitor", ev.MonitorID, "type", ev.EventType)
 	} else {
 		r.dispatch(ctx, ev, channels)
+		obs.AddEvent(ctx, "notify.delivered")
 	}
 
 	// Org-level outbound webhooks: a sibling fan-out for the whole org, independent of

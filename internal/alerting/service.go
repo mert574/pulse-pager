@@ -27,6 +27,7 @@ import (
 	"pulse/internal/bus"
 	"pulse/internal/domain"
 	"pulse/internal/events"
+	"pulse/internal/obs"
 	"pulse/internal/store"
 )
 
@@ -98,7 +99,7 @@ func (r *Runner) Run(ctx context.Context) error {
 
 // handle processes one check.results record: persist the row, reduce to a verdict,
 // run Apply, persist the decision in one transaction, then emit the notify event.
-func (r *Runner) handle(ctx context.Context, rec bus.Record) error {
+func (r *Runner) handle(ctx context.Context, rec bus.Record) (err error) {
 	var ev events.CheckResultEvent
 	if err := json.Unmarshal(rec.Value, &ev); err != nil {
 		// a malformed result is poison: log and drop rather than blocking the partition
@@ -110,6 +111,15 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) error {
 	// onto the row here. It is the tick key the ui groups a run's regions by.
 	res.ScheduledAt = ev.ScheduledAt
 
+	// Continue the check trace from the worker's check.execute span (RFC-010 section
+	// 4.1). A returned error leaves the offset uncommitted for redelivery, so record it
+	// on the span via the named return.
+	ctx, end := obs.StartSpan(ctx, "verdict.apply")
+	defer func() { obs.SpanError(ctx, err); end() }()
+	obs.SpanSetInt(ctx, "monitor_id", res.MonitorID)
+	obs.SpanSetInt(ctx, "org_id", res.OrgID)
+	obs.SpanSetString(ctx, "region", res.Region)
+
 	// 1. Persist the durable row and read back its id (the watermark anchor).
 	// Alerting owns this write (ADR-0011). Idempotent on (org, monitor, region,
 	// checked_at), so a redelivery returns the same id and no duplicate row.
@@ -117,6 +127,7 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) error {
 	if err != nil {
 		return err // leave the offset uncommitted; redeliver
 	}
+	obs.SpanSetInt(ctx, "result_id", resultID)
 
 	// 2. Load the monitor config. A monitor deleted between check and apply is gone;
 	// drop the orphan result (the row already cascaded away, history is consistent).
@@ -154,6 +165,18 @@ func (r *Runner) handle(ctx context.Context, rec bus.Record) error {
 		// the watermark dropped a redelivered or older round: a clean no-op
 		r.log.Debug("result already applied, skipped", "monitor", m.ID, "result_id", resultID)
 		return nil
+	}
+
+	// Stamp the incident on the span and mark the lifecycle change as an event so the
+	// trace shows where an incident opened or closed (RFC-010 section 4.1).
+	if applied.Applied && applied.Incident != nil {
+		obs.SpanSetInt(ctx, "incident_id", applied.Incident.ID)
+		switch decision.Action {
+		case ActionOpenIncident:
+			obs.AddEvent(ctx, "incident.opened")
+		case ActionCloseIncident:
+			obs.AddEvent(ctx, "incident.closed")
+		}
 	}
 
 	// 6. Emit the notify event after commit, only when the incident action actually

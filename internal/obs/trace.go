@@ -5,6 +5,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/propagation"
@@ -12,6 +13,12 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 )
+
+// tracerName is the instrumentation scope the pipeline services start spans under.
+// The per-service service.name resource attribute (set in SetupTracing) is what tells
+// the services apart in the backend; this scope name is the same across them so the
+// one-trace-per-check tree reads as one instrument (RFC-010 section 4.1).
+const tracerName = "pulse"
 
 // SetupTracing wires an OpenTelemetry tracer provider. When disabled it leaves the
 // global provider as the OTel default no-op, so tracing calls are cheap and harmless.
@@ -64,6 +71,36 @@ func newSpanExporter(ctx context.Context, otlpEndpoint string) (sdktrace.SpanExp
 		otlptracegrpc.WithEndpoint(otlpEndpoint),
 		otlptracegrpc.WithInsecure(),
 	)
+}
+
+// StartSpan starts a child span named name under the active span in ctx (or a root
+// when ctx carries a restored trace context but no local span, which is the bus-consume
+// case). It returns the child's context and a func that ends the span; the caller does
+// `ctx, end := obs.StartSpan(...); defer end()`. With tracing off the tracer is the
+// no-op, so this is cheap and the returned ctx is unchanged (RFC-010 section 4.1).
+func StartSpan(ctx context.Context, name string) (context.Context, func()) {
+	ctx, span := otel.Tracer(tracerName).Start(ctx, name)
+	return ctx, func() { span.End() }
+}
+
+// SpanError records err on the active span and sets its status to Error, so a failed
+// pipeline hop (a redelivered job) shows red in the trace. No-op on a nil err or when
+// nothing is recording.
+func SpanError(ctx context.Context, err error) {
+	if err == nil {
+		return
+	}
+	if s := trace.SpanFromContext(ctx); s.IsRecording() {
+		s.RecordError(err)
+		s.SetStatus(codes.Error, err.Error())
+	}
+}
+
+// SpanSetBool sets a bool attribute on the active span, if one is recording.
+func SpanSetBool(ctx context.Context, key string, value bool) {
+	if s := trace.SpanFromContext(ctx); s.IsRecording() {
+		s.SetAttributes(attribute.Bool(key, value))
+	}
 }
 
 // SpanSetString sets a string attribute on the active span, if one is recording.

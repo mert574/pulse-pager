@@ -18,6 +18,7 @@ import (
 	"pulse/internal/checkstate"
 	"pulse/internal/domain"
 	"pulse/internal/events"
+	"pulse/internal/obs"
 	"pulse/internal/region"
 	"pulse/internal/store"
 )
@@ -116,6 +117,15 @@ func (d *Dispatcher) dispatchDue(ctx context.Context, now time.Time) {
 }
 
 func (d *Dispatcher) dispatch(ctx context.Context, m *domain.Monitor, scheduledAt time.Time) {
+	// Root of the automated check trace (RFC-010 section 4.1): a scheduled dispatch has
+	// no FE request behind it, so the scheduler starts the trace here. Each region job
+	// produced below carries this span's context over the bus, so every region's worker
+	// continues the same trace and a multi-region round reads as one tree.
+	ctx, end := obs.StartSpan(ctx, "schedule.dispatch")
+	defer end()
+	obs.SpanSetInt(ctx, "monitor_id", m.ID)
+	obs.SpanSetInt(ctx, "org_id", m.OrgID)
+
 	regions := m.Regions
 	if len(regions) == 0 {
 		regions = []string{region.Default}
