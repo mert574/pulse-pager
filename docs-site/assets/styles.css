@@ -136,7 +136,10 @@ a:hover { opacity: 0.78; }
 .brand:hover { opacity: 1; }
 .brand .sq { width: 14px; height: 14px; background: var(--brand); flex: none; }
 
-.topnav { display: flex; align-items: center; gap: 4px; margin-left: 14px; }
+/* Holds the nav links and the actions. A flex row on desktop, a stacked
+   dropdown panel on mobile. */
+.menu { display: flex; align-items: center; flex: 1; gap: 22px; }
+.topnav { display: flex; align-items: center; gap: 4px; }
 .topnav a {
   color: var(--ink2);
   text-decoration: none;
@@ -369,6 +372,62 @@ tbody tr:hover td { background: var(--tex); }
 /* Plan name accents reuse the warm scale (no per-plan colors that fight the palette). */
 .plan-free, .plan-starter, .plan-team, .plan-business, .plan-custom { color: var(--brand); }
 
+/* Feature comparison table: grouped bands, plan-name headers with a price line,
+   the Professional column tinted to echo its featured plan card, and yes/no
+   rendered as a filled brand square vs a faint dash. */
+.compare { border-collapse: separate; border-spacing: 0; border: 1px solid var(--line); }
+.compare th, .compare td { border: none; border-bottom: 1px solid var(--hair); padding: .7rem .9rem; text-align: left; vertical-align: middle; }
+.compare th:first-child, .compare td:first-child { width: 32%; }
+.compare thead th {
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-disp);
+  font-weight: 800;
+  font-size: .95rem;
+  letter-spacing: -.01em;
+  text-transform: none;
+  color: var(--brand);
+  white-space: nowrap;
+}
+.compare thead th:first-child {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: .74rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink3);
+}
+.compare thead small { display: block; font-family: var(--font-mono); font-weight: 400; font-size: .72rem; color: var(--ink3); margin-top: 3px; }
+
+/* Professional is the 4th column; tint it and cap it with the brand rule, like
+   the featured plan card does. */
+.compare th:nth-child(4), .compare td:nth-child(4) { background: var(--paper); }
+.compare thead th:nth-child(4) { box-shadow: inset 0 3px 0 var(--brand); }
+
+.compare tbody td:first-child { color: var(--ink2); }
+.compare tbody td { font-size: .9rem; }
+
+/* Section bands break the long list into themed groups. */
+.compare tr.group td {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink3);
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  padding: 16px .9rem 7px;
+}
+.compare tr.group:hover td { background: var(--bg); }
+
+/* Yes mark as a square; no mark as a faint dash. */
+.compare td.yes { font-size: 0; }
+.compare td.yes::before { content: ""; display: inline-block; width: 11px; height: 11px; background: var(--brand); vertical-align: middle; }
+.compare td.no { color: var(--ink3); }
+
+.compare tbody tr:hover td { background: var(--tex); }
+.compare tbody tr:hover td:nth-child(4) { background: var(--paper); }
+
 /* ----------------------------------------------------------------------------
    Plan summary cards.
 ---------------------------------------------------------------------------- */
@@ -486,6 +545,181 @@ tbody tr:hover td { background: var(--tex); }
 .baseline .end { width: 11px; height: 11px; background: var(--brand); }
 
 /* ----------------------------------------------------------------------------
+   Showcase: full-bleed product-preview pieces that put the design in motion.
+   These render the app's own look with clearly-labelled example data: a big
+   uptime stat, a latency sparkline, the striped incident banner, and the ruled
+   monitor rows with a hover highlighter. Used on the landing and pricing pages.
+---------------------------------------------------------------------------- */
+
+/* Section header bar: a title on the left, a mono caption on the right. */
+.sectionhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 26px var(--pad) 12px;
+  border-bottom: 1px solid var(--line);
+}
+.sectionhead h2 {
+  font-family: var(--font-disp);
+  font-weight: 800;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+.sectionhead .c { font-family: var(--font-mono); font-size: 11px; color: var(--ink3); text-transform: uppercase; letter-spacing: .08em; }
+
+/* Two-pane stat board: a headline number beside a chart and a row of minis. */
+.statboard { display: grid; grid-template-columns: 1.05fr 1fr; border-bottom: 1px solid var(--line); }
+.statboard .field {
+  background: var(--paper);
+  padding: 34px var(--pad) 30px;
+  position: relative;
+  overflow: hidden;
+  border-right: 1px solid var(--line);
+}
+.statboard .field::after {
+  content: "";
+  position: absolute;
+  right: -34px; bottom: -34px;
+  width: 140px; height: 140px;
+  background: var(--brand);
+  opacity: .12;
+  transform: rotate(45deg);
+}
+.statboard .lab { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink3); position: relative; }
+.statboard .statbig {
+  font-family: var(--font-disp);
+  font-weight: 900;
+  font-size: clamp(64px, 11vw, 96px);
+  letter-spacing: -.05em;
+  line-height: .84;
+  margin-top: 10px;
+  position: relative;
+}
+.statboard .statbig small { font-size: .32em; color: var(--ink3); }
+.statboard .foot { font-family: var(--font-mono); font-size: 11px; margin-top: 18px; color: var(--ink2); display: flex; gap: 18px; flex-wrap: wrap; position: relative; }
+.statboard .panel { padding: 30px var(--pad); display: flex; flex-direction: column; justify-content: space-between; gap: 18px; background: var(--bg); }
+.statboard .scale { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10px; color: var(--ink3); margin-top: 8px; }
+.minis { display: flex; gap: 32px; flex-wrap: wrap; }
+.mini .k { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink3); }
+.mini .v { font-family: var(--font-disp); font-weight: 800; font-size: 26px; letter-spacing: -.03em; margin-top: 6px; }
+.green { color: var(--up); } .deg-t { color: var(--deg); } .red-t { color: var(--red); }
+.up-t { color: var(--up); } .down-t { color: var(--red); }
+
+/* Incident banner: warm-red striped bar that drifts. Red is reserved for down. */
+.banner { display: flex; align-items: center; gap: 18px; position: relative; padding: 22px var(--pad); border-bottom: 1px solid var(--line); }
+.banner::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 6px;
+  background-color: var(--red);
+  background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.20) 0 1px, transparent 1px 7px);
+  animation: bardrift 1.5s linear infinite;
+}
+@keyframes bardrift { from { background-position: 0 0; } to { background-position: -9.9px 0; } }
+@media (prefers-reduced-motion: reduce) { .banner::before { animation: none; } }
+.banner .num { font-family: var(--font-disp); font-weight: 900; font-size: 32px; color: var(--red); line-height: 1; flex: none; }
+.banner .t { font-family: var(--font-disp); font-weight: 800; font-size: 16px; letter-spacing: -.01em; text-transform: uppercase; }
+.banner .s { font-family: var(--font-mono); font-size: 12px; color: var(--ink2); margin-top: 4px; }
+
+/* Monitor rows with a soft dot-screen highlighter that follows the cursor. */
+.mlist { position: relative; border-bottom: 1px solid var(--line); }
+.highlighter {
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 0;
+  background-color: var(--paper);
+  background-image: radial-gradient(var(--tex) 1.1px, transparent 1.6px);
+  background-size: 11px 11px;
+  opacity: 0;
+  z-index: 0;
+  pointer-events: none;
+  transition: transform .26s cubic-bezier(.22,.61,.36,1), height .26s cubic-bezier(.22,.61,.36,1), opacity .18s ease;
+}
+.row {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 40px 1.7fr 108px .8fr .9fr 120px;
+  align-items: center;
+  gap: 22px;
+  padding: 18px var(--pad);
+  border-bottom: 1px solid var(--hair);
+}
+.row:last-child { border-bottom: none; }
+.row .ridx { font-family: var(--font-mono); font-size: 12px; color: var(--brand); font-weight: 500; }
+.row .name { font-family: var(--font-disp); font-weight: 800; font-size: 17px; letter-spacing: -.025em; }
+.row .url { color: var(--ink3); font-size: 11.5px; margin-top: 3px; font-family: var(--font-mono); }
+.state { display: inline-flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.sq2 { width: 9px; height: 9px; flex: none; }
+.sq2.up { background: var(--up); } .sq2.down { background: var(--red); } .sq2.deg { background: var(--deg); }
+.lat { font-family: var(--font-mono); font-size: 15px; }
+.upt { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink2); }
+.spark { height: 28px; width: 100%; }
+
+/* Pricing scale: the four plans plotted along a slow-to-fast check-frequency
+   axis. The hero number per stop is the interval, since that is what sets the
+   plan. A continuous rule runs through the nodes (each cell's top border meets
+   the next), so it reads as one axis. */
+.pricescale { border-bottom: 1px solid var(--line); }
+.pricescale .track { display: grid; grid-template-columns: repeat(4, 1fr); }
+.pricescale .stop { padding: 28px var(--pad) 24px; border-right: 1px solid var(--hair); background: var(--bg); }
+.pricescale .stop:last-child { border-right: none; }
+.pricescale .stop.hot { background: var(--paper); }
+.pricescale .pname { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink3); }
+.pricescale .pint { font-family: var(--font-disp); font-weight: 900; font-size: clamp(30px, 4.6vw, 44px); letter-spacing: -.04em; line-height: 1; margin: 12px 0 0; }
+.pricescale .pint small { font-size: .42em; color: var(--ink3); font-weight: 800; margin-left: 2px; }
+.pricescale .meter { display: flex; gap: 5px; margin: 20px 0 14px; }
+.pricescale .meter span { width: 11px; height: 11px; border: 1px solid var(--ink3); background: transparent; }
+.pricescale .meter span.f { background: var(--ink); border-color: var(--ink); }
+.pricescale .stop.hot .meter span.f { background: var(--brand); border-color: var(--brand); }
+.pricescale .pprice { font-family: var(--font-mono); font-size: 13px; color: var(--ink3); }
+.pricescale .pprice b { color: var(--ink); font-weight: 500; }
+@media (max-width: 860px) {
+  .pricescale .track { grid-template-columns: 1fr 1fr; }
+  .pricescale .stop:nth-child(2) { border-right: none; }
+  .pricescale .stop:nth-child(1), .pricescale .stop:nth-child(2) { border-bottom: 1px solid var(--hair); }
+}
+@media (max-width: 480px) {
+  .pricescale .track { grid-template-columns: 1fr; }
+  .pricescale .stop { border-right: none; border-bottom: 1px solid var(--hair); }
+  .pricescale .stop:last-child { border-bottom: none; }
+}
+
+/* Numbered step flow (authentication guide). */
+.steps { list-style: none; counter-reset: step; padding: 0; margin: 1.4rem 0 2rem; border: 1px solid var(--line); }
+.steps li {
+  counter-increment: step;
+  position: relative;
+  padding: 1.1rem 1.3rem 1.1rem 3.6rem;
+  border-bottom: 1px solid var(--hair);
+  background: var(--paper);
+}
+.steps li:last-child { border-bottom: none; }
+.steps li::before {
+  content: counter(step, decimal-leading-zero);
+  position: absolute;
+  left: 1.3rem; top: 1.1rem;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--cream);
+  background: var(--brand);
+  padding: 2px 6px;
+}
+
+@media (max-width: 860px) {
+  .statboard { grid-template-columns: 1fr; }
+  .statboard .field { border-right: none; border-bottom: 1px solid var(--line); }
+  .row { grid-template-columns: 30px 1fr auto; gap: 12px; }
+  .row .lat, .row .upt, .row .spark { display: none; }
+}
+
+/* ----------------------------------------------------------------------------
    API reference (Redoc host) fills the space below the nav.
 ---------------------------------------------------------------------------- */
 #redoc-host { background: var(--bg); }
@@ -515,23 +749,25 @@ tbody tr:hover td { background: var(--tex); }
   }
   .burger span { display: block; height: 2px; width: 100%; background: var(--ink); transition: transform .2s ease, opacity .2s ease; }
 
-  .topnav, .topactions {
+  /* The whole menu (links + actions) drops below the bar as one stacked panel. */
+  .menu {
     display: none;
     position: absolute;
     top: 100%;
     left: 0; right: 0;
+    flex: none;
     flex-direction: column;
     align-items: stretch;
     gap: 0;
-    margin: 0;
     background: var(--bg);
     border-bottom: 1px solid var(--line);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08);
   }
-  .topactions { top: 100%; border-top: 1px solid var(--hair); padding: 12px var(--pad); flex-direction: row; }
-  .navtoggle:checked ~ .topnav { display: flex; }
-  .navtoggle:checked ~ .topactions { display: flex; }
-  .topnav a { padding: 14px var(--pad); border-bottom: 1px solid var(--hair); border-left: none; }
+  .navtoggle:checked ~ .menu { display: flex; }
+  .topnav { flex-direction: column; align-items: stretch; gap: 0; }
+  .topnav a { padding: 14px var(--pad); border-bottom: 1px solid var(--hair); }
   .topnav a.on { border-bottom-color: var(--hair); color: var(--brand); }
+  .topactions { margin: 0; padding: 12px var(--pad); justify-content: flex-start; }
 
   .navtoggle:checked ~ .burger span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
   .navtoggle:checked ~ .burger span:nth-child(2) { opacity: 0; }

@@ -68,9 +68,7 @@
     var items = [
       { key: "overview", label: "Overview", href: base },
       { key: "api", label: "API reference", href: base + "api.html" },
-      { key: "auth", label: "Authentication", href: base + "guides/authentication.html" },
-      { key: "pricing", label: "Pricing", href: base + "pricing.html" },
-      { key: "github", label: "GitHub", href: GITHUB }
+      { key: "pricing", label: "Pricing", href: base + "pricing.html" }
     ];
     return items.map(function (it) {
       var on = it.key === active ? ' class="on"' : "";
@@ -87,11 +85,13 @@
         '<header class="topbar"><div class="topbar-inner wrap">' +
           '<a class="brand" href="' + base + '"><span class="sq"></span>Pulse Pager</a>' +
           '<input type="checkbox" id="pp-nav" class="navtoggle" hidden>' +
-          '<nav class="topnav">' + navLinks(base, active) + "</nav>" +
-          '<div class="topactions">' +
-            '<button class="themebtn" type="button" aria-label="Toggle dark mode" data-theme-toggle>◑</button>' +
-            '<a class="btn ghost" href="' + APP + '">Sign in</a>' +
-            '<a class="btn" href="' + APP + '">Start free</a>' +
+          '<div class="menu">' +
+            '<nav class="topnav">' + navLinks(base, active) + "</nav>" +
+            '<div class="topactions">' +
+              '<button class="themebtn" type="button" aria-label="Toggle dark mode" data-theme-toggle>◑</button>' +
+              '<a class="btn ghost" href="' + APP + '">Sign in</a>' +
+              '<a class="btn" href="' + APP + '">Start free</a>' +
+            "</div>" +
           "</div>" +
           '<label for="pp-nav" class="burger" aria-label="Toggle menu"><span></span><span></span><span></span></label>' +
         "</div></header>";
@@ -141,4 +141,23 @@
 
   customElements.define("pulse-header", PulseHeader);
   customElements.define("pulse-footer", PulseFooter);
+
+  /* Hover highlighter for the example monitor rows: a soft panel that slides to
+     the row under the cursor. Wired to any .mlist that holds a .highlighter. */
+  function initHighlighters() {
+    document.querySelectorAll(".mlist").forEach(function (list) {
+      var hl = list.querySelector(".highlighter");
+      if (!hl) return;
+      list.querySelectorAll(".row").forEach(function (row) {
+        row.addEventListener("mouseenter", function () {
+          hl.style.height = row.offsetHeight + "px";
+          hl.style.transform = "translateY(" + row.offsetTop + "px)";
+          hl.style.opacity = "1";
+        });
+      });
+      list.addEventListener("mouseleave", function () { hl.style.opacity = "0"; });
+    });
+  }
+  if (document.readyState !== "loading") initHighlighters();
+  else document.addEventListener("DOMContentLoaded", initHighlighters);
 })();

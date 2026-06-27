@@ -37,6 +37,21 @@
     </div>
   </div>
 
+  <div class="cards cols-3">
+    <div class="card">
+      <h3>One key, one org</h3>
+      <p>Per-org, role-scoped keys in the form <code>pulse_sk_…</code>. The secret is shown once, at creation, and stored only as a hash.</p>
+    </div>
+    <div class="card">
+      <h3>Bearer on every call</h3>
+      <p>Send the secret as <code>Authorization: Bearer</code>. The server hashes it and compares against stored hashes.</p>
+    </div>
+    <div class="card">
+      <h3>Member or admin</h3>
+      <p>A key is never owner-equivalent, so a leaked key cannot touch billing, transfer ownership, or delete the org.</p>
+    </div>
+  </div>
+
   <div class="container wrap">
    <div class="prose">
     <p class="lead">

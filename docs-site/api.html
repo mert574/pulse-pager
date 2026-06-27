@@ -27,6 +27,13 @@
   <style>
     body { display: flex; flex-direction: column; min-height: 100vh; margin: 0; }
     #redoc-host { flex: 1 1 auto; }
+    /* Redoc has no theme token for the main panel background, so in dark mode we
+       force its wrappers to the page background. Text colors come from the theme
+       object passed to Redoc.init (rebuilt when the site theme flips). */
+    :root.theme-dark #redoc-host,
+    :root.theme-dark #redoc-host .redoc-wrap,
+    :root.theme-dark #redoc-host .api-content,
+    :root.theme-dark #redoc-host .menu-content { background-color: #161514 !important; }
   </style>
 </head>
 <body>
@@ -51,34 +58,65 @@
   <pulse-footer base="./"></pulse-footer>
   <script src="https://cdn.redocly.com/redoc/latest/bundles/redoc.standalone.js"></script>
   <script>
-    // Theme Redoc to match the site's caramellatte palette so the menu and badges
-    // are warm instead of Redoc's default blue.
-    Redoc.init('./openapi.yaml', {
-      theme: {
-        colors: {
-          primary: { main: '#8c4e2a' },
-          http: {
-            get: '#2f7d32',
-            post: '#0e7490',
-            put: '#b45309',
-            patch: '#8c4e2a',
-            delete: '#b3261e'
-          }
-        },
-        sidebar: {
-          backgroundColor: '#f7efe0',
-          textColor: '#6b3d1c',
-          activeTextColor: '#8c4e2a'
-        },
-        rightPanel: {
-          backgroundColor: '#2a2018'
-        },
-        typography: {
-          fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-          headings: { fontFamily: 'inherit' }
-        }
+    // Theme Redoc to match the site's warm palette, and rebuild it for dark mode
+    // (Redoc themes once at init and does not react to a class flip, so we
+    // re-render when the site theme toggle changes the <html> class).
+    (function () {
+      var host = document.getElementById('redoc-host');
+      var FONT = 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+
+      function isDark() {
+        var r = document.documentElement;
+        if (r.classList.contains('theme-dark')) return true;
+        if (r.classList.contains('theme-light')) return false;
+        return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
       }
-    }, document.getElementById('redoc-host'));
+
+      function theme(dark) {
+        if (dark) {
+          return {
+            colors: {
+              primary: { main: '#d9a567' },
+              text: { primary: '#f1e8d7', secondary: '#b3a68f' },
+              border: { dark: '#302c27', light: '#302c27' },
+              http: { get: '#52b85f', post: '#5ab0c9', put: '#dca33a', patch: '#d9a567', delete: '#ff6a4d' }
+            },
+            sidebar: { backgroundColor: '#201e1b', textColor: '#b3a68f', activeTextColor: '#d9a567' },
+            rightPanel: { backgroundColor: '#100f0e', textColor: '#f1e8d7' },
+            codeBlock: { backgroundColor: '#201e1b' },
+            schema: { nestedBackground: '#201e1b' },
+            typography: { fontFamily: FONT, headings: { fontFamily: 'inherit' } }
+          };
+        }
+        return {
+          colors: {
+            primary: { main: '#8c4e2a' },
+            http: { get: '#2f7d32', post: '#0e7490', put: '#b45309', patch: '#8c4e2a', delete: '#b3261e' }
+          },
+          sidebar: { backgroundColor: '#f7efe0', textColor: '#6b3d1c', activeTextColor: '#8c4e2a' },
+          rightPanel: { backgroundColor: '#2a2018' },
+          typography: { fontFamily: FONT, headings: { fontFamily: 'inherit' } }
+        };
+      }
+
+      var current = isDark();
+      function render() { host.innerHTML = ''; Redoc.init('./openapi.yaml', { theme: theme(current) }, host); }
+      render();
+
+      // Re-render when the toggle flips the theme class on <html>.
+      new MutationObserver(function () {
+        var d = isDark();
+        if (d !== current) { current = d; render(); }
+      }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
+      // And when the OS preference changes while no explicit choice is set.
+      if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+          var d = isDark();
+          if (d !== current) { current = d; render(); }
+        });
+      }
+    })();
   </script>
   <!-- Simple Analytics (cookieless; collect-dnt=true counts Do-Not-Track visitors too) -->
   <script data-collect-dnt="true" async src="https://scripts.simpleanalyticscdn.com/latest.js"></script>

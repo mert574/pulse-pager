@@ -37,6 +37,38 @@
     </div>
   </div>
 
+  <div class="pricescale">
+    <div class="sectionhead">
+      <h2>Priced by how often you check</h2>
+    </div>
+    <div class="track">
+      <div class="stop">
+        <div class="pname">Free</div>
+        <div class="pint">15<small>min</small></div>
+        <div class="meter"><span class="f"></span><span></span><span></span><span></span></div>
+        <div class="pprice"><b>$0</b> · forever</div>
+      </div>
+      <div class="stop">
+        <div class="pname">Hobby</div>
+        <div class="pint">5<small>min</small></div>
+        <div class="meter"><span class="f"></span><span class="f"></span><span></span><span></span></div>
+        <div class="pprice"><b>$7</b>/mo</div>
+      </div>
+      <div class="stop hot">
+        <div class="pname">Professional</div>
+        <div class="pint">1<small>min</small></div>
+        <div class="meter"><span class="f"></span><span class="f"></span><span class="f"></span><span></span></div>
+        <div class="pprice"><b>$19</b>/mo</div>
+      </div>
+      <div class="stop">
+        <div class="pname">Custom</div>
+        <div class="pint">Custom</div>
+        <div class="meter"><span class="f"></span><span class="f"></span><span class="f"></span><span class="f"></span></div>
+        <div class="pprice">from <b>$129</b>/mo</div>
+      </div>
+    </div>
+  </div>
+
   <div class="container wrap">
     <p class="lead">
       These plans are for Pulse Pager Cloud, our managed hosting. Pulse Pager is open source, so you
@@ -115,30 +147,39 @@
 
     <h2>Compare all features</h2>
     <div class="table-wrap">
-      <table>
+      <table class="compare">
         <thead>
           <tr>
             <th>Feature</th>
-            <th class="plan-free">Free</th>
-            <th class="plan-starter">Hobby</th>
-            <th class="plan-team">Professional</th>
-            <th class="plan-custom">Custom</th>
+            <th class="plan-free">Free<small>$0</small></th>
+            <th class="plan-starter">Hobby<small>$7/mo</small></th>
+            <th class="plan-team">Professional<small>$19/mo</small></th>
+            <th class="plan-custom">Custom<small>from $129/mo</small></th>
           </tr>
         </thead>
         <tbody>
+          <tr class="group"><td colspan="5">Plans</td></tr>
           <tr><td class="feat">Price</td><td>$0</td><td>$7/mo</td><td>$19/mo</td><td>From $129/mo</td></tr>
           <tr><td class="feat">Free trial</td><td class="no">&ndash;</td><td>3 days (7 on annual)</td><td>3 days (7 on annual)</td><td class="no">&ndash;</td></tr>
+
+          <tr class="group"><td colspan="5">Monitoring</td></tr>
           <tr><td class="feat">Checks as fast as</td><td>every 15 min</td><td>every 5 min</td><td>every 1 min</td><td>Custom</td></tr>
           <tr><td class="feat">Monitors (cap)</td><td>10</td><td>25</td><td>50</td><td>Custom</td></tr>
           <tr><td class="feat">SSL certificate expiry monitoring</td><td class="yes">&check;</td><td class="yes">&check;</td><td class="yes">&check;</td><td class="yes">&check;</td></tr>
           <tr><td class="feat">Multi-region checks</td><td class="no">&ndash;</td><td class="no">&ndash;</td><td>up to 4 regions</td><td>all + residency</td></tr>
-          <tr><td class="feat">Seats</td><td>1</td><td>3</td><td>10</td><td>Unlimited</td></tr>
           <tr><td class="feat">History retention</td><td>7 days</td><td>30 days</td><td>90 days</td><td>180 days</td></tr>
+
+          <tr class="group"><td colspan="5">Status &amp; teams</td></tr>
           <tr><td class="feat">Status pages (cap)</td><td>1</td><td>3</td><td>10</td><td>Custom</td></tr>
           <tr><td class="feat">Custom domain status page</td><td class="no">&ndash;</td><td class="no">&ndash;</td><td class="yes">&check;</td><td class="yes">&check;</td></tr>
+          <tr><td class="feat">Seats</td><td>1</td><td>3</td><td>10</td><td>Unlimited</td></tr>
+
+          <tr class="group"><td colspan="5">API &amp; integrations</td></tr>
           <tr><td class="feat">API access</td><td class="no">&ndash;</td><td>Read-only</td><td>Full</td><td>Full</td></tr>
           <tr><td class="feat">Notification channels</td><td>Discord, Email (your SMTP), Telegram</td><td>+ Slack, Team email</td><td>+ PagerDuty, Opsgenie, MS&nbsp;Teams</td><td>+ Twilio SMS / voice</td></tr>
           <tr><td class="feat">Outbound webhooks</td><td class="no">&ndash;</td><td class="no">&ndash;</td><td class="yes">&check;</td><td class="yes">&check;</td></tr>
+
+          <tr class="group"><td colspan="5">Governance</td></tr>
           <tr><td class="feat">Audit-log retention</td><td class="no">&ndash;</td><td class="no">&ndash;</td><td>30 days</td><td>1 year</td></tr>
           <tr><td class="feat">SSO (SAML / Okta)</td><td class="no">&ndash;</td><td class="no">&ndash;</td><td class="no">&ndash;</td><td class="yes">&check;</td></tr>
         </tbody>

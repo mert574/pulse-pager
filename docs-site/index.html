@@ -56,7 +56,77 @@
         <a class="btn secondary" href="./api.html">Explore the API</a>
       </div>
     </section>
+  </div>
 
+  <!-- Product preview: the app's own look, rendered with example data so the
+       design speaks for itself. Full-bleed, ruled like the dashboard. -->
+  <div class="sectionhead">
+    <h2>A look at the dashboard</h2>
+    <span class="c">Example data</span>
+  </div>
+  <section class="statboard">
+    <div class="field">
+      <div class="lab">Fleet uptime — 30 days</div>
+      <div class="statbig mono">99.98<small>%</small></div>
+      <div class="foot mono"><span>▲ 0.04 vs prev</span><span>Target 99.90</span><span>SLA met</span></div>
+    </div>
+    <div class="panel">
+      <div>
+        <div class="lab">Latency — last 24h</div>
+        <svg width="100%" height="76" viewBox="0 0 560 76" preserveAspectRatio="none" style="margin-top:14px">
+          <polyline fill="none" stroke="var(--tan)" stroke-width="2" points="0,48 37,44 75,50 112,36 150,40 187,26 225,34 262,22 300,30 337,20 375,32 412,24 450,38 487,18 525,28 560,24"/>
+        </svg>
+        <div class="scale"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>NOW · 142ms</span></div>
+      </div>
+      <div class="minis">
+        <div class="mini"><div class="k">Latency</div><div class="v">142<span style="font-size:14px;color:var(--ink3)">ms</span></div></div>
+        <div class="mini"><div class="k">Incidents</div><div class="v red-t">01</div></div>
+        <div class="mini"><div class="k">Checks/min</div><div class="v">1240</div></div>
+        <div class="mini"><div class="k">SSL ≤14d</div><div class="v deg-t">02</div></div>
+      </div>
+    </div>
+  </section>
+  <div class="banner">
+    <span class="num">!</span>
+    <div style="flex:1">
+      <div class="t">web.pulsepager.com is down</div>
+      <div class="s">SINCE 12:01:38 / 3 OF 3 REGIONS / HTTP 503 / 7M 12S</div>
+    </div>
+    <a class="btn ghost" href="https://app.pulsepager.com">View incident</a>
+  </div>
+  <div class="sectionhead">
+    <h2>All monitors</h2>
+    <span class="c">Sorted by status</span>
+  </div>
+  <div class="mlist">
+    <div class="highlighter"></div>
+    <div class="row">
+      <span class="ridx">01</span>
+      <div><div class="name">web.pulsepager.com</div><div class="url">GET https://web.pulsepager.com/</div></div>
+      <span class="state down-t"><span class="sq2 down"></span>Down</span>
+      <span class="lat down-t">—</span>
+      <span class="upt">98.71%</span>
+      <svg class="spark" viewBox="0 0 120 28" preserveAspectRatio="none"><polyline fill="none" stroke="var(--red)" stroke-width="1.5" points="0,13 18,15 36,12 54,16 72,14 90,18 102,25 111,26 120,26"/></svg>
+    </div>
+    <div class="row">
+      <span class="ridx">02</span>
+      <div><div class="name">cdn.pulsepager.com</div><div class="url">GET https://cdn.pulsepager.com/ping</div></div>
+      <span class="state deg-t"><span class="sq2 deg"></span>Degraded</span>
+      <span class="lat deg-t">410ms</span>
+      <span class="upt">99.40%</span>
+      <svg class="spark" viewBox="0 0 120 28" preserveAspectRatio="none"><polyline fill="none" stroke="var(--deg)" stroke-width="1.5" points="0,17 18,16 36,15 54,18 72,13 90,20 102,22 111,21 120,23"/></svg>
+    </div>
+    <div class="row">
+      <span class="ridx">03</span>
+      <div><div class="name">api.pulsepager.com</div><div class="url">GET https://api.pulsepager.com/health</div></div>
+      <span class="state up-t"><span class="sq2 up"></span>Up</span>
+      <span class="lat">42ms</span>
+      <span class="upt">99.98%</span>
+      <svg class="spark" viewBox="0 0 120 28" preserveAspectRatio="none"><polyline fill="none" stroke="var(--up)" stroke-width="1.5" points="0,19 18,16 36,20 54,14 72,17 90,11 102,15 111,10 120,12"/></svg>
+    </div>
+  </div>
+
+  <div class="container wrap">
     <h2>Self-host or use the cloud</h2>
     <p>It's the same Pulse Pager either way. The difference is who runs it.</p>
     <div class="cards">
