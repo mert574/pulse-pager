@@ -1,9 +1,11 @@
-# Observability stack (k3s) — trace pipeline
+# Observability stack (k3s) — trace + metrics pipeline
 
-In-cluster trace pipeline for the k3s cluster (RFC-011 / RFC-010), traces only:
+In-cluster trace + metrics pipeline for the k3s cluster (RFC-011 / RFC-010):
 
 ```
-services --OTLP--> otel-collector (tail sampling) --OTLP--> Tempo <-- Grafana
+services --OTLP--> otel-collector (tail sampling) --OTLP--> Tempo --service graph--> Prometheus
+services --scrape /metrics------------------------------------------------------->  Prometheus
+                                                                  Tempo, Prometheus <-- Grafana
 ```
 
 The dev equivalent runs in docker-compose (`make up-obs`, configs in the top-level
@@ -16,21 +18,26 @@ target is k3s (lightweight, CNCF-conformant), so standard Helm and manifests app
 
 | Component | Chart | Version |
 |-----------|-------|---------|
+| Prometheus | `prometheus-community/prometheus` | 27.5.1 |
 | Collector | `open-telemetry/opentelemetry-collector` | 0.159.1 |
 | Tempo | `grafana/tempo` (single binary) | 1.24.4 |
 | Grafana | `grafana/grafana` | 10.5.15 |
+
+The Prometheus chart version is a best guess; confirm it against
+`helm search repo prometheus-community/prometheus` and bump if needed before installing.
 
 ## Install
 
 ```sh
 helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
 helm repo add grafana https://grafana.github.io/helm-charts
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
 
-./install.sh        # idempotent: namespace + the three helm upgrade --install
+./install.sh        # idempotent: namespace + the four helm upgrade --install
 ```
 
-`install.sh` creates the `pulse-system` namespace and installs all three with the values
+`install.sh` creates the `pulse-system` namespace and installs all four with the values
 files here. Re-run it to apply changes.
 
 ## Point the services at the collector
@@ -56,7 +63,12 @@ kubectl -n pulse-system get secret pulse-grafana -o jsonpath="{.data.admin-passw
 ```
 
 Open http://localhost:3000, sign in as `admin`, go to Explore -> Tempo -> Search by
-TraceID, and paste a trace id from an error toast or a log line.
+TraceID, and paste a trace id from an error toast or a log line. The Tempo datasource's
+Service Graph tab shows the cross-service map (it reads the service-graph series Tempo
+remote-writes to Prometheus); the Prometheus datasource has the per-service metrics.
+
+Prometheus stays ClusterIP too; port-forward it the same way if you want the raw metrics:
+`kubectl -n pulse-system port-forward svc/pulse-prometheus-server 9090:80`.
 
 ## Notes / deferred
 

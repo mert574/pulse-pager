@@ -25,3 +25,20 @@ datasources:
         access: proxy
         url: http://pulse-tempo.pulse-system.svc.cluster.local:3200
         isDefault: true
+        jsonData:
+          # Service Graph reads the service-graph series Tempo remote-writes to Prometheus.
+          serviceMap:
+            datasourceUid: prometheus
+          nodeGraph:
+            enabled: true
+      - name: Prometheus
+        type: prometheus
+        uid: prometheus
+        access: proxy
+        url: http://pulse-prometheus-server.pulse-system.svc.cluster.local
+        isDefault: false
+        jsonData:
+          # Jump from a metric exemplar straight to its trace.
+          exemplarTraceIdDestinations:
+            - name: trace_id
+              datasourceUid: tempo

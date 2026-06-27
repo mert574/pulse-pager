@@ -14,26 +14,33 @@ tempo:
       wal:
         path: /var/tempo/wal
 
-  # Metrics-generator with local-blocks so TraceQL metrics (rate(), quantile_over_time(),
-  # the metrics view in Grafana) work. Computed inside Tempo, no Prometheus needed.
-  # The chart's default remoteWriteUrl is unused here because we only run the local_blocks
-  # processor (span_metrics/service_graphs, which would remote-write to Prometheus, are
-  # off until the metrics pillar lands).
+  # Metrics-generator with two processors (RFC-010 section 4): local-blocks so TraceQL
+  # metrics (rate(), quantile_over_time(), the metrics view in Grafana) work inside Tempo,
+  # and service-graphs so Grafana's Service Graph has data. The service-graph series (and
+  # their exemplars) are remote-written to the in-cluster Prometheus; local-blocks stays
+  # internal to Tempo.
   metricsGenerator:
     enabled: true
     processor:
       local_blocks:
         flush_to_storage: true
+      service_graphs: {}
     storage:
       path: /var/tempo/generator/wal
+      remote_write:
+        - url: http://pulse-prometheus-server.pulse-system.svc.cluster.local/api/v1/write
+          send_exemplars: true
     traces_storage:
       path: /var/tempo/generator/traces
+    registry:
+      external_labels:
+        source: tempo
 
-  # Turn the local-blocks processor on for the default tenant.
+  # Turn both generator processors on for the default tenant.
   overrides:
     defaults:
       metrics_generator:
-        processors: [local-blocks]
+        processors: [local-blocks, service-graphs]
 
 # Keep traces across pod restarts. k3s ships the local-path provisioner, so the default
 # StorageClass satisfies this with no extra setup.
