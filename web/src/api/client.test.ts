@@ -1,6 +1,17 @@
 import { expect } from "@open-wc/testing";
+import { WebTracerProvider } from "@opentelemetry/sdk-trace-web";
+import { W3CTraceContextPropagator } from "@opentelemetry/core";
 import { __test, ApiError } from "./client.js";
 import { session } from "../state/session.js";
+
+// Register a real (no-exporter) tracer provider + W3C propagator so the client's
+// per-request spans have valid contexts and inject a traceparent (RFC-021 phase 2).
+// No span processor, so nothing is exported during tests.
+before(() => {
+  new WebTracerProvider().register({
+    propagator: new W3CTraceContextPropagator(),
+  });
+});
 
 // Auth interceptor tests (RFC-013 section 11, decision D3): single-flight
 // refresh-then-retry-once, CSRF echo, no recursion on /auth/refresh.

@@ -13,6 +13,11 @@
 //   render: () => import("./components/monitors-list-view.js")
 //     .then(() => html`<monitors-list-view></monitors-list-view>`)
 
+// Must be first: registers the tracer before any component import upgrades a custom
+// element (app-root's connectedCallback bootstraps the session via GET /api/v1/me, and
+// element upgrades run synchronously at define time). RFC-021 phase 2.
+import "./bootstrap-tracing.js";
+
 import {
   Router,
   registerRouter,

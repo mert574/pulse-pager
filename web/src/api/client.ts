@@ -9,8 +9,16 @@
 // If refresh fails, or the retry 401s again, it clears the session and goes to
 // login. This is the one central place auth expiry is handled (RFC-013 section 3.3).
 
+import {
+  context,
+  propagation,
+  SpanKind,
+  SpanStatusCode,
+  trace,
+} from "@opentelemetry/api";
 import { navigate } from "../router.js";
 import { session } from "../state/session.js";
+import { tracer } from "../tracing.js";
 import type {
   AdminBilling,
   AdminMetrics,
@@ -157,27 +165,18 @@ function csrfHeader(method: string): Record<string, string> {
   return token ? { "X-CSRF-Token": token } : {};
 }
 
-// Mint a W3C traceparent so the trace starts at this request (RFC-021 section 5):
-// a random 16-byte trace id and 8-byte span id as hex, sampled flag on. No SDK is
-// needed for the id; the api continues it across every service, and the client keeps
-// the trace id to show on errors. crypto.getRandomValues is always present here.
-function newTraceparent(): string {
-  const hex = (bytes: number): string => {
-    const buf = new Uint8Array(bytes);
-    crypto.getRandomValues(buf);
-    return Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
-  };
-  return `00-${hex(16)}-${hex(8)}-01`;
-}
-
 // Build the RequestInit for a call: cookies always sent, JSON body when present,
-// CSRF echoed on unsafe methods.
-function buildInit(opts: RequestOptions, traceparent: string): RequestInit {
+// CSRF echoed on unsafe methods, and the trace context headers (traceparent) injected
+// by the caller from the request's span.
+function buildInit(
+  opts: RequestOptions,
+  traceHeaders: Record<string, string>,
+): RequestInit {
   const method = opts.method ?? "GET";
   const init: RequestInit = {
     method,
     credentials: "include",
-    headers: { ...csrfHeader(method), traceparent },
+    headers: { ...csrfHeader(method), ...traceHeaders },
   };
   if (opts.body !== undefined) {
     init.headers = { ...init.headers, "Content-Type": "application/json" };
@@ -221,24 +220,40 @@ function failToLogin(): never {
 
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const url = path + buildQuery(opts.query);
-  // Mint one traceparent for the whole call and reuse it on the refresh-retry, so
-  // the user action is one trace (RFC-021 section 5). The trace id is the second
-  // field; we keep it to attach to any error we throw.
-  const traceparent = newTraceparent();
-  const traceId = traceparent.split("-")[1];
-  let res = await fetch(url, buildInit(opts, traceparent));
+  const method = opts.method ?? "GET";
+  // The browser-side span for this call (RFC-021 phase 2): it is the trace root, gets
+  // exported to the collector, and the api span hangs off it. Named by method + path
+  // only (no query, no PII, section 10). Reused across the refresh-retry so the whole
+  // user action is one trace, and its trace id is what we surface on an error.
+  const span = tracer.startSpan(`${method} ${path}`, {
+    kind: SpanKind.CLIENT,
+    attributes: { "http.request.method": method, "url.path": path },
+  });
+  const traceId = span.spanContext().traceId;
+  const traceHeaders: Record<string, string> = {};
+  propagation.inject(trace.setSpan(context.active(), span), traceHeaders);
 
-  if (res.status === 401 && !opts.noRetry) {
-    // single-flight refresh, then replay the original request exactly once
-    const refreshed = await refreshOnce();
-    if (!refreshed) failToLogin();
-    res = await fetch(url, buildInit(opts, traceparent));
+  try {
+    let res = await fetch(url, buildInit(opts, traceHeaders));
+
+    if (res.status === 401 && !opts.noRetry) {
+      // single-flight refresh, then replay the original request exactly once
+      const refreshed = await refreshOnce();
+      if (!refreshed) failToLogin();
+      res = await fetch(url, buildInit(opts, traceHeaders));
+      if (res.status === 401) failToLogin();
+    }
+
     if (res.status === 401) failToLogin();
+    span.setAttribute("http.response.status_code", res.status);
+    if (!res.ok) {
+      span.setStatus({ code: SpanStatusCode.ERROR });
+      throw await parseError(res, traceId);
+    }
+    return parseBody<T>(res);
+  } finally {
+    span.end();
   }
-
-  if (res.status === 401) failToLogin();
-  if (!res.ok) throw await parseError(res, traceId);
-  return parseBody<T>(res);
 }
 
 // Org-scoped path helper. Active org is the URL path under /orgs/{orgId}

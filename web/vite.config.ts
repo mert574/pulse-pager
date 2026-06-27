@@ -38,6 +38,9 @@ export default defineConfig({
       "/api": { target: "http://localhost:8081", changeOrigin: false },
       "/auth": { target: "http://localhost:8081", changeOrigin: false },
       "/healthz": { target: "http://localhost:8081", changeOrigin: false },
+      // Browser spans (RFC-021 phase 2) export here; forward to the OTel collector's
+      // OTLP/HTTP receiver so it stays same-origin (no CORS) in dev.
+      "/v1/traces": { target: "http://localhost:4318", changeOrigin: true },
     },
   },
 });

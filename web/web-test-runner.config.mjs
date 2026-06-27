@@ -14,7 +14,13 @@ const tsconfig = fileURLToPath(new URL("./tsconfig.json", import.meta.url));
 
 export default {
   files: "src/**/*.test.ts",
-  nodeResolve: true,
+  // Prefer the "browser" export condition so deps with separate node/browser builds
+  // (e.g. the OpenTelemetry packages, RFC-021 phase 2) resolve to the browser build,
+  // which uses Web Crypto instead of node's crypto/util built-ins.
+  nodeResolve: {
+    browser: true,
+    exportConditions: ["browser", "module", "import", "default"],
+  },
   // TanStack table-core reads process.env.NODE_ENV for dev checks. Vite replaces
   // it at build time; in the browser test page we provide a process shim so the
   // reference resolves (Node-style global is otherwise absent in the browser).
