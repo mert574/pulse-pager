@@ -1,0 +1,79 @@
+# OTel Collector for the k3s cluster, values over the open-telemetry/opentelemetry-collector
+# chart. Receives OTLP from the services, tail-samples, exports to Tempo. Same pipeline
+# shape as the dev stack in observability/collector/collector.dev.yaml.
+# Clean, stable service name so the export endpoint is pulse-otel-collector:4317
+# rather than the chart's long default.
+fullnameOverride: pulse-otel-collector
+
+mode: deployment
+
+# Tail sampling needs every span of a trace to reach the same collector instance, so a
+# single replica is correct here. Scaling later needs a load-balancing-exporter tier in
+# front of a collector pool (RFC-010 section 4.5); one instance is right for now.
+replicaCount: 1
+
+# Contrib image: the tail_sampling processor is not in the core collector. Tag defaults
+# to the chart's appVersion, which is a matching contrib release.
+image:
+  repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib
+command:
+  name: otelcol-contrib
+
+# We only ingest OTLP. Turn off the chart's default jaeger/zipkin ports so the Service
+# does not advertise receivers we removed below.
+ports:
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false
+
+# The collector errors on any component defined but not used in a pipeline, so the
+# chart's default jaeger/zipkin/prometheus receivers and debug exporter are removed
+# (set null), and the default metrics/logs pipelines are dropped.
+config:
+  receivers:
+    jaeger: null
+    zipkin: null
+    prometheus: null
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+  processors:
+    # Keep 100% of error traces and 100% of slow ones; sample the rest. The boring-trace
+    # rate is a placeholder pending real-volume tuning (RFC-010 section 4.5 / OQ 1).
+    tail_sampling:
+      decision_wait: 10s
+      policies:
+        - name: errors
+          type: status_code
+          status_code:
+            status_codes: [ERROR]
+        - name: slow
+          type: latency
+          latency:
+            threshold_ms: 1000
+        - name: sample-rest
+          type: probabilistic
+          probabilistic:
+            sampling_percentage: 10
+  exporters:
+    debug: null
+    otlp/tempo:
+      endpoint: pulse-tempo.pulse-system.svc.cluster.local:4317
+      tls:
+        insecure: true
+  service:
+    pipelines:
+      logs: null
+      metrics: null
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, tail_sampling, batch]
+        exporters: [otlp/tempo]

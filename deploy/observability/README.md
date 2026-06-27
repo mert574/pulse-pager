@@ -1,0 +1,71 @@
+# Observability stack (k3s) — trace pipeline
+
+In-cluster trace pipeline for the k3s cluster (RFC-011 / RFC-010), traces only:
+
+```
+services --OTLP--> otel-collector (tail sampling) --OTLP--> Tempo <-- Grafana
+```
+
+The dev equivalent runs in docker-compose (`make up-obs`, configs in the top-level
+`observability/`). This dir is the cluster version: Helm values over the upstream charts.
+
+These are the first k8s/Helm artifacts in the repo. They deploy onto any cluster; the
+target is k3s (lightweight, CNCF-conformant), so standard Helm and manifests apply.
+
+## Charts (pinned)
+
+| Component | Chart | Version |
+|-----------|-------|---------|
+| Collector | `open-telemetry/opentelemetry-collector` | 0.159.1 |
+| Tempo | `grafana/tempo` (single binary) | 1.24.4 |
+| Grafana | `grafana/grafana` | 10.5.15 |
+
+## Install
+
+```sh
+helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+
+./install.sh        # idempotent: namespace + the three helm upgrade --install
+```
+
+`install.sh` creates the `pulse-system` namespace and installs all three with the values
+files here. Re-run it to apply changes.
+
+## Point the services at the collector
+
+The app services export to the collector's in-cluster service. On each service's
+Deployment (those k8s manifests come with the wider RFC-011 migration; not in this dir
+yet) set:
+
+```
+PULSE_TRACING_ENABLED=true
+PULSE_OTLP_ENDPOINT=pulse-otel-collector.pulse-system.svc.cluster.local:4317
+```
+
+## See traces
+
+Exposure (ingress, access control) is deferred until the cluster edge is decided, so
+Grafana stays ClusterIP. Reach it by port-forward:
+
+```sh
+kubectl -n pulse-system port-forward svc/pulse-grafana 3000:80
+# admin password:
+kubectl -n pulse-system get secret pulse-grafana -o jsonpath="{.data.admin-password}" | base64 -d ; echo
+```
+
+Open http://localhost:3000, sign in as `admin`, go to Explore -> Tempo -> Search by
+TraceID, and paste a trace id from an error toast or a log line.
+
+## Notes / deferred
+
+- **Exposure:** no ingress and nothing Cloudflare here yet (deferred). When the edge is
+  decided, Grafana goes behind it with access control; the collector and Tempo stay
+  cluster-internal regardless.
+- **Tempo chart:** the single-binary `tempo` chart is deprecated upstream but is the right
+  lightweight fit for k3s. `tempo-distributed` is the non-deprecated path at scale.
+- **Storage:** Tempo writes traces to a local-path PVC (k3s default StorageClass). Prod at
+  scale moves to an object-store backend; retention is RFC-010 open question 1.
+- **Scale:** the collector runs a single replica because tail sampling needs every span of
+  a trace on one instance. Scaling needs a load-balancing-exporter tier (RFC-010 §4.5).

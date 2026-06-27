@@ -1,0 +1,7 @@
+# The observability stack runs in pulse-system (RFC-011 section 3.1), the same
+# namespace as the rest of the platform's cluster services. Apply this first, or use
+# `helm install --create-namespace`.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pulse-system

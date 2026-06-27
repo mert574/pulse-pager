@@ -1,0 +1,27 @@
+# Grafana for the k3s cluster, values over the grafana/grafana chart. Provisions the
+# Tempo datasource so traces are searchable by id. Service stays ClusterIP: exposure
+# (ingress, access control) is deferred until the cluster edge is decided, so reach it
+# for now with `kubectl -n pulse-system port-forward svc/pulse-grafana 3000:80`.
+# Track the latest Grafana. Chart 10.5.15 ships appVersion 12.3.1, so pin the image
+# ahead of it to match the dev stack; the chart templates are version-tolerant here.
+image:
+  tag: "13.1.0"
+
+service:
+  type: ClusterIP
+
+persistence:
+  enabled: true
+  size: 5Gi
+
+# Provisioned as code (RFC-010 section 8): the repo is the source of truth, not the UI.
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Tempo
+        type: tempo
+        uid: tempo
+        access: proxy
+        url: http://pulse-tempo.pulse-system.svc.cluster.local:3200
+        isDefault: true
