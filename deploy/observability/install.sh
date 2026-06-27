@@ -8,6 +8,14 @@ set -euo pipefail
 NS=pulse-system
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+kubectl apply -f "$DIR/namespace.yaml"
+
+# Dashboards as code: build the ConfigMap Grafana loads from the same JSON the dev stack
+# uses, so dev and cluster cannot drift. Re-applied each run (idempotent).
+kubectl -n "$NS" create configmap pulse-dashboards \
+  --from-file=pulse-overview.json="$DIR/../../observability/grafana/dashboards/pulse-overview.json" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 helm upgrade --install pulse-prometheus prometheus-community/prometheus --version 27.5.1 \
   -n "$NS" --create-namespace -f "$DIR/prometheus/values.yaml"
 

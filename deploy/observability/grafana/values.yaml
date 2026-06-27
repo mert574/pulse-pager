@@ -14,6 +14,31 @@ persistence:
   enabled: true
   size: 5Gi
 
+# Land on the Pulse overview instead of Grafana's stock welcome page (RFC-010 section 8),
+# and default to the Gloom theme. Org name and week start are org preferences: in the
+# cluster Grafana is stateful (persistence below) with a real login, so set those in the
+# UI once and they persist.
+grafana.ini:
+  dashboards:
+    default_home_dashboard_path: /var/lib/grafana/dashboards/pulse/pulse-overview.json
+  users:
+    default_theme: gloom
+
+# Load the dashboards-as-code from the pulse-dashboards ConfigMap (install.sh builds it
+# from the same JSON the dev stack uses, so the two cannot drift).
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: pulse
+        type: file
+        disableDeletion: false
+        allowUiUpdates: true
+        options:
+          path: /var/lib/grafana/dashboards/pulse
+dashboardsConfigMaps:
+  pulse: pulse-dashboards
+
 # Provisioned as code (RFC-010 section 8): the repo is the source of truth, not the UI.
 datasources:
   datasources.yaml:

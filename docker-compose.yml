@@ -98,12 +98,24 @@ services:
     profiles: ["obs"]
     environment:
       # Dev only: anonymous admin, no login. Prod gates Grafana behind the ingress
-      # access control (RFC-011 section 5), never anonymous.
+      # access control (RFC-011 section 5), never anonymous. The login form is disabled
+      # because there is nothing to log into (you are already Admin); the vestigial
+      # "Sign in" link in the UI is harmless.
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      # Gloom theme as the instance default. Org name and week start can't be set here:
+      # renaming the org breaks anonymous access on a fresh boot (Grafana needs the
+      # anon org to pre-exist, and provisioning targets the default "Main Org."), and
+      # week start has no instance-default .ini key (it is an org/user preference). Set
+      # week start in the UI per session, or add a grafana data volume to persist it.
+      GF_USERS_DEFAULT_THEME: "gloom"
+      # Land on the Pulse overview instead of Grafana's stock welcome page.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/pulse-overview.json
     volumes:
       - ./observability/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning/dashboards:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "3000:3000"
     depends_on:

@@ -62,7 +62,9 @@ kubectl -n pulse-system port-forward svc/pulse-grafana 3000:80
 kubectl -n pulse-system get secret pulse-grafana -o jsonpath="{.data.admin-password}" | base64 -d ; echo
 ```
 
-Open http://localhost:3000, sign in as `admin`, go to Explore -> Tempo -> Search by
+Open http://localhost:3000 and sign in as `admin`. Grafana lands on the provisioned
+"Pulse Overview" dashboard (SLO latencies, check/API rates, consumer lag, service up).
+For a single trace, go to Explore -> Tempo -> Search by
 TraceID, and paste a trace id from an error toast or a log line. The Tempo datasource's
 Service Graph tab shows the cross-service map (it reads the service-graph series Tempo
 remote-writes to Prometheus); the Prometheus datasource has the per-service metrics.

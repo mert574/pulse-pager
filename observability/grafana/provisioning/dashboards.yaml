@@ -1,0 +1,12 @@
+# Provisioned dashboards (RFC-010 section 8: dashboards as code, the repo is the source
+# of truth). The JSON files live in /var/lib/grafana/dashboards (mounted from
+# observability/grafana/dashboards); Grafana loads and keeps them in sync from disk.
+apiVersion: 1
+providers:
+  - name: pulse
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

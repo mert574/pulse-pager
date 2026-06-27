@@ -1,0 +1,97 @@
+{
+  "uid": "pulse-overview",
+  "title": "Pulse Overview",
+  "tags": ["pulse"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "type": "row",
+      "title": "SLOs (p99 over 5m)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "Dispatch lag p99",
+      "description": "scheduler: dispatched_at - scheduled_at. SLO target 5s.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 5 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.99, sum(rate(pulse_schedule_dispatch_lag_seconds_bucket[5m])) by (le))" } ]
+    },
+    {
+      "type": "stat",
+      "title": "Verdict latency p99",
+      "description": "alerting: decided_at - result.checked_at. SLO target 5s.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 5 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.99, sum(rate(pulse_verdict_latency_seconds_bucket[5m])) by (le))" } ]
+    },
+    {
+      "type": "stat",
+      "title": "Notify end-to-end p99",
+      "description": "notifier: triggering check.checked_at to outbound send. SLO target 30s.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 30 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "area" },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.99, sum(rate(pulse_pipeline_notify_latency_seconds_bucket[5m])) by (le))" } ]
+    },
+    {
+      "type": "row",
+      "title": "Pipeline throughput",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Checks per second by outcome",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(pulse_check_results_total[1m])) by (healthy)", "legendFormat": "healthy={{healthy}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "API request rate by status family",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(pulse_http_requests_total[1m])) by (status)", "legendFormat": "{{status}}" } ]
+    },
+    {
+      "type": "row",
+      "title": "Health",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Kafka consumer lag by group",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(pulse_kafka_consumer_lag) by (group)", "legendFormat": "{{group}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Service up",
+      "description": "pulse_up per service (1 = serving). The service label comes from the scrape.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0, "max": 1, "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "pulse_up", "legendFormat": "{{service}}" } ]
+    }
+  ]
+}
