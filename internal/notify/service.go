@@ -216,6 +216,9 @@ func NewRunner(mgr *Manager, registry *Registry, store Store, cache DedupCache, 
 	r.webhookCfg.now = r.now
 	r.webhookCfg.log = r.log
 	r.webhookCfg.store = r.webhooks
+	// Trace the org-webhook outbound calls too (the per-channel path is traced via the
+	// Manager's client). withTracing is idempotent, so a test-injected client is fine.
+	r.webhookCfg.client = withTracing(r.webhookCfg.client)
 	return r
 }
 

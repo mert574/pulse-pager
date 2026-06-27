@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"pulse/internal/domain"
 )
 
@@ -75,7 +77,10 @@ func New(cfg Config) *Checker {
 	return &Checker{
 		cfg: cfg,
 		client: &http.Client{
-			Transport: transport,
+			// Wrap with otelhttp so each check is a CLIENT span under check.execute, so a
+			// trace reaches the target and the service graph shows worker -> target
+			// (RFC-010 section 4.1). The SSRF dial guard stays on the inner transport.
+			Transport: otelhttp.NewTransport(transport),
 			// No global Timeout: the per-check context is the deadline.
 		},
 	}

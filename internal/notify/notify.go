@@ -18,6 +18,8 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"pulse/internal/domain"
 )
 
@@ -66,6 +68,26 @@ func httpClientOrDefault(c *http.Client) *http.Client {
 		return c
 	}
 	return &http.Client{Timeout: 15 * time.Second}
+}
+
+// withTracing wraps the client's transport with otelhttp so each outbound delivery is a
+// CLIENT span under notify.deliver, so a trace reaches the channel (Slack/webhook/...)
+// and the service graph shows notifier -> target (RFC-010 section 4.1). It is idempotent
+// (the type guard skips an already-wrapped client), so the recording Manager that reuses
+// the same client does not double-wrap.
+func withTracing(c *http.Client) *http.Client {
+	if c == nil {
+		c = &http.Client{Timeout: 15 * time.Second}
+	}
+	if _, ok := c.Transport.(*otelhttp.Transport); ok {
+		return c
+	}
+	base := c.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	c.Transport = otelhttp.NewTransport(base)
+	return c
 }
 
 // clientAware is implemented by providers that need the Manager's http.Client.
@@ -136,6 +158,7 @@ func NewManagerWithRegistry(reg *Registry, client *http.Client, logger *slog.Log
 	if client == nil {
 		client = &http.Client{Timeout: 15 * time.Second}
 	}
+	client = withTracing(client)
 	if logger == nil {
 		logger = slog.Default()
 	}

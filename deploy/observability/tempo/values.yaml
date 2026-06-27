@@ -24,7 +24,11 @@ tempo:
     processor:
       local_blocks:
         flush_to_storage: true
-      service_graphs: {}
+      service_graphs:
+        # Name the peer of a client/producer span so uninstrumented dependencies (the DB,
+        # external HTTP targets) show as service-graph nodes. server.address covers the
+        # otelhttp check/notify clients (worker -> target).
+        peer_attributes: [peer.service, server.address, db.name, db.system]
     storage:
       path: /var/tempo/generator/wal
       remote_write:

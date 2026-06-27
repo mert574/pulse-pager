@@ -27,7 +27,11 @@ metrics_generator:
   processor:
     local_blocks:
       flush_to_storage: true
-    service_graphs: {}
+    service_graphs:
+      # Which span attributes name the "peer" (the other side of a client/producer span)
+      # so an uninstrumented dependency (the DB, an external HTTP target) shows as a node.
+      # server.address covers the otelhttp check/notify clients (worker -> target).
+      peer_attributes: [peer.service, server.address, db.name, db.system]
   storage:
     path: /var/tempo/generator/wal
     # Send the generated service-graph series (and their exemplars) to Prometheus.
