@@ -35,14 +35,12 @@ const PATHS: Record<string, TemplateResult> = {
 
 export type IconName = keyof typeof PATHS;
 
-// An info "i" with a hover tooltip, for explaining a field. daisyUI tooltip shows
-// `text` on hover; the icon is muted and inline next to a label.
+// An info "i" with a hover tooltip, for explaining a field. The native title
+// attribute carries `text` on hover; the icon is muted and inline next to a label.
 export function fieldHelp(text: string) {
-  // normal-case/font-normal/tracking-normal so the tooltip text is not inherited
-  // as uppercase/bold/spaced from labels like the stat titles or table headers.
   return html`<span
-    class="tooltip tooltip-right align-middle normal-case font-normal tracking-normal text-base-content/40 hover:text-base-content/70"
-    data-tip=${text}
+    class="align-middle text-ink3 hover:text-ink2"
+    title=${text}
   >
     ${icon("info", "size-3.5")}
   </span>`;

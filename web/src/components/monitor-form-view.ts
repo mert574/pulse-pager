@@ -1,4 +1,4 @@
-import { html, type TemplateResult } from "lit";
+import { html, nothing, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { consume } from "@lit/context";
 import { AppElement } from "./base.js";
@@ -8,6 +8,7 @@ import { navigate } from "../router.js";
 import { toast } from "../toast.js";
 import { t, tDynamic, type MessageKey } from "../i18n.js";
 import { icon, fieldHelp } from "../icons.js";
+import { pageShell, errorBox, spinner } from "./ui.js";
 import type {
   Channel,
   DownPolicy,
@@ -89,6 +90,13 @@ function defaultForm(): MonitorInput {
     regions: [],
     down_policy: "quorum",
   };
+}
+
+// One titled form group's parts, packaged before it knows its running number.
+interface FormSection {
+  title: string;
+  lead: string;
+  body: TemplateResult;
 }
 
 // Monitor create/edit form (RFC-013 section 7.1). One component for both modes:
@@ -214,63 +222,46 @@ export class MonitorFormView extends AppElement {
     }
   }
 
-  private selectInterval(seconds: number): void {
-    this.patch("interval_seconds", seconds);
-    // close the daisyUI focus-dropdown
-    (document.activeElement as HTMLElement | null)?.blur();
-  }
-
-  // Interval as a preset dropdown. Options below the plan floor are shown locked
-  // (dimmed, not selectable) with an upsell tooltip on hover (RFC-013 section 6.3).
+  // Interval as a preset select. Options below the plan floor are shown disabled
+  // (not selectable) so a sub-floor interval can't be picked (RFC-013 section 6.3);
+  // the plan minimum is spelled out in the hint line below.
   private intervalField(f: MonitorInput) {
     const min = this.minInterval;
     return html`
-      <fieldset class="fieldset">
-        <label class="fieldset-legend inline-flex w-fit items-center gap-1.5"
+      <div class="flex flex-col gap-1.5">
+        <label
+          class="inline-flex w-fit items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-ink2"
+          for="interval_seconds"
           >${t("monitorForm.interval")}${fieldHelp(t("monitorForm.helpInterval"))}</label
         >
-        <div class="dropdown w-full">
-          <div
-            tabindex="0"
-            role="button"
-            class="select w-full flex items-center justify-between"
-          >
-            <span>${intervalLabel(f.interval_seconds)}</span>
-            ${icon("chevronDown", "size-4 opacity-60")}
-          </div>
-          <ul
-            tabindex="0"
-            class="dropdown-content menu z-20 w-full mt-1 rounded-box border border-base-300 bg-base-100 shadow-md"
-          >
-            ${INTERVAL_OPTIONS.map(({ seconds: s }) =>
-              s < min
-                ? html`<li>
-                    <span
-                      class="tooltip tooltip-right before:max-w-52 before:whitespace-normal flex items-center justify-between opacity-50 cursor-not-allowed"
-                      data-tip=${t("monitorForm.intervalLocked")}
-                    >
-                      <span>${intervalLabel(s)}</span>
-                      ${icon("lock", "size-3.5")}
-                    </span>
-                  </li>`
-                : html`<li>
-                    <a
-                      class=${s === f.interval_seconds ? "menu-active" : ""}
-                      @click=${() => this.selectInterval(s)}
-                      >${intervalLabel(s)}</a
-                    >
-                  </li>`,
+        <select
+          id="interval_seconds"
+          class="pulse-input w-full"
+          .value=${String(f.interval_seconds)}
+          @change=${(e: Event) =>
+            this.patch(
+              "interval_seconds",
+              Number((e.target as HTMLSelectElement).value),
             )}
-          </ul>
-        </div>
+        >
+          ${INTERVAL_OPTIONS.map(
+            ({ seconds: s }) => html`<option
+              value=${s}
+              ?disabled=${s < min}
+              ?selected=${s === f.interval_seconds}
+            >
+              ${intervalLabel(s)}
+            </option>`,
+          )}
+        </select>
         ${this.errors.interval_seconds
-          ? html`<p class="fieldset-label text-error">
+          ? html`<p class="text-down text-sm" role="alert">
               ${this.errors.interval_seconds}
             </p>`
-          : html`<p class="fieldset-label text-base-content/60">
+          : html`<p class="text-ink3 text-sm">
               ${t("monitorForm.planMin")}: ${intervalLabel(min)}
             </p>`}
-      </fieldset>
+      </div>
     `;
   }
 
@@ -376,62 +367,70 @@ export class MonitorFormView extends AppElement {
     // background, so there is no empty-form -> skeleton -> form flash.
     if (this.loading && this.isEdit && !this.loadError) {
       return html`<div class="flex flex-col gap-4" aria-busy="true">
-        <div class="skeleton h-9 w-64"></div>
-        <div class="skeleton h-96 w-full"></div>
+        <div class="h-9 w-64 bg-paper animate-pulse"></div>
+        <div class="h-96 w-full bg-paper animate-pulse"></div>
       </div>`;
     }
     if (this.loadError) {
-      return html`<div role="alert" class="alert alert-error">
-        <span>${this.loadError}</span>
-        <button class="btn btn-sm" @click=${() => this.load()}>
-          ${t("state.retry")}
-        </button>
-      </div>`;
+      return errorBox(this.loadError, () => this.load(), t("state.retry"));
     }
 
     const f = this.form;
-    return html`
-      <form class="flex flex-col gap-6 max-w-3xl" @submit=${this.onSubmit} novalidate>
-        <h1 class="text-2xl font-bold">
-          ${t(this.isEdit ? "monitorForm.editHeading" : "monitorForm.createHeading")}
-        </h1>
-
-        ${this.capMessage
-          ? html`<upsell-banner
-              .message=${this.capMessage}
-              .upgradeHref=${`${this.base}/billing`}
-            ></upsell-banner>`
-          : ""}
-        ${this.requestCard(f)}
-        ${f.type === "ssl"
-          ? ""
-          : html`${this.assertionsCard(f)} ${this.schedulingCard(f)}`}
-        ${this.notifyCard(f)}
-
-        <div class="flex items-center gap-2">
-          <button class="btn btn-primary" type="submit" ?disabled=${this.submitting}>
-            ${this.submitting
-              ? html`<span class="loading loading-spinner loading-sm"></span>`
-              : ""}
-            ${t(this.isEdit ? "monitorForm.saveChanges" : "monitorForm.create")}
-          </button>
-          <a class="btn btn-ghost" href=${this.isEdit
-            ? `${this.base}/monitors/${this.monitorId}`
-            : this.base}
-            >${t("dialog.cancel")}</a
-          >
-        </div>
-      </form>
-    `;
+    // Number the visible groups in order. In ssl mode the http-only assertions and
+    // scheduling groups drop out, so the numbering closes up (01, 02) with no gap.
+    const groups: FormSection[] = [this.requestCard(f)];
+    if (f.type !== "ssl") groups.push(this.assertionsCard(f), this.schedulingCard(f));
+    groups.push(this.notifyCard(f));
+    return pageShell(
+      t(this.isEdit ? "monitorForm.editHeading" : "monitorForm.createHeading"),
+      nothing,
+      html`
+        <form class="flex flex-col gap-9" @submit=${this.onSubmit} novalidate>
+          ${this.capMessage
+            ? html`<upsell-banner
+                .message=${this.capMessage}
+                .upgradeHref=${`${this.base}/billing`}
+              ></upsell-banner>`
+            : ""}
+          <div class="flex flex-col gap-8 lg:gap-10">
+            ${groups.map((g, i) => this.group(String(i + 1).padStart(2, "0"), g))}
+          </div>
+          <div class="flex items-center gap-3 border-t border-line pt-6">
+            <button class="pulse-btn" type="submit" ?disabled=${this.submitting}>
+              ${this.submitting ? spinner() : ""}
+              ${t(this.isEdit ? "monitorForm.saveChanges" : "monitorForm.create")}
+            </button>
+            <a
+              class="pulse-btn pulse-btn-ghost"
+              href=${this.isEdit
+                ? `${this.base}/monitors/${this.monitorId}`
+                : this.base}
+              >${t("dialog.cancel")}</a
+            >
+          </div>
+        </form>
+      `,
+    );
   }
 
-  private card(titleKey: MessageKey, body: TemplateResult) {
-    return html`<div class="card bg-base-100 border border-base-300 shadow-sm">
-      <div class="card-body gap-4 p-5">
-        <h2 class="font-semibold">${t(titleKey)}</h2>
-        ${body}
+  // section() packages a group's parts; group() renders one with its running index:
+  // a numbered, ruled header (mono index + title, lead beneath) over a hairline panel
+  // of controls. The two-step keeps the numbers right when a group is hidden.
+  private section(title: string, lead: string, body: TemplateResult): FormSection {
+    return { title, lead, body };
+  }
+
+  private group(index: string, s: FormSection) {
+    return html`<section class="flex flex-col gap-4">
+      <div class="border-b border-line pb-2.5">
+        <div class="flex items-baseline gap-3">
+          <span class="font-mono text-[12px] text-ink3 tabular-nums">${index}</span>
+          <h2 class="pulse-section-title">${s.title}</h2>
+        </div>
+        ${s.lead ? html`<p class="text-ink3 text-sm mt-1.5">${s.lead}</p>` : nothing}
       </div>
-    </div>`;
+      <div class="pulse-panel p-5 lg:p-6 flex flex-col gap-5">${s.body}</div>
+    </section>`;
   }
 
   // The check-type picker. Switching to ssl hides the http-only request and
@@ -442,7 +441,7 @@ export class MonitorFormView extends AppElement {
       "monitorForm.type",
       html`<select
         id="type"
-        class="select w-full"
+        class="pulse-input w-full"
         .value=${f.type}
         @change=${(e: Event) =>
           this.patch("type", (e.target as HTMLSelectElement).value as MonitorType)}
@@ -454,8 +453,9 @@ export class MonitorFormView extends AppElement {
 
   private requestCard(f: MonitorInput) {
     const isSSL = f.type === "ssl";
-    return this.card(
-      "monitorForm.sectionRequest",
+    return this.section(
+      t("monitorForm.sectionRequest"),
+      tDynamic("monitorForm.leadRequest", "What to check and how to reach it.", {}),
       html`
         ${this.typeField(f)}
         ${this.field(
@@ -463,7 +463,7 @@ export class MonitorFormView extends AppElement {
           "monitorForm.name",
           html`<input
             id="name"
-            class="input w-full"
+            class="pulse-input w-full"
             maxlength="200"
             .value=${f.name}
             @input=${(e: Event) => this.patch("name", (e.target as HTMLInputElement).value)}
@@ -475,7 +475,7 @@ export class MonitorFormView extends AppElement {
           html`<input
             id="url"
             type=${isSSL ? "text" : "url"}
-            class="input w-full"
+            class="pulse-input w-full"
             placeholder=${isSSL ? "example.com" : "https://example.com"}
             .value=${f.url}
             @input=${(e: Event) => this.patch("url", (e.target as HTMLInputElement).value)}
@@ -483,8 +483,11 @@ export class MonitorFormView extends AppElement {
           isSSL ? t("monitorForm.hostHint") : "",
         )}
         ${isSSL
-          ? html`<div role="note" class="alert alert-info alert-soft text-sm">
-              <span>${t("monitorForm.sslNotifyInfo")}</span>
+          ? html`<div
+              role="note"
+              class="border border-hair bg-paper px-4 py-3 text-ink2 text-sm"
+            >
+              ${t("monitorForm.sslNotifyInfo")}
             </div>`
           : html`
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -493,7 +496,7 @@ export class MonitorFormView extends AppElement {
                   "monitorForm.method",
                   html`<select
                     id="method"
-                    class="select w-full"
+                    class="pulse-input w-full"
                     .value=${f.method}
                     @change=${(e: Event) =>
                       this.patch("method", (e.target as HTMLSelectElement).value as Method)}
@@ -508,7 +511,7 @@ export class MonitorFormView extends AppElement {
                     "monitorForm.body",
                     html`<textarea
                       id="body"
-                      class="textarea w-full font-mono"
+                      class="pulse-input w-full font-mono"
                       rows="4"
                       .value=${f.body}
                       @input=${(e: Event) =>
@@ -524,31 +527,32 @@ export class MonitorFormView extends AppElement {
 
   private headersEditor(f: MonitorInput) {
     return html`
-      <fieldset class="fieldset">
-        <label class="fieldset-legend inline-flex w-fit items-center gap-1.5"
+      <div class="flex flex-col gap-1.5">
+        <label
+          class="inline-flex w-fit items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-ink2"
           >${t("monitorForm.headers")}${fieldHelp(t("monitorForm.helpHeaders"))}</label
         >
         <div class="flex flex-col gap-2">
           ${f.headers.map(
             (h, i) => html`<div class="flex items-center gap-2">
               <input
-                class="input input-sm flex-1"
+                class="pulse-input flex-1"
                 placeholder=${t("monitorForm.headerKey")}
                 .value=${h.key}
                 @input=${(e: Event) =>
                   this.updateHeader(i, { key: (e.target as HTMLInputElement).value })}
               />
               <input
-                class="input input-sm flex-1"
+                class="pulse-input flex-1"
                 placeholder=${t("monitorForm.headerValue")}
                 .value=${h.value ?? ""}
                 @input=${(e: Event) =>
                   this.updateHeader(i, { value: (e.target as HTMLInputElement).value })}
               />
-              <label class="label gap-1 text-xs cursor-pointer">
+              <label class="inline-flex items-center gap-1.5 text-xs cursor-pointer">
                 <input
                   type="checkbox"
-                  class="checkbox checkbox-sm"
+                  class="size-4 accent-brand"
                   .checked=${h.secret}
                   @change=${(e: Event) =>
                     this.updateHeader(i, {
@@ -558,24 +562,33 @@ export class MonitorFormView extends AppElement {
               </label>
               <button
                 type="button"
-                class="btn btn-sm btn-ghost btn-square"
+                class="pulse-iconbtn hover:text-down"
                 @click=${() => this.removeHeader(i)}
               >
                 ${icon("trash", "size-4")}
               </button>
             </div>`,
           )}
-          <button type="button" class="btn btn-sm btn-ghost self-start gap-1.5" @click=${this.addHeader}>
+          <button
+            type="button"
+            class="pulse-btn pulse-btn-ghost pulse-btn-sm self-start"
+            @click=${this.addHeader}
+          >
             ${icon("plus", "size-4")}${t("monitorForm.addHeader")}
           </button>
         </div>
-      </fieldset>
+      </div>
     `;
   }
 
   private assertionsCard(f: MonitorInput) {
-    return this.card(
-      "monitorForm.sectionAssertions",
+    return this.section(
+      t("monitorForm.sectionAssertions"),
+      tDynamic(
+        "monitorForm.leadAssertions",
+        "Extra conditions a healthy response must meet.",
+        {},
+      ),
       html`
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           ${this.field(
@@ -583,7 +596,7 @@ export class MonitorFormView extends AppElement {
             "monitorForm.expectedCodes",
             html`<input
               id="expected_status_codes"
-              class="input w-full"
+              class="pulse-input w-full"
               .value=${f.expected_status_codes}
               @input=${(e: Event) =>
                 this.patch("expected_status_codes", (e.target as HTMLInputElement).value)}
@@ -597,7 +610,7 @@ export class MonitorFormView extends AppElement {
               id="max_latency_ms"
               type="number"
               min="1"
-              class="input w-full"
+              class="pulse-input w-full"
               .value=${f.max_latency_ms === null ? "" : String(f.max_latency_ms)}
               @input=${(e: Event) => {
                 const v = (e.target as HTMLInputElement).value;
@@ -612,7 +625,7 @@ export class MonitorFormView extends AppElement {
           "monitorForm.bodyContains",
           html`<input
             id="body_contains"
-            class="input w-full"
+            class="pulse-input w-full"
             .value=${f.body_contains ?? ""}
             @input=${(e: Event) => {
               const v = (e.target as HTMLInputElement).value;
@@ -626,8 +639,13 @@ export class MonitorFormView extends AppElement {
   }
 
   private schedulingCard(f: MonitorInput) {
-    return this.card(
-      "monitorForm.sectionScheduling",
+    return this.section(
+      t("monitorForm.sectionScheduling"),
+      tDynamic(
+        "monitorForm.leadScheduling",
+        "How often the check runs, and from where.",
+        {},
+      ),
       html`
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
           ${this.field(
@@ -638,7 +656,7 @@ export class MonitorFormView extends AppElement {
               type="number"
               min="1"
               max="60"
-              class="input w-full"
+              class="pulse-input w-full"
               .value=${String(f.timeout_seconds)}
               @input=${(e: Event) =>
                 this.patch("timeout_seconds", Number((e.target as HTMLInputElement).value))}
@@ -652,15 +670,16 @@ export class MonitorFormView extends AppElement {
               id="failure_threshold"
               type="number"
               min="1"
-              class="input w-full"
+              class="pulse-input w-full"
               .value=${String(f.failure_threshold)}
               @input=${(e: Event) =>
                 this.patch("failure_threshold", Number((e.target as HTMLInputElement).value))}
             />`,
           )}
         </div>
-        <fieldset class="fieldset">
-          <label class="fieldset-legend inline-flex w-fit items-center gap-1.5"
+        <div class="flex flex-col gap-1.5">
+          <label
+            class="inline-flex w-fit items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-ink2"
             >${t("monitorForm.regions")} (${f.regions.length}/${this.regionCap})${fieldHelp(
               t("monitorForm.helpRegions"),
             )}</label
@@ -670,8 +689,10 @@ export class MonitorFormView extends AppElement {
               const on = f.regions.includes(region);
               const disabled = !on && f.regions.length >= this.regionCap;
               return html`<label
-                class="btn btn-sm ${on ? "btn-primary" : "btn-outline"} ${disabled
-                  ? "btn-disabled"
+                class="inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-mono uppercase tracking-[0.04em] cursor-pointer ${on
+                  ? "bg-brand text-cream border-brand"
+                  : "border-line text-ink hover:border-brand"} ${disabled
+                  ? "opacity-40 cursor-not-allowed"
                   : ""}"
               >
                 <input
@@ -685,15 +706,15 @@ export class MonitorFormView extends AppElement {
             })}
           </div>
           ${this.errors.regions
-            ? html`<p class="fieldset-label text-error">${this.errors.regions}</p>`
+            ? html`<p class="text-down text-sm" role="alert">${this.errors.regions}</p>`
             : ""}
-        </fieldset>
+        </div>
         ${this.field(
           "down_policy",
           "monitorForm.downPolicy",
           html`<select
             id="down_policy"
-            class="select w-full"
+            class="pulse-input w-full"
             .value=${f.down_policy}
             @change=${(e: Event) =>
               this.patch("down_policy", (e.target as HTMLSelectElement).value as DownPolicy)}
@@ -708,34 +729,45 @@ export class MonitorFormView extends AppElement {
   }
 
   private notifyCard(f: MonitorInput) {
-    return this.card(
-      "monitorForm.sectionNotify",
+    return this.section(
+      t("monitorForm.sectionNotify"),
+      tDynamic(
+        "monitorForm.leadNotify",
+        "Who to tell when this monitor breaks or recovers.",
+        {},
+      ),
       html`
-        <fieldset class="fieldset">
-          <label class="fieldset-legend inline-flex w-fit items-center gap-1.5"
+        <div class="flex flex-col gap-1.5">
+          <label
+            class="inline-flex w-fit items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-ink2"
             >${t("monitorForm.channels")}${fieldHelp(t("monitorForm.helpChannels"))}</label
           >
           ${this.channels.length === 0
-            ? html`<p class="text-base-content/60 text-sm">${t("monitorForm.noChannels")}</p>`
+            ? html`<p class="text-ink3 text-sm">${t("monitorForm.noChannels")}</p>`
             : html`<div class="flex flex-col gap-2">
                 ${this.channels.map(
-                  (c) => html`<label class="label cursor-pointer justify-start gap-2">
+                  (c) => html`<label
+                    class="inline-flex items-center justify-start gap-2 cursor-pointer"
+                  >
                     <input
                       type="checkbox"
-                      class="checkbox checkbox-sm"
+                      class="size-4 accent-brand"
                       .checked=${f.notification_channel_ids.includes(c.id)}
                       @change=${() => this.toggleChannel(c.id)}
                     />
                     <span>${c.name}</span>
-                    <span class="badge badge-ghost badge-sm">${c.type}</span>
+                    <span
+                      class="pulse-tag"
+                      >${c.type}</span
+                    >
                   </label>`,
                 )}
               </div>`}
-        </fieldset>
-        <label class="label cursor-pointer justify-start gap-3">
+        </div>
+        <label class="inline-flex items-center justify-start gap-3 cursor-pointer">
           <input
             type="checkbox"
-            class="toggle toggle-sm"
+            class="size-4 accent-brand"
             .checked=${f.enabled}
             @change=${(e: Event) =>
               this.patch("enabled", (e.target as HTMLInputElement).checked)}

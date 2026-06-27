@@ -6,7 +6,8 @@ import type { Router } from "../router.js";
 import { client, ApiError } from "../api/client.js";
 import { session } from "../state/session.js";
 import { navigate, currentRelativePath } from "../router.js";
-import { t } from "../i18n.js";
+import { t, type MessageKey } from "../i18n.js";
+import { formatDuration } from "../format.js";
 import { icon } from "../icons.js";
 import {
   appContext,
@@ -168,9 +169,11 @@ export class AppRoot extends AppElement {
   override render() {
     if (!session.checked) {
       return html`<div
-        class="min-h-screen flex items-center justify-center gap-2 text-base-content/60"
+        class="min-h-screen flex items-center justify-center gap-2 text-ink3"
       >
-        <span class="loading loading-spinner loading-sm"></span>
+        <span
+          class="inline-block size-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+        ></span>
         ${t("state.loading")}
       </div>`;
     }
@@ -186,44 +189,160 @@ export class AppRoot extends AppElement {
       return html`<login-view></login-view>`;
     }
 
+    // Owned responsive shell (no daisyUI). The fixed wrapper owns the viewport so
+    // the content column is the single scroller and the folio can stick. On lg the
+    // sidebar is a static flex column; on mobile it slides in off-canvas, driven by
+    // the #app-drawer checkbox via Tailwind peer-checked, with a tap-to-close
+    // backdrop. closeDrawer() unchecks it after a navigation.
     return html`
-      <div class="drawer lg:drawer-open min-h-screen">
-        <input id="app-drawer" type="checkbox" class="drawer-toggle" />
-        <div class="drawer-content flex flex-col min-h-screen">
+      <div class="fixed inset-0 overflow-hidden flex">
+        <input id="app-drawer" type="checkbox" class="peer sr-only" />
+        <label
+          for="app-drawer"
+          aria-label="Close navigation"
+          class="fixed inset-0 z-30 bg-black/40 opacity-0 pointer-events-none transition-opacity peer-checked:opacity-100 peer-checked:pointer-events-auto lg:hidden"
+        ></label>
+        <div
+          class="fixed inset-y-0 left-0 z-40 h-full shrink-0 -translate-x-full transition-transform peer-checked:translate-x-0 lg:static lg:z-auto lg:translate-x-0"
+        >
+          <app-nav></app-nav>
+        </div>
+        <div class="flex flex-1 flex-col h-full min-h-0 min-w-0">
           <header
-            class="navbar lg:hidden min-h-0 gap-1 border-b border-base-300 bg-base-100 px-2 py-1"
+            class="lg:hidden shrink-0 flex items-center gap-2 border-b border-line bg-bg px-3 py-2"
           >
             <label
               for="app-drawer"
-              class="btn btn-ghost btn-square btn-sm"
+              class="grid place-items-center size-9 border border-line text-ink"
               aria-label="Open navigation"
             >
               ${icon("menu", "size-5")}
             </label>
             <a
               href=${this.homePath()}
-              class="px-1 text-lg font-bold hover:no-underline brand-name"
-              >Pulse Pager</a
+              class="flex items-center gap-2 font-disp font-black uppercase tracking-[-0.04em] text-ink hover:no-underline"
             >
+              <img src="logo.svg" alt="" class="size-5 logo-on-light" />
+              <img src="logo-dark.svg" alt="" class="size-5 logo-on-dark" />
+              Pulse Pager
+            </a>
           </header>
-          <main class="flex-1 min-w-0 w-full max-w-6xl mx-auto p-6 lg:p-8">
-            ${this.router.outlet()}
-          </main>
-          <footer class="text-center text-xs text-base-content/60 p-4">
-            (c) 2026 Pulse Pager. Know before your customers do.
-          </footer>
-        </div>
-        <div class="drawer-side z-20">
-          <label
-            for="app-drawer"
-            class="drawer-overlay"
-            aria-label="Close navigation"
-          ></label>
-          <app-nav></app-nav>
+          ${this.folio()}
+          <div class="flex flex-1 flex-col min-h-0 overflow-y-auto">
+            <main class="flex-1 min-w-0 w-full px-6 lg:px-10 py-7">
+              ${this.router.outlet()}
+            </main>
+            ${this.colophon()}
+          </div>
         </div>
       </div>
       <toast-host></toast-host>
     `;
+  }
+
+  // Sticky marquee dateline across the top of the content column. It carries the
+  // account's live vitals straight from the app context, so no extra fetch and no
+  // fabricated numbers: the dateline, the active org and its plan, then the
+  // entitlement usage (monitors / seats / status pages used vs cap, the fastest
+  // allowed check interval, and how long history is kept). Off an org route, or
+  // before entitlements load, it falls back to the brand lines. The set is rendered
+  // twice so the -50% loop is seamless.
+  private folio() {
+    const org = this.appCtx.activeOrg;
+    const ent = this.appCtx.entitlements;
+    const dateline = new Date().toLocaleDateString(undefined, {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    const facts = ["Pulse Pager", dateline, ...(org ? [org.name] : [])];
+    if (ent) {
+      facts.push(
+        `${t(`plan.${ent.plan}` as MessageKey)} plan`,
+        `${ent.monitors_used} / ${ent.monitors_cap} monitors`,
+        `${ent.seats_used} / ${ent.seats_cap} seats`,
+      );
+      if (ent.status_pages_cap > 0) {
+        facts.push(`${ent.status_pages_used} / ${ent.status_pages_cap} status pages`);
+      }
+      facts.push(
+        `${formatDuration(ent.min_interval_seconds)} min interval`,
+        `${ent.retention_days}-day history`,
+      );
+    } else {
+      facts.push("Uptime monitoring", "Know before your customers do");
+    }
+    const run = facts.map((f) => html`<b>${f}</b><i></i>`);
+    return html`<div class="pulse-folio">
+      <div class="pulse-folio-track">${run}${run}</div>
+    </div>`;
+  }
+
+  // Broadsheet colophon under every page: outlined wordmark, four link columns
+  // (mirroring what the docs site actually offers), and the license baseline.
+  private colophon() {
+    const org = this.appCtx.activeOrg;
+    const base = org ? `/orgs/${org.org_id}` : "";
+    const col = (
+      title: string,
+      links: { label: string; href: string }[],
+    ) => html`<div class="p-[22px] px-10 border-r border-hair last:border-r-0">
+      <h4
+        class="font-mono text-[10px] tracking-[0.16em] uppercase text-ink3 font-semibold mb-3"
+      >
+        ${title}
+      </h4>
+      ${links.map(
+        (l) =>
+          html`<a
+            href=${l.href}
+            class="block text-ink2 hover:text-brand text-[13px] py-1 hover:no-underline"
+            >${l.label}</a
+          >`,
+      )}
+    </div>`;
+
+    return html`<footer class="mt-12">
+      <div class="pulse-cmark">Pulse Pager</div>
+      <div class="grid grid-cols-2 lg:grid-cols-4 border-t border-hair">
+        ${col("Product", [
+          { label: t("nav.monitors"), href: base || "/" },
+          { label: t("nav.incidents"), href: `${base}/incidents` },
+          { label: t("nav.statusPages"), href: `${base}/status-pages` },
+          { label: t("nav.channels"), href: `${base}/channels` },
+        ])}
+        ${col("Developers", [
+          { label: "API reference", href: "https://pulsepager.com/api.html" },
+          {
+            label: "Authentication",
+            href: "https://pulsepager.com/guides/authentication.html",
+          },
+        ])}
+        ${col("Project", [
+          { label: "GitHub", href: "https://github.com/mert574/pulse-pager" },
+          { label: "Pricing", href: "https://pulsepager.com/pricing.html" },
+        ])}
+        ${col("Legal", [
+          { label: "Terms", href: "https://pulsepager.com/terms.html" },
+          { label: "Privacy", href: "https://pulsepager.com/privacy.html" },
+          { label: "Contact", href: "mailto:hi@pulsepager.com" },
+        ])}
+      </div>
+      <div
+        class="flex items-center justify-between gap-5 flex-wrap h-[58px] px-10 border-t border-line font-mono text-[11px] text-ink3 uppercase tracking-[0.08em]"
+      >
+        <span>(c) 2026 Pulse Pager / Elastic License 2.0</span>
+        <span class="flex items-center gap-3">
+          <a
+            href="https://pulsepager.com"
+            class="text-ink2 hover:text-brand hover:no-underline"
+            >pulsepager.com</a
+          >
+          <span class="size-[11px] bg-brand"></span>
+        </span>
+      </div>
+    </footer>`;
   }
 }
 

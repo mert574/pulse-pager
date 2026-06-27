@@ -1,25 +1,32 @@
-import { html } from "lit";
+import { html, nothing } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
 import { consume } from "@lit/context";
 import { AppElement } from "./base.js";
 import { appContext, type AppContext } from "../state/context.js";
 import { client, ApiError } from "../api/client.js";
 import { can } from "../state/can.js";
-import { t } from "../i18n.js";
+import { t, tDynamic } from "../i18n.js";
 import { toast, toastError } from "../toast.js";
 import { publicStatusUrl } from "./status-page-url.js";
+import {
+  pageHeader,
+  errorBox,
+  emptyState,
+  skeletonRows,
+  spinner,
+} from "./ui.js";
 import type { StatusPage } from "../api/types.js";
 
 import { icon } from "../icons.js";
-import "./data-table.js";
 import "./confirm-dialog.js";
-import type { DataColumn } from "./data-table.js";
 import type { ConfirmDialog } from "./confirm-dialog.js";
 
-// Status pages list (PRD-004, RFC-013 section 8). Lists the org's status pages
-// with their published state and public link, and offers create/edit/delete plus
-// a publish/unpublish toggle. Mutations show to member+ (can("statuspage.write"))
-// and are hidden for a viewer. A 402 on create is surfaced as an inline upsell.
+// Status pages list (PRD-004, RFC-013 section 8). A newsstand: every status page
+// is a front-page preview card in a responsive grid. The page name is the masthead,
+// the public slug reads as the strap underneath (an external link when published, a
+// "Draft" stamp when not), and the publish/edit/delete actions sit in a footer.
+// A draft card is dashed and dimmed so it reads as not-yet-public at a glance.
+// Mutations show to member+ (can("statuspage.write")) and are hidden for a viewer.
 // The server re-checks every action (RFC-013 section 4.3).
 @customElement("status-pages-list-view")
 export class StatusPagesListView extends AppElement {
@@ -104,175 +111,161 @@ export class StatusPagesListView extends AppElement {
   }
 
   private newButton() {
-    if (!this.canWrite) return "";
-    return html`<a
-      class="btn btn-primary btn-sm gap-1.5"
-      href=${`${this.base}/status-pages/new`}
-    >
+    if (!this.canWrite) return nothing;
+    return html`<a class="pulse-btn" href=${`${this.base}/status-pages/new`}>
       ${icon("plus", "size-4")}${t("statusPages.new")}
     </a>`;
   }
 
   override render() {
     return html`
-      <div class="flex flex-col gap-4">
-        <div class="flex items-center justify-between">
-          <h1 class="text-2xl font-bold">${t("statusPages.heading")}</h1>
-          ${this.newButton()}
-        </div>
-        ${this.body()}
-        <confirm-dialog
-          heading=${t("statusPages.deleteHeading")}
-          message=${t("statusPages.deleteMessage")}
-          confirmLabel=${t("statusPages.delete")}
-          ?danger=${true}
-          @confirm=${this.onDeleteConfirmed}
-          @cancel=${() => (this.pendingDelete = null)}
-        ></confirm-dialog>
+      <div class="-mx-6 lg:-mx-10 -my-7">
+        ${pageHeader(t("statusPages.heading"), this.newButton())}
+        <div class="px-6 lg:px-10 py-7">${this.body()}</div>
       </div>
+      <confirm-dialog
+        heading=${t("statusPages.deleteHeading")}
+        message=${t("statusPages.deleteMessage")}
+        confirmLabel=${t("statusPages.delete")}
+        ?danger=${true}
+        @confirm=${this.onDeleteConfirmed}
+        @cancel=${() => (this.pendingDelete = null)}
+      ></confirm-dialog>
     `;
   }
 
   private body() {
     if (this.loading && this.pages === null) {
-      return html`<div class="flex flex-col gap-2" aria-busy="true">
-        ${Array.from({ length: 4 }).map(
-          () => html`<div class="skeleton h-12 w-full"></div>`,
-        )}
-      </div>`;
+      return skeletonRows(4);
     }
 
     if (this.error) {
-      return html`<div role="alert" class="alert alert-error">
-        <span>${this.error}</span>
-        <button class="btn btn-sm" @click=${this.retry}>${t("state.retry")}</button>
-      </div>`;
+      return errorBox(this.error, () => this.retry(), t("state.retry"));
     }
 
     if (!this.pages || this.pages.length === 0) {
-      return html`<div
-        class="rounded-box border border-dashed border-base-300 p-12 flex flex-col items-center text-center gap-3"
-      >
-        <span class="text-primary/70">${icon("globe", "size-10")}</span>
-        <div>
-          <p class="font-semibold text-lg">${t("statusPages.empty")}</p>
-          <p class="text-base-content/60 mt-1">${t("statusPages.emptyHint")}</p>
-        </div>
-        ${this.canWrite
-          ? html`<a
-              class="btn btn-primary btn-sm gap-1.5"
-              href=${`${this.base}/status-pages/new`}
+      return emptyState(
+        icon("globe", "size-10"),
+        t("statusPages.empty"),
+        t("statusPages.emptyHint"),
+        this.canWrite
+          ? html`<a class="pulse-btn" href=${`${this.base}/status-pages/new`}
               >${icon("plus", "size-4")}${t("statusPages.new")}</a
             >`
-          : ""}
-      </div>`;
+          : undefined,
+      );
     }
 
-    return html`<data-table
-      .columns=${this.columns()}
-      .data=${this.pages}
-      .pageSize=${15}
-    ></data-table>`;
+    // The newsstand: a gallery of front-page previews, one card per page.
+    return html`<div
+      class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5"
+    >
+      ${this.pages.map((p) => this.card(p))}
+    </div>`;
   }
 
-  private columns(): DataColumn[] {
-    const base = this.base;
-    const cols: DataColumn[] = [
-      {
-        id: "name",
-        header: t("statusPages.colName"),
-        accessor: (r) => (r as StatusPage).name,
-        sortable: true,
-        cell: (r) => {
-          const p = r as StatusPage;
-          return this.canWrite
+  // One front-page preview. Published reads as a solid masthead with its public
+  // link; a draft is dashed and dimmed with a stamp in place of the link, so the
+  // two states are obvious across the gallery.
+  private card(p: StatusPage) {
+    const published = p.state === "published";
+    const monitorCount = p.display_monitors.length;
+    return html`<article
+      data-status-page-card
+      class="flex flex-col ${published
+        ? "border border-line bg-bg"
+        : "border border-dashed border-hair opacity-75"}"
+    >
+      <div
+        class="flex items-center justify-between gap-3 px-5 pt-4 pb-3 border-b border-hair"
+      >
+        ${published
+          ? html`<span class="pulse-state text-up"
+              ><span class="pulse-state-sq bg-up"></span
+              >${t("statusPages.statePublished")}</span
+            >`
+          : html`<span class="pulse-state text-deg"
+              ><span class="pulse-state-sq bg-deg"></span
+              >${t("statusPages.stateDraft")}</span
+            >`}
+        <span class="font-mono text-[11px] text-ink3 whitespace-nowrap">
+          ${tDynamic("statusPages.monitorCount", "{n} monitors", {
+            n: monitorCount,
+          })}
+        </span>
+      </div>
+
+      <div class="flex flex-col gap-4 px-5 pt-5 pb-5 flex-1">
+        <div class="min-w-0">
+          ${this.canWrite
             ? html`<a
-                class="link link-hover font-medium"
-                href=${`${base}/status-pages/${p.id}/edit`}
+                class="font-disp font-black uppercase tracking-[-0.04em] leading-[0.9] text-[27px] break-words ${published
+                  ? "text-ink hover:text-brand"
+                  : "text-ink2 hover:text-brand"} hover:no-underline"
+                href=${`${this.base}/status-pages/${p.id}/edit`}
                 >${p.name}</a
               >`
-            : html`<span class="font-medium">${p.name}</span>`;
-        },
-      },
-      {
-        id: "slug",
-        header: t("statusPages.colSlug"),
-        accessor: (r) => (r as StatusPage).slug,
-        sortable: true,
-        cell: (r) =>
-          html`<code class="text-sm">${(r as StatusPage).slug}</code>`,
-      },
-      {
-        id: "state",
-        header: t("statusPages.colState"),
-        accessor: (r) => ((r as StatusPage).state === "published" ? 1 : 0),
-        sortable: true,
-        cell: (r) =>
-          (r as StatusPage).state === "published"
-            ? html`<span class="badge badge-success badge-sm"
-                >${t("statusPages.statePublished")}</span
-              >`
-            : html`<span class="badge badge-ghost badge-sm"
-                >${t("statusPages.stateDraft")}</span
-              >`,
-      },
-      {
-        id: "url",
-        header: t("statusPages.colPublicUrl"),
-        cell: (r) => {
-          const p = r as StatusPage;
-          if (p.state !== "published") {
-            return html`<span class="text-base-content/50 text-sm"
-              >${t("statusPages.draftNoUrl")}</span
-            >`;
-          }
-          return html`<a
-            class="link link-hover inline-flex items-center gap-1 text-sm"
-            href=${publicStatusUrl(p.slug)}
-            target="_blank"
-            rel="noopener noreferrer"
-            >${t("statusPages.viewPublic")}${icon("externalLink", "size-3.5")}</a
-          >`;
-        },
-      },
-    ];
+            : html`<span
+                class="font-disp font-black uppercase tracking-[-0.04em] leading-[0.9] text-[27px] break-words ${published
+                  ? "text-ink"
+                  : "text-ink2"}"
+                >${p.name}</span
+              >`}
+        </div>
 
-    if (this.canWrite) {
-      cols.push({
-        id: "actions",
-        header: "",
-        class: "text-right",
-        cell: (r) => this.rowActions(r as StatusPage),
-      });
-    }
-    return cols;
+        ${published
+          ? html`<a
+              class="inline-flex w-fit max-w-full items-center gap-1.5 font-mono text-[12.5px] text-brand hover:no-underline"
+              href=${publicStatusUrl(p.slug)}
+              target="_blank"
+              rel="noopener noreferrer"
+              >${icon("globe", "size-3.5 shrink-0")}<span class="truncate"
+                >${p.slug}</span
+              >${icon("externalLink", "size-3.5 shrink-0")}</a
+            >`
+          : html`<div
+              class="inline-flex w-fit items-center gap-2 border border-dashed border-hair px-2.5 py-1"
+            >
+              <span
+                class="font-disp font-black uppercase tracking-[0.04em] text-[11px] text-deg"
+                >${t("statusPages.stateDraft")}</span
+              >
+              <span class="font-mono text-[10.5px] text-ink3"
+                >${t("statusPages.draftNoUrl")}</span
+              >
+            </div>`}
+      </div>
+
+      ${this.canWrite ? this.cardActions(p, published) : nothing}
+    </article>`;
   }
 
-  private rowActions(p: StatusPage) {
-    const published = p.state === "published";
-    return html`<div class="flex items-center justify-end gap-1">
+  private cardActions(p: StatusPage, published: boolean) {
+    return html`<div
+      class="flex items-center justify-between gap-2 border-t border-hair px-4 py-3"
+    >
       <button
-        class="btn btn-sm btn-ghost gap-1.5"
+        class="pulse-btn pulse-btn-ghost pulse-btn-sm"
         ?disabled=${this.toggling === p.id}
         @click=${() => this.togglePublish(p)}
       >
-        ${this.toggling === p.id
-          ? html`<span class="loading loading-spinner loading-xs"></span>`
-          : ""}
+        ${this.toggling === p.id ? spinner() : ""}
         ${t(published ? "statusPages.unpublish" : "statusPages.publish")}
       </button>
-      <a
-        class="btn btn-sm btn-ghost btn-square"
-        href=${`${this.base}/status-pages/${p.id}/edit`}
-        aria-label=${t("statusPages.edit")}
-        >${icon("edit", "size-4")}</a
-      ><button
-        class="btn btn-sm btn-ghost btn-square"
-        aria-label=${t("statusPages.delete")}
-        @click=${() => this.askDelete(p)}
-      >
-        ${icon("trash", "size-4")}
-      </button>
+      <div class="flex items-center gap-1">
+        <a
+          class="pulse-iconbtn"
+          href=${`${this.base}/status-pages/${p.id}/edit`}
+          aria-label=${t("statusPages.edit")}
+          >${icon("edit", "size-4")}</a
+        ><button
+          class="pulse-iconbtn hover:text-down"
+          aria-label=${t("statusPages.delete")}
+          @click=${() => this.askDelete(p)}
+        >
+          ${icon("trash", "size-4")}
+        </button>
+      </div>
     </div>`;
   }
 }

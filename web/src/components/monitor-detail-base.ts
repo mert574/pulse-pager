@@ -18,6 +18,7 @@ import type {
   Monitor,
 } from "../api/types.js";
 import { icon, fieldHelp } from "../icons.js";
+import { spinner } from "./ui.js";
 import type { ConfirmDialog } from "./confirm-dialog.js";
 
 import "./status-badge.js";
@@ -54,6 +55,9 @@ export abstract class MonitorDetailBase extends AppElement {
 
   @state() protected incidents: Incident[] = [];
   @state() protected checking = false;
+  // the enable toggle in the header is in flight, so it shows as busy and cannot
+  // be double-fired.
+  @state() protected toggling = false;
   // Errors from the subclass/incident data load (the monitor itself is loaded by
   // the dispatcher, which shows its own error state).
   @state() protected loadError: string | null = null;
@@ -137,7 +141,10 @@ export abstract class MonitorDetailBase extends AppElement {
   // badge + host.
   protected headerSubtitle(): TemplateResult {
     const m = this.monitor;
-    return html`<span class="badge badge-ghost badge-sm">${m.method}</span>
+    return html`<span
+        class="pulse-tag"
+        >${m.method}</span
+      >
       <span class="truncate">${m.url}</span>`;
   }
 
@@ -161,6 +168,42 @@ export abstract class MonitorDetailBase extends AppElement {
   // Subclass hook fired after a check-now is accepted (http kicks the poll).
   protected afterCheckAccepted(_accepted: CheckNowAccepted): void {}
 
+  // Flip the monitor's enabled flag from the header switch. The API has no partial
+  // update, so we PUT the whole monitor (which we already hold) back with enabled
+  // toggled and keep the returned copy.
+  protected async onToggleEnabled(): Promise<void> {
+    const orgId = this.orgId;
+    if (!orgId || this.toggling) return;
+    this.toggling = true;
+    const m = this.monitor;
+    const next = !m.enabled;
+    try {
+      this.monitor = await client.updateMonitor(orgId, m.id, {
+        type: m.type,
+        name: m.name,
+        url: m.url,
+        method: m.method,
+        headers: m.headers,
+        body: m.body,
+        expected_status_codes: m.expected_status_codes,
+        timeout_seconds: m.timeout_seconds,
+        interval_seconds: m.interval_seconds,
+        enabled: next,
+        max_latency_ms: m.max_latency_ms,
+        body_contains: m.body_contains,
+        failure_threshold: m.failure_threshold,
+        notification_channel_ids: m.notification_channel_ids,
+        regions: m.regions,
+        down_policy: m.down_policy,
+      });
+      toast(t(next ? "monitors.enabled" : "monitors.disabled"), "success");
+    } catch (err) {
+      toastError(err, t("state.error"));
+    } finally {
+      this.toggling = false;
+    }
+  }
+
   // Whether the header offers a manual check-now (gated further by the test role).
   // Always for http; ssl overrides to only while an incident is open, since a daily
   // cert check is not worth re-running on demand otherwise.
@@ -182,7 +225,10 @@ export abstract class MonitorDetailBase extends AppElement {
 
   override render() {
     return html`
-      <div class="flex flex-col gap-6">${this.header()} ${this.body()}</div>
+      <div class="-mx-6 lg:-mx-10 -my-7">
+        ${this.header()} ${this.instrumentBand()}
+        <div class="px-6 lg:px-10 py-7 flex flex-col gap-6">${this.body()}</div>
+      </div>
       <confirm-dialog
         .heading=${t("monitor.deleteHeading")}
         .message=${t("monitor.deleteMessage")}
@@ -193,48 +239,78 @@ export abstract class MonitorDetailBase extends AppElement {
     `;
   }
 
+  // The full-bleed instrument band sits right under the header (the stat
+  // centerpiece): http shows uptime + latency, ssl shows the cert countdown.
+  // Default none, so a subclass that has nothing to show just renders the header.
+  protected instrumentBand(): TemplateResult | string {
+    return "";
+  }
+
+  // Editorial header band, full-bleed: the monitor name set huge in Archivo, the
+  // method + url in mono underneath with a status marker, and the actions (enable
+  // toggle, check-now, edit, delete) on the right.
   protected header() {
     const m = this.monitor;
     const role = this.ctx?.role ?? null;
     const member = can(role, "monitor.write");
     return html`
       <div
-        class="flex flex-wrap items-start justify-between gap-3 pb-4 border-b border-base-300"
+        class="flex flex-wrap items-end justify-between gap-5 px-6 lg:px-10 pt-8 lg:pt-[34px] pb-6 border-b border-line"
       >
-        <div class="min-w-0">
-          <div class="flex items-center gap-3">
-            <h1 class="text-2xl font-bold truncate">${m.name}</h1>
+        <div class="min-w-0 flex flex-col gap-3">
+          <div class="flex flex-wrap items-center gap-3.5">
+            <h1
+              class="m-0 font-disp font-black uppercase tracking-[-0.045em] leading-[0.82] text-[34px] lg:text-[52px] truncate"
+            >
+              ${m.name}
+            </h1>
             <status-badge .status=${this.currentStatus()}></status-badge>
           </div>
-          <div class="text-base-content/60 text-sm mt-1 flex items-center gap-2">
+          <div
+            class="font-mono text-[12px] text-ink2 flex items-center gap-2.5 min-w-0"
+          >
             ${this.headerSubtitle()}
           </div>
         </div>
         <div class="flex items-center gap-2">
           ${member
-            ? html`<button
-                class="btn btn-sm btn-ghost text-error gap-1.5"
-                @click=${() => this.deleteDialog.open()}
+            ? html`<label
+                class="flex items-center gap-2 px-1 select-none cursor-pointer"
+                title=${t("monitors.toggleEnabled")}
               >
-                ${icon("trash", "size-4")}${t("monitor.delete")}
-              </button>
-              <a
-                class="btn btn-sm gap-1.5"
-                href=${`${this.base}/monitors/${m.id}/edit`}
-                >${icon("edit", "size-4")}${t("monitor.edit")}</a
-              >`
+                <span class="pulse-label">${t("monitor.active")}</span>
+                <input
+                  type="checkbox"
+                  class="size-4 cursor-pointer align-middle accent-brand disabled:opacity-40"
+                  aria-label=${t("monitors.toggleEnabled")}
+                  .checked=${m.enabled}
+                  ?disabled=${this.toggling}
+                  @change=${() => this.onToggleEnabled()}
+                />
+              </label>`
             : ""}
           ${can(role, "monitor.test") && this.showCheckNow()
             ? html`<button
-                class="btn btn-sm btn-primary gap-1.5"
+                class="pulse-btn pulse-btn-sm"
                 ?disabled=${this.checking}
                 @click=${this.onCheckNow}
               >
                 ${this.checking
-                  ? html`<span class="loading loading-spinner loading-xs"></span>
-                      ${t("monitor.checking")}`
+                  ? html`${spinner()} ${t("monitor.checking")}`
                   : html`${icon("refresh", "size-4")}${t("monitor.checkNow")}`}
               </button>`
+            : ""}
+          ${member
+            ? html`<a
+                  class="pulse-btn pulse-btn-ghost pulse-btn-sm"
+                  href=${`${this.base}/monitors/${m.id}/edit`}
+                  >${icon("edit", "size-4")}${t("monitor.edit")}</a
+                ><button
+                  class="pulse-btn pulse-btn-ghost pulse-btn-sm border-down text-down"
+                  @click=${() => this.deleteDialog.open()}
+                >
+                  ${icon("trash", "size-4")}${t("monitor.delete")}
+                </button>`
             : ""}
         </div>
       </div>
@@ -243,14 +319,16 @@ export abstract class MonitorDetailBase extends AppElement {
 
   protected incidentsCard() {
     return html`
-      <div class="card bg-base-100 border border-base-300 shadow-sm">
-        <div class="card-body gap-4 p-5">
-          <h2 class="font-semibold flex items-center gap-1">
+      <div class="border border-hair">
+        <div class="p-5 flex flex-col gap-4">
+          <h2
+            class="m-0 pulse-section-title flex items-center gap-1"
+          >
             ${t("monitor.incidentsTitle")}${fieldHelp(t("monitor.helpIncidents"))}
           </h2>
           ${this.incidents.length === 0
-            ? html`<p class="text-base-content/60">${t("monitor.noIncidents")}</p>`
-            : html`<ul class="flex flex-col gap-2">
+            ? html`<p class="text-ink3">${t("monitor.noIncidents")}</p>`
+            : html`<ul class="flex flex-col gap-2 m-0 p-0 list-none">
                 ${this.incidents.map((i) => this.incidentRow(i))}
               </ul>`}
         </div>
@@ -261,17 +339,21 @@ export abstract class MonitorDetailBase extends AppElement {
   private incidentRow(i: Incident) {
     const ongoing = i.ended_at === null;
     return html`
-      <li class="flex flex-wrap items-center gap-3 border-l-2 border-error pl-3 py-1">
-        <span class="badge badge-sm ${ongoing ? "badge-error" : "badge-ghost"}">
-          ${ongoing
-            ? t("monitor.incidentOngoing")
-            : formatDuration(i.duration_seconds)}
-        </span>
+      <li class="flex flex-wrap items-center gap-3 border-l-2 border-down pl-3 py-1">
+        ${ongoing
+          ? html`<span class="pulse-state text-down"
+              ><span class="pulse-state-sq bg-down"></span
+              >${t("monitor.incidentOngoing")}</span
+            >`
+          : html`<span
+              class="pulse-tag"
+              >${formatDuration(i.duration_seconds)}</span
+            >`}
         <span class="text-sm">
           ${t("monitor.incidentStarted")}:
           <relative-time .datetime=${i.started_at}></relative-time>
         </span>
-        <span class="badge badge-ghost badge-sm">
+        <span class="pulse-tag">
           ${t(FAILURE_LABEL[i.cause_reason])}
         </span>
       </li>

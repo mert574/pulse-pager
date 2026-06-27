@@ -33,9 +33,11 @@ async function mountAtPath(path: string): Promise<AppNav> {
   return nav;
 }
 
+// Active links carry aria-current="page"; the label is the link's first span (the
+// trailing span is the index chip), so read that rather than the whole textContent.
 function activeLabels(nav: AppNav): string[] {
-  return Array.from(nav.querySelectorAll("a.menu-active")).map(
-    (a) => a.textContent?.trim() ?? "",
+  return Array.from(nav.querySelectorAll('a[aria-current="page"]')).map(
+    (a) => a.querySelector("span")?.textContent?.trim() ?? a.textContent?.trim() ?? "",
   );
 }
 
@@ -45,7 +47,11 @@ describe("app-nav i18n rendering", () => {
     await el.updateComplete;
     const text = el.textContent ?? "";
     expect(text).to.contain(t("nav.account"));
-    expect(text).to.contain(t("nav.logout"));
+    // logout is an icon button; its accessible name carries the translated copy.
+    // Match the label exactly: the footer also holds the theme-toggle button.
+    const logout = el.querySelector(`button[aria-label="${t("nav.logout")}"]`);
+    expect(logout, "logout button present with translated aria-label").to.not.be
+      .null;
     expect(text).to.not.contain("nav.account");
     expect(text).to.not.contain("nav.logout");
   });

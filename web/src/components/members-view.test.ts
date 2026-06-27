@@ -152,7 +152,11 @@ describe("members-view", () => {
   it("renders a row per member with email and role", async () => {
     const { el, restore } = await mount({});
     try {
-      await waitUntil(() => el.querySelector("table") !== null, "table renders");
+      await waitUntil(
+        () => el.querySelector("[data-member-row]") !== null,
+        "ledger renders",
+      );
+      expect(el.querySelectorAll("[data-member-row]").length).to.equal(2);
       expect(el.textContent).to.contain("Bob");
       expect(el.textContent).to.contain("bob@example.com");
       // the owner row shows a read-only role badge; the member row a select
@@ -165,7 +169,7 @@ describe("members-view", () => {
   it("hides role controls and actions for a viewer (read-only)", async () => {
     const { el, restore } = await mount({ role: "viewer" });
     try {
-      await waitUntil(() => el.querySelector("table") !== null);
+      await waitUntil(() => el.querySelector("[data-member-row]") !== null);
       // no role-change select, no remove buttons, no invite form
       expect(el.querySelector("select")).to.be.null;
       expect(el.querySelector('button[aria-label="Remove"]')).to.be.null;
@@ -178,7 +182,7 @@ describe("members-view", () => {
   it("changes a member role via PATCH with the new role", async () => {
     const { el, calls, restore } = await mount({ role: "owner" });
     try {
-      await waitUntil(() => el.querySelector("table") !== null);
+      await waitUntil(() => el.querySelector("[data-member-row]") !== null);
       const select = el.querySelector<HTMLSelectElement>("select")!;
       select.value = "admin";
       select.dispatchEvent(new Event("change"));
@@ -197,16 +201,16 @@ describe("members-view", () => {
   it("removes a member after confirming and hits the member endpoint", async () => {
     const { el, calls, restore } = await mount({ role: "owner" });
     try {
-      await waitUntil(() => el.querySelector("table") !== null);
+      await waitUntil(() => el.querySelector("[data-member-row]") !== null);
       const removeBtn = el.querySelector<HTMLButtonElement>(
         'button[aria-label="Remove"]',
       )!;
       removeBtn.click();
       await waitUntil(
-        () => el.querySelector(".modal-open") !== null,
+        () => el.querySelector(".pulse-dialog") !== null,
         "confirm dialog opens",
       );
-      el.querySelector<HTMLButtonElement>(".modal-box .btn-error")!.click();
+      el.querySelector<HTMLButtonElement>("[data-confirm]")!.click();
       await waitUntil(
         () =>
           calls.some(
@@ -222,16 +226,16 @@ describe("members-view", () => {
   it("transfers ownership after confirming via the transfer endpoint", async () => {
     const { el, calls, restore } = await mount({ role: "owner" });
     try {
-      await waitUntil(() => el.querySelector("table") !== null);
+      await waitUntil(() => el.querySelector("[data-member-row]") !== null);
       const transferBtn = Array.from(el.querySelectorAll("button")).find((b) =>
         b.textContent?.includes("Make owner"),
       )!;
       transferBtn.click();
       await waitUntil(
-        () => el.querySelector(".modal-open") !== null,
+        () => el.querySelector(".pulse-dialog") !== null,
         "transfer dialog opens",
       );
-      el.querySelector<HTMLButtonElement>(".modal-box .btn-primary")!.click();
+      el.querySelector<HTMLButtonElement>("[data-confirm]")!.click();
       await waitUntil(
         () =>
           calls.some(

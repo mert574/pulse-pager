@@ -13,9 +13,9 @@ export class ViewPlaceholder extends AppElement {
   override render() {
     return html`
       <div
-        class="rounded-box border border-dashed border-base-300 bg-base-100 p-12 text-center text-base-content/60"
+        class="border border-dashed border-hair bg-bg p-12 text-center text-ink3"
       >
-        <h2 class="text-base-content text-lg font-semibold capitalize">
+        <h2 class="text-ink text-lg font-semibold capitalize">
           ${this.name}
         </h2>
         <p>${this.name} view coming soon.</p>

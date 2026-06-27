@@ -16,13 +16,14 @@ const STATE_LABEL: Record<RegionState["state"], MessageKey> = {
   failed: "region.stateDown",
 };
 
-// daisyUI badge variant per state. done flips to error when the check came back
-// unhealthy, so a passing/failing done are visually distinct.
-const STATE_CLASS: Record<RegionState["state"], string> = {
-  scheduled: "badge-ghost",
-  running: "badge-warning badge-soft",
-  done: "badge-success badge-soft",
-  failed: "badge-error badge-soft",
+// The dot color token per state. done flips to down when the check came back
+// unhealthy, so a passing/failing done are visually distinct. Full class names
+// are kept here (not interpolated) so Tailwind sees them.
+const STATE_DOT: Record<RegionState["state"], string> = {
+  scheduled: "bg-deg",
+  running: "bg-deg",
+  done: "bg-up",
+  failed: "bg-down",
 };
 
 // A small row of chips, one per region, showing each region's live check state
@@ -40,23 +41,21 @@ export class RegionChips extends AppElement {
   }
 
   private chip(s: RegionState) {
-    // done can be either ok or down; resolve the effective look from healthy.
+    // done can be either ok or down; find the effective look from healthy.
     const failed = s.state === "failed" || (s.state === "done" && s.healthy === false);
-    const cls = failed ? STATE_CLASS.failed : STATE_CLASS[s.state];
+    const dot = failed ? STATE_DOT.failed : STATE_DOT[s.state];
     const labelKey = failed ? STATE_LABEL.failed : STATE_LABEL[s.state];
     const pulsing = s.state === "running";
     return html`<span
-      class="badge badge-xs sm:badge-sm gap-1 whitespace-nowrap ${cls}"
+      class="inline-flex items-center gap-1 font-mono text-[11px] whitespace-nowrap"
       title=${this.tooltip(s)}
     >
       <span
-        class="inline-block size-1.5 sm:size-2 rounded-full bg-current ${pulsing
-          ? "animate-pulse"
-          : ""}"
+        class="size-2 ${dot} ${pulsing ? "animate-pulse" : ""}"
         aria-hidden="true"
       ></span>
-      <span class="font-medium">${s.region}</span>
-      <span class="opacity-70">${t(labelKey)}</span>
+      <span class="text-ink">${s.region}</span>
+      <span class="text-ink3 uppercase tracking-[0.04em]">${t(labelKey)}</span>
     </span>`;
   }
 

@@ -28,6 +28,8 @@ import type { AppRoot } from "./components/app-root.js";
 import { session } from "./state/session.js";
 
 import "@fontsource-variable/inter/index.css";
+import "@fontsource-variable/archivo/index.css";
+import "@fontsource-variable/jetbrains-mono/index.css";
 import "uplot/dist/uPlot.min.css";
 import "./styles/app.css";
 

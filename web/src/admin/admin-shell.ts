@@ -24,29 +24,41 @@ export class AdminShell extends AppElement {
 
   override render() {
     return html`
-      <div class="min-h-screen bg-base-100">
-        <header class="border-b border-base-300">
-          <div
-            class="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-3"
+      <div class="min-h-screen bg-bg">
+        <!-- Tight editorial frame: the whole operator app sits in one bordered
+             broadsheet column with side rules, so the control room reads as a single
+             instrument panel rather than a full-width dashboard. -->
+        <div
+          class="mx-auto w-full max-w-[1480px] min-h-screen border-x border-line flex flex-col"
+        >
+          <!-- Masthead: a heavy Archivo wordmark over the operator kicker, with the
+               back-to-app link and theme toggle on the right. -->
+          <header
+            class="flex flex-wrap items-end justify-between gap-5 px-6 lg:px-10 pt-7 lg:pt-[30px] pb-6 lg:pb-[26px] border-b border-line"
           >
-            <div
-              class="flex items-center gap-2 whitespace-nowrap text-lg font-bold text-primary"
-            >
-              <img src="logo.svg" alt="" class="size-6 logo-on-light" />
-              <img src="logo-dark.svg" alt="" class="size-6 logo-on-dark" />
-              <span>Pulse Admin</span>
+            <div class="flex items-center gap-3">
+              <img src="logo.svg" alt="" class="size-8 logo-on-light" />
+              <img src="logo-dark.svg" alt="" class="size-8 logo-on-dark" />
+              <div class="flex flex-col gap-1">
+                <span class="pulse-label">${t("admin.subtitle")}</span>
+                <h1
+                  class="m-0 font-disp font-black uppercase tracking-[-0.045em] leading-[0.82] text-[34px] lg:text-[48px]"
+                >
+                  ${t("admin.title")}
+                </h1>
+              </div>
             </div>
             <div class="flex items-center gap-2">
-              <a href=${this.appUrl} class="btn btn-ghost btn-sm gap-2">
+              <a href=${this.appUrl} class="pulse-btn pulse-btn-ghost pulse-btn-sm">
                 ${icon("externalLink", "size-4")} ${t("admin.backToApp")}
               </a>
               <theme-toggle></theme-toggle>
             </div>
-          </div>
-        </header>
-        <main class="mx-auto w-full max-w-5xl px-6 py-6">
-          <admin-view></admin-view>
-        </main>
+          </header>
+          <main class="flex-1">
+            <admin-view></admin-view>
+          </main>
+        </div>
       </div>
     `;
   }

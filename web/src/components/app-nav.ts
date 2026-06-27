@@ -1,4 +1,4 @@
-import { html } from "lit";
+import { html, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { consume } from "@lit/context";
 import { AppElement } from "./base.js";
@@ -8,17 +8,18 @@ import { navigate, currentRelativePath } from "../router.js";
 import { appContext, lastOrgHint, type AppContext } from "../state/context.js";
 import { can } from "../state/can.js";
 import { t } from "../i18n.js";
-import { icon, type IconName } from "../icons.js";
+import { icon } from "../icons.js";
 import type { OrgMembership } from "../api/types.js";
 
 import "./org-switcher.js";
 import "./theme-toggle.js";
 
-// Left sidebar navigation (daisyUI menu). It mounts the org switcher and the
-// org-scoped SaaS nav (RFC-013 section 4, 7). Links are built under the active
-// org's /orgs/:orgId path so they switch with the org; role-gated sections
-// (api-keys, billing, settings) are shown per the can() UI mirror. The router
-// intercepts the link clicks, so plain anchors are fine.
+// Left sidebar navigation (RFC-013 section 4, 7), Swiss design. Two indexed groups
+// (Monitoring, Organization) under the org switcher, a fixed user footer, and a
+// vertical dateline label. Links are built under the active org's /orgs/:orgId path
+// so they switch with the org; role-gated sections (api-keys, billing, settings) are
+// shown per the can() UI mirror. The router intercepts the link clicks, so plain
+// anchors are fine. The index numbers are positional over the visible items.
 @customElement("app-nav")
 export class AppNav extends AppElement {
   @consume({ context: appContext, subscribe: true })
@@ -70,18 +71,30 @@ export class AppNav extends AppElement {
     );
   }
 
-  private link(href: string, label: string, active: boolean, name: IconName) {
-    return html`<li>
-      <a href=${href} class=${active ? "menu-active" : ""}>
-        ${icon(name, "size-4 opacity-70")}<span>${label}</span>
-      </a>
-    </li>`;
+  // One nav row: label left, a positional index chip right; the chip fills with the
+  // brand color on the active row.
+  private link(href: string, label: string, active: boolean, idx: number) {
+    const n = String(idx).padStart(2, "0");
+    return html`<a
+      href=${href}
+      aria-current=${active ? "page" : "false"}
+      class="flex items-center justify-between py-2 text-[13.5px] font-medium border-b border-hair ${active
+        ? "text-ink font-bold"
+        : "text-ink2 hover:text-ink"}"
+    >
+      <span>${label}</span>
+      <span
+        class="font-mono text-[10.5px] px-[5px] py-px ${active
+          ? "bg-brand text-cream"
+          : "text-ink3"}"
+        >${n}</span
+      >
+    </a>`;
   }
 
   // The org the sidebar nav is built for. On an org route it is the active org;
   // on a non-org route (/account, /orgs/new) it falls back to the last-used org
-  // (or the first), so the nav and the brand link stay populated instead of the
-  // sidebar going blank.
+  // (or the first), so the nav and the brand link stay populated.
   private navOrg(): OrgMembership | null {
     const me = this.ctx?.me;
     if (!me || me.orgs.length === 0) return null;
@@ -94,89 +107,156 @@ export class AppNav extends AppElement {
     const org = this.navOrg();
     const base = org ? `/orgs/${org.org_id}` : "";
     const role = org?.role ?? null;
+    const email = this.ctx?.me?.email ?? "";
+    const initial = (email.trim()[0] ?? "?").toUpperCase();
+
+    // Build the two groups as flat lists first so the index chips number the
+    // actually-visible rows (gated rows do not leave gaps).
+    let n = 0;
+    const monitoring: TemplateResult[] = org
+      ? [
+          this.link(base, t("nav.monitors"), this.isMonitorsActive(base), ++n),
+          this.link(
+            `${base}/incidents`,
+            t("nav.incidents"),
+            this.isActive(`${base}/incidents`),
+            ++n,
+          ),
+          this.link(
+            `${base}/channels`,
+            t("nav.channels"),
+            this.isActive(`${base}/channels`),
+            ++n,
+          ),
+          this.link(
+            `${base}/status-pages`,
+            t("nav.statusPages"),
+            this.isActive(`${base}/status-pages`),
+            ++n,
+          ),
+        ]
+      : [];
+    const organization: TemplateResult[] = org
+      ? [
+          this.link(
+            `${base}/members`,
+            t("nav.members"),
+            this.isActive(`${base}/members`),
+            ++n,
+          ),
+          ...(can(role, "apikey.manage")
+            ? [
+                this.link(
+                  `${base}/api-keys`,
+                  t("nav.apiKeys"),
+                  this.isActive(`${base}/api-keys`),
+                  ++n,
+                ),
+              ]
+            : []),
+          ...(can(role, "billing.view")
+            ? [
+                this.link(
+                  `${base}/billing`,
+                  t("nav.billing"),
+                  this.isActive(`${base}/billing`),
+                  ++n,
+                ),
+              ]
+            : []),
+          ...(can(role, "org.settings")
+            ? [
+                this.link(
+                  `${base}/settings`,
+                  t("nav.settings"),
+                  this.isActive(`${base}/settings`),
+                  ++n,
+                ),
+              ]
+            : []),
+        ]
+      : [];
 
     return html`
       <aside
-        class="flex flex-col w-64 min-h-full bg-base-200 border-r border-base-300"
+        class="relative flex flex-col w-[232px] min-h-full overflow-hidden bg-bg border-r border-line px-[22px] pt-6"
       >
         <a
           href=${base || "/"}
-          class="flex items-center gap-2 px-4 py-4 text-lg font-bold tracking-tight text-primary hover:no-underline"
+          class="flex items-center gap-2.5 mb-8 font-disp font-black text-[18px] uppercase tracking-[-0.04em] text-ink hover:no-underline"
         >
-          <img src="logo.svg" alt="" class="size-6 logo-on-light" />
-          <img src="logo-dark.svg" alt="" class="size-6 logo-on-dark" />
-          <span class="brand-name">Pulse Pager</span>
+          <img src="logo.svg" alt="" class="size-5 logo-on-light" aria-hidden="true" />
+          <img
+            src="logo-dark.svg"
+            alt=""
+            class="size-5 logo-on-dark"
+            aria-hidden="true"
+          />
+          <span>Pulse Pager</span>
         </a>
+
         ${org
           ? html`
-              <ul class="menu menu-lg w-full gap-0.5 flex-1">
-                ${this.link(base, t("nav.monitors"), this.isMonitorsActive(base), "activity")}
-                ${this.link(
-                  `${base}/channels`,
-                  t("nav.channels"),
-                  this.isActive(`${base}/channels`),
-                  "bell",
-                )}
-                ${this.link(
-                  `${base}/incidents`,
-                  t("nav.incidents"),
-                  this.isActive(`${base}/incidents`),
-                  "incident",
-                )}
-                ${this.link(
-                  `${base}/status-pages`,
-                  t("nav.statusPages"),
-                  this.isActive(`${base}/status-pages`),
-                  "globe",
-                )}
-                ${this.link(
-                  `${base}/members`,
-                  t("nav.members"),
-                  this.isActive(`${base}/members`),
-                  "users",
-                )}
-                ${can(role, "apikey.manage")
-                  ? this.link(
-                      `${base}/api-keys`,
-                      t("nav.apiKeys"),
-                      this.isActive(`${base}/api-keys`),
-                      "key",
-                    )
-                  : ""}
-                ${can(role, "billing.view")
-                  ? this.link(
-                      `${base}/billing`,
-                      t("nav.billing"),
-                      this.isActive(`${base}/billing`),
-                      "billing",
-                    )
-                  : ""}
-                ${can(role, "org.settings")
-                  ? this.link(
-                      `${base}/settings`,
-                      t("nav.settings"),
-                      this.isActive(`${base}/settings`),
-                      "settings",
-                    )
-                  : ""}
-              </ul>
+              <div
+                class="text-[10px] uppercase tracking-[0.18em] text-ink3 font-semibold mb-[7px]"
+              >
+                ${t("nav.sectionOrg")}
+              </div>
+              <div class="mb-7 pb-[18px] border-b border-line">
+                <org-switcher></org-switcher>
+              </div>
+
+              <div
+                class="text-[10px] uppercase tracking-[0.18em] text-ink3 font-bold mb-[9px]"
+              >
+                ${t("nav.sectionMonitoring")}
+              </div>
+              <nav class="flex flex-col mb-6">${monitoring}</nav>
+
+              <div
+                class="text-[10px] uppercase tracking-[0.18em] text-ink3 font-bold mb-[9px]"
+              >
+                ${t("nav.sectionOrg")}
+              </div>
+              <nav class="flex flex-col mb-6">${organization}</nav>
             `
           : html`<div class="flex-1"></div>`}
-        <div class="border-t border-base-300 p-3 flex flex-col gap-2">
-          <org-switcher></org-switcher>
-          <ul class="menu menu-lg w-full p-0">
-            ${this.link("/account", t("nav.account"), this.isActive("/account"), "account")}
-          </ul>
-          <div class="flex items-center gap-2">
-            <button
-              class="btn btn-sm btn-ghost justify-start flex-1 gap-2"
-              @click=${this.onLogout}
-            >
-              ${icon("logout", "size-4 opacity-70")}${t("nav.logout")}
-            </button>
-            <theme-toggle></theme-toggle>
-          </div>
+
+        <div class="flex-1"></div>
+
+        <a
+          href="/account"
+          aria-current=${this.isActive("/account") ? "page" : "false"}
+          class="flex items-center justify-between py-2 text-[13.5px] font-medium border-b border-hair ${this.isActive(
+            "/account",
+          )
+            ? "text-ink font-bold"
+            : "text-ink2 hover:text-ink"}"
+        >
+          <span>${t("nav.account")}</span>
+        </a>
+
+        <div
+          class="flex items-center gap-[9px] h-[58px] -mx-[22px] px-[22px] border-t border-line text-[12px] text-ink2"
+        >
+          <span
+            class="grid place-items-center size-6 bg-brand text-cream font-disp font-bold text-[11px]"
+            aria-hidden="true"
+            >${initial}</span
+          >
+          <span class="truncate flex-1">${email}</span>
+          <theme-toggle></theme-toggle>
+          <button
+            class="text-ink3 hover:text-ink"
+            title=${t("nav.logout")}
+            aria-label=${t("nav.logout")}
+            @click=${this.onLogout}
+          >
+            ${icon("logout", "size-4")}
+          </button>
         </div>
+
+        <div class="pulse-vlabel">Pulse Pager · Uptime</div>
       </aside>
     `;
   }

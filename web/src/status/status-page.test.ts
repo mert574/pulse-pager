@@ -101,8 +101,8 @@ describe("status-page (public)", () => {
         () => el.textContent?.includes("Acme Status") ?? false,
         "page renders",
       );
-      // banner
-      expect(el.textContent).to.contain("Partial outage");
+      // operational headline: one monitor (Dashboard) is down in the fixture
+      expect(el.textContent).to.contain("1 monitor down");
       // both monitors by friendly name
       expect(el.textContent).to.contain("Public API");
       expect(el.textContent).to.contain("Dashboard");

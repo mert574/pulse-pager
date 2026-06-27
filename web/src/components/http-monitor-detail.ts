@@ -1,4 +1,4 @@
-import { html, type TemplateResult } from "lit";
+import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { client } from "../api/client.js";
 import { t, tDynamic } from "../i18n.js";
@@ -168,40 +168,38 @@ export class HttpMonitorDetail extends MonitorDetailBase {
   }
 
   protected override body() {
-    // When down, why it is failing (snapshot) and since when (incident) jump above
-    // the historical charts; when recovered they drop back below as history.
+    // The uptime headline and the latency chart live in the dominant band above
+    // (instrumentBand). Here: the region strip, then the recent-checks history. When
+    // down, why it is failing (snapshot) and since when (incident) jump above the
+    // history; when recovered they drop back below it.
     const snapshot = this.snapshotCard();
     const incidents = this.incidentsCard();
     const down = this.currentStatus() === "down";
     return html`
-      ${this.statsRow()} ${this.regionsCard()}
+      ${this.regionsCard()}
       ${down ? html`${snapshot}${incidents}` : ""}
-      ${this.chartCard()} ${this.resultsCard()}
+      ${this.resultsCard()}
       ${down ? "" : html`${incidents}${snapshot}`}
     `;
   }
 
-  private statsRow() {
+  // The dominant figure band, full-bleed under the header: the 24h uptime as one
+  // very large Archivo numeral on the left, the latency chart as a wide band beside
+  // it, and the secondary numbers (avg, p95, last/next check) as a quiet mono spec
+  // strip across the bottom. Uptime and p95 are computed client-side from the loaded
+  // 24h results; a windowed uptime / server p95 over a longer range would come from
+  // future backend fields.
+  protected override instrumentBand() {
     const s = this.stats();
-    const blank = "–";
-    const stat = (
-      title: string,
-      value: string | TemplateResult,
-      hint: string,
-      desc?: string,
-    ) => html`
-      <div class="stat gap-1">
-        <div class="stat-title text-xs uppercase tracking-wide flex items-center gap-1">
-          ${title}${fieldHelp(hint)}
-        </div>
-        <div class="stat-value text-2xl">${value}</div>
-        ${desc ? html`<div class="stat-desc">${desc}</div>` : ""}
-      </div>
-    `;
-    const range =
-      s.min !== null && s.max !== null
-        ? `${formatLatency(s.min)} / ${formatLatency(s.max)}`
-        : undefined;
+    const blank = "—";
+    const fails = s.total - s.healthy;
+    // keep the % glued to the numeral (one token) and small, so the giant Archivo
+    // figure still reads as a percentage at a glance.
+    const uptimeValue =
+      s.uptime === null
+        ? html`<span class="text-ink3">${blank}</span>`
+        : html`${s.uptime}<span class="text-[0.3em] align-top text-ink3">%</span>`;
+
     const nextSecs = secondsUntil(this.nextCheckAt());
     const nextCheck =
       nextSecs === null
@@ -209,52 +207,91 @@ export class HttpMonitorDetail extends MonitorDetailBase {
         : nextSecs === 0
           ? t("monitors.nextCheckDue")
           : tDynamic("monitors.nextCheckIn", "", { when: formatDuration(nextSecs) });
-    const cadence = this.monitor.interval_seconds
-      ? tDynamic("monitors.everyInterval", "", {
-          interval: formatDuration(this.monitor.interval_seconds),
-        })
-      : undefined;
+    const spec: { label: string; value: unknown; tone?: string }[] = [
+      { label: t("monitor.statAvgLatency"), value: formatLatency(s.avg) ?? blank },
+      { label: t("monitor.statP95Latency"), value: formatLatency(s.p95) ?? blank },
+      {
+        label: t("monitor.statLastCheck"),
+        value: s.last
+          ? html`<relative-time .datetime=${s.last.checked_at}></relative-time>`
+          : t("monitors.never"),
+      },
+      {
+        label: t("monitor.statNextCheck"),
+        value: nextCheck,
+        tone: nextSecs === 0 ? "text-deg" : "",
+      },
+    ];
+
     return html`
-      <div
-        class="stats stats-vertical sm:stats-horizontal w-full border border-base-300 bg-base-100 shadow-sm overflow-visible"
-      >
-        ${stat(
-          t("monitor.statUptime"),
-          s.uptime === null ? blank : `${s.uptime}%`,
-          t("monitor.helpUptime"),
-          s.total ? `${s.healthy}/${s.total} ${t("monitor.checks")}` : undefined,
-        )}
-        ${stat(t("monitor.statAvgLatency"), formatLatency(s.avg) ?? blank, t("monitor.helpAvgLatency"), range)}
-        ${stat(t("monitor.statP95Latency"), formatLatency(s.p95) ?? blank, t("monitor.helpP95Latency"))}
-        ${stat(
-          t("monitor.statLastCheck"),
-          s.last
-            ? html`<relative-time .datetime=${s.last.checked_at}></relative-time>`
-            : t("monitors.never"),
-          t("monitor.helpLastCheck"),
-          s.last?.region,
-        )}
-        ${stat(t("monitor.statNextCheck"), nextCheck, t("monitor.helpNextCheck"), cadence)}
-      </div>
+      <section class="border-b border-line">
+        <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_1.45fr]">
+          <div
+            class="flex flex-col justify-center gap-4 px-6 lg:px-10 pt-8 pb-7 border-line lg:border-r"
+          >
+            <div>
+              <div class="pulse-label">${t("monitor.statUptime")} · 24h</div>
+              <div
+                class="font-disp font-black leading-[0.82] tracking-[-0.05em] text-7xl lg:text-8xl mt-2.5"
+              >
+                ${uptimeValue}
+              </div>
+            </div>
+            ${s.total
+              ? html`<div
+                  class="font-mono text-[11.5px] text-ink2 flex flex-wrap gap-x-[18px] gap-y-1"
+                >
+                  <span class="text-up"
+                    >${s.healthy} ${t("monitor.resultHealthy")}</span
+                  >
+                  ${fails
+                    ? html`<span class="text-down"
+                        >${fails} ${t("monitor.runDown")}</span
+                      >`
+                    : ""}
+                  <span>${s.total} ${t("monitor.checks")}</span>
+                </div>`
+              : ""}
+          </div>
+          ${this.latencyPanel()}
+        </div>
+        <div
+          class="grid grid-cols-2 sm:grid-cols-4 gap-x-8 gap-y-3 px-6 lg:px-10 py-4 border-t border-hair"
+        >
+          ${spec.map(
+            (c) => html`<div class="min-w-0">
+              <div class="pulse-label">${c.label}</div>
+              <div class="font-mono text-[14px] mt-1 truncate ${c.tone ?? ""}">
+                ${c.value}
+              </div>
+            </div>`,
+          )}
+        </div>
+      </section>
     `;
   }
 
+  // Region status as a horizontal strip of region markers.
   private regionsCard() {
     return html`
-      <div class="card bg-base-100 border border-base-300 shadow-sm">
-        <div class="card-body gap-4 p-5">
-          <h2 class="font-semibold flex items-center gap-1">
-            ${t("monitor.regionsTitle")}${fieldHelp(t("monitor.helpRegions"))}
-          </h2>
-          ${this.regionStates.length === 0
-            ? html`<p class="text-base-content/60">${t("monitor.noResults")}</p>`
-            : html`<region-chips .states=${this.regionStates}></region-chips>`}
-        </div>
+      <div class="pulse-panel p-5 flex flex-col gap-3.5">
+        <h2 class="m-0 pulse-section-title flex items-center gap-1">
+          ${t("monitor.regionsTitle")}${fieldHelp(t("monitor.helpRegions"))}
+        </h2>
+        ${this.regionStates.length === 0
+          ? html`<p class="font-mono text-[12px] text-ink3">
+              ${t("monitor.noResults")}
+            </p>`
+          : html`<region-chips .states=${this.regionStates}></region-chips>`}
       </div>
     `;
   }
 
-  private chartCard() {
+  // The right column of the dominant band: the wide latency chart with the uptime
+  // bar as a quieter strip underneath. The chart needs at least two points; with
+  // fewer (a brand-new monitor) it shows the "no checks yet" note instead, and the
+  // bar only appears once there is at least one check to draw.
+  private latencyPanel() {
     const points: LatencyPoint[] = [...this.results].reverse().map((r) => {
       const reason = r.healthy
         ? t("monitor.resultHealthy")
@@ -269,7 +306,6 @@ export class HttpMonitorDetail extends MonitorDetailBase {
         result: `${reason}${code}`,
       };
     });
-    if (points.length < 2) return "";
     const bars: UptimeBar[] = [...this.results].reverse().map((r) => {
       const reason = r.healthy
         ? t("monitor.resultHealthy")
@@ -282,17 +318,28 @@ export class HttpMonitorDetail extends MonitorDetailBase {
       };
     });
     return html`
-      <div class="card bg-base-100 border border-base-300 shadow-sm">
-        <div class="card-body gap-4 p-5">
-          <h2 class="text-sm font-semibold text-base-content/70 flex items-center gap-1">
-            ${t("monitor.uptimeTitle")}${fieldHelp(t("monitor.helpUptimeBar"))}
-          </h2>
-          <uptime-bar .bars=${bars}></uptime-bar>
-          <h2 class="text-sm font-semibold text-base-content/70 mt-2 flex items-center gap-1">
+      <div class="flex flex-col gap-5 px-6 lg:px-10 py-7 bg-paper min-w-0">
+        <div class="flex items-baseline justify-between gap-3">
+          <h2 class="m-0 pulse-section-title flex items-center gap-1">
             ${t("monitor.latencyTitle")}${fieldHelp(t("monitor.helpLatencyChart"))}
           </h2>
-          <latency-chart .points=${points}></latency-chart>
+          <span class="font-mono text-[11px] text-ink3"
+            >${points.length} ${t("monitor.checks")}</span
+          >
         </div>
+        ${points.length < 2
+          ? html`<p class="font-mono text-[12px] text-ink3">
+              ${t("monitor.noResults")}
+            </p>`
+          : html`<latency-chart .points=${points}></latency-chart>`}
+        ${bars.length
+          ? html`<h3
+                class="m-0 mt-1 pulse-section-title text-ink2 flex items-center gap-1"
+              >
+                ${t("monitor.uptimeTitle")}${fieldHelp(t("monitor.helpUptimeBar"))}
+              </h3>
+              <uptime-bar .bars=${bars}></uptime-bar>`
+          : ""}
       </div>
     `;
   }
@@ -301,14 +348,20 @@ export class HttpMonitorDetail extends MonitorDetailBase {
     const runs = this.groupRuns();
     const multiRegion = runs.some((run) => run.regions.length > 1);
     return html`
-      <div class="card bg-base-100 border border-base-300 shadow-sm">
-        <div class="card-body gap-4 p-5">
-          <h2 class="font-semibold flex items-center gap-1">
+      <div class="pulse-panel p-5 flex flex-col gap-4">
+        <div class="flex items-baseline justify-between gap-3">
+          <h2 class="m-0 pulse-section-title flex items-center gap-1">
             ${t("monitor.resultsTitle")}${fieldHelp(t("monitor.helpRecentChecks"))}
           </h2>
-          ${runs.length === 0
-            ? html`<p class="text-base-content/60">${t("monitor.noResults")}</p>`
-            : html`<data-table
+          <span class="font-mono text-[11px] text-ink3"
+            >${String(runs.length).padStart(2, "0")}</span
+          >
+        </div>
+        ${runs.length === 0
+          ? html`<p class="font-mono text-[12px] text-ink3">
+              ${t("monitor.noResults")}
+            </p>`
+          : html`<data-table
                 .columns=${multiRegion ? this.runColumns() : this.singleRegionColumns()}
                 .data=${runs}
                 .pageSize=${10}
@@ -316,7 +369,6 @@ export class HttpMonitorDetail extends MonitorDetailBase {
                   ? (row: unknown) => this.runDetail(row as CheckRun)
                   : undefined}
               ></data-table>`}
-        </div>
       </div>
     `;
   }
@@ -424,13 +476,15 @@ export class HttpMonitorDetail extends MonitorDetailBase {
 
   private runResultBadge(run: CheckRun) {
     if (run.healthy) {
-      return html`<span class="badge badge-success badge-soft badge-sm whitespace-nowrap"
+      return html`<span class="pulse-state text-up whitespace-nowrap"
+        ><span class="pulse-state-sq bg-up"></span
         >${t("monitor.resultHealthy")}</span
       >`;
     }
     const failed = run.regions.filter((r) => !r.healthy).length;
-    return html`<span class="badge badge-error badge-soft badge-sm whitespace-nowrap"
-      >${failed}/${run.regions.length} ${t("monitor.runDown")}</span
+    return html`<span class="pulse-state text-down whitespace-nowrap"
+      ><span class="pulse-state-sq bg-down"></span>${failed}/${run.regions.length}
+      ${t("monitor.runDown")}</span
     >`;
   }
 
@@ -442,24 +496,26 @@ export class HttpMonitorDetail extends MonitorDetailBase {
 
   private runDetail(run: CheckRun) {
     return html`
-      <table class="table table-sm">
+      <table class="w-full text-sm">
         <thead>
-          <tr class="text-xs uppercase tracking-wide">
-            <th>${t("monitor.colRegion")}</th>
-            <th>${t("monitor.colResult")}</th>
-            <th>${t("monitor.colCode")}</th>
-            <th>${t("monitors.colLatency")}</th>
-            <th>${t("monitor.colTime")}</th>
+          <tr
+            class="text-left font-mono text-[11px] uppercase tracking-[0.04em] text-ink3 border-b border-hair"
+          >
+            <th class="font-normal py-1.5 pr-4">${t("monitor.colRegion")}</th>
+            <th class="font-normal py-1.5 pr-4">${t("monitor.colResult")}</th>
+            <th class="font-normal py-1.5 pr-4">${t("monitor.colCode")}</th>
+            <th class="font-normal py-1.5 pr-4">${t("monitors.colLatency")}</th>
+            <th class="font-normal py-1.5">${t("monitor.colTime")}</th>
           </tr>
         </thead>
         <tbody>
           ${run.regions.map(
-            (r) => html`<tr>
-              <td class="font-medium">${r.region}</td>
-              <td>${this.resultBadge(r)}</td>
-              <td>${this.codeCell(r.status_code)}</td>
-              <td>${formatLatency(r.latency_ms) ?? ""}</td>
-              <td class="whitespace-nowrap text-base-content/60">
+            (r) => html`<tr class="border-b border-hair">
+              <td class="font-medium py-1.5 pr-4">${r.region}</td>
+              <td class="py-1.5 pr-4">${this.resultBadge(r)}</td>
+              <td class="py-1.5 pr-4">${this.codeCell(r.status_code)}</td>
+              <td class="py-1.5 pr-4">${formatLatency(r.latency_ms) ?? ""}</td>
+              <td class="whitespace-nowrap text-ink3 py-1.5">
                 <relative-time .datetime=${r.checked_at}></relative-time>
               </td>
             </tr>`,
@@ -471,10 +527,12 @@ export class HttpMonitorDetail extends MonitorDetailBase {
 
   private resultBadge(c: CheckResult) {
     return c.healthy
-      ? html`<span class="badge badge-success badge-soft badge-sm whitespace-nowrap"
+      ? html`<span class="pulse-state text-up whitespace-nowrap"
+          ><span class="pulse-state-sq bg-up"></span
           >${t("monitor.resultHealthy")}</span
         >`
-      : html`<span class="badge badge-error badge-soft badge-sm whitespace-nowrap"
+      : html`<span class="pulse-state text-down whitespace-nowrap"
+          ><span class="pulse-state-sq bg-down"></span
           >${c.failure_reason
             ? t(FAILURE_LABEL[c.failure_reason])
             : t("monitor.resultFailed")}</span
@@ -484,7 +542,7 @@ export class HttpMonitorDetail extends MonitorDetailBase {
   private codeCell(code: number | null) {
     if (code === null) return "";
     return html`<span class="font-medium">${code}</span>
-      <span class="text-base-content/60"
+      <span class="text-ink3"
         >${formatStatusCode(code).replace(`${code} `, "")}</span
       >`;
   }
@@ -500,13 +558,15 @@ export class HttpMonitorDetail extends MonitorDetailBase {
     if (!s) return "";
     const headers = Object.entries(s.headers ?? {});
     return html`
-      <div class="card bg-base-100 border border-error/40 shadow-sm">
-        <div class="card-body gap-4 p-5">
+      <div class="border border-down">
+        <div class="p-5 flex flex-col gap-4">
           <div class="flex flex-wrap items-center justify-between gap-2">
-            <h2 class="font-semibold text-error flex items-center gap-1">
+            <h2
+              class="m-0 pulse-section-title text-down flex items-center gap-1"
+            >
               ${t("monitor.lastFailureTitle")}${fieldHelp(t("monitor.helpLastFailure"))}
             </h2>
-            <span class="text-sm text-base-content/60">
+            <span class="text-sm text-ink3">
               <relative-time .datetime=${s.checked_at}></relative-time>${s.status_code !=
               null
                 ? html` · ${formatStatusCode(s.status_code)}`
@@ -515,17 +575,19 @@ export class HttpMonitorDetail extends MonitorDetailBase {
           </div>
 
           <div>
-            <h3 class="text-sm font-semibold text-base-content/70 mb-1">
+            <h3
+              class="m-0 mb-1 pulse-section-title text-ink2"
+            >
               ${t("monitor.lastFailureHeaders")}
             </h3>
             ${headers.length === 0
-              ? html`<p class="text-base-content/60 text-sm">–</p>`
+              ? html`<p class="text-ink3 text-sm">–</p>`
               : html`<dl
                   class="text-xs grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1"
                 >
                   ${headers.map(
                     ([key, values]) => html`
-                      <dt class="font-mono text-base-content/70">${key}</dt>
+                      <dt class="font-mono text-ink2">${key}</dt>
                       <dd class="font-mono break-all">${values.join(", ")}</dd>
                     `,
                   )}
@@ -533,16 +595,19 @@ export class HttpMonitorDetail extends MonitorDetailBase {
           </div>
 
           <div>
-            <h3 class="text-sm font-semibold text-base-content/70 mb-1">
+            <h3
+              class="m-0 mb-1 pulse-section-title text-ink2 flex items-center gap-2"
+            >
               ${t("monitor.lastFailureBody")}
               ${s.truncated
-                ? html`<span class="badge badge-ghost badge-sm ml-2"
+                ? html`<span
+                    class="pulse-tag"
                     >${t("monitor.lastFailureTruncated")}</span
                   >`
                 : ""}
             </h3>
             <pre
-              class="bg-base-200 rounded p-3 text-xs overflow-auto max-h-80 whitespace-pre-wrap break-all"
+              class="bg-paper p-3 text-xs overflow-auto max-h-80 whitespace-pre-wrap break-all"
             >${s.body}</pre>
           </div>
         </div>

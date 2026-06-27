@@ -11,7 +11,7 @@ function tab(shiftKey = false): void {
 }
 
 function buttons(el: ConfirmDialog): HTMLElement[] {
-  return Array.from(el.querySelectorAll<HTMLElement>(".modal-box button"));
+  return Array.from(el.querySelectorAll<HTMLElement>(".pulse-dialog button"));
 }
 
 describe("confirm-dialog focus management", () => {

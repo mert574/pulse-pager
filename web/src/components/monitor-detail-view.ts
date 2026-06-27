@@ -6,6 +6,7 @@ import { appContext, type AppContext } from "../state/context.js";
 import { client, ApiError } from "../api/client.js";
 import { t } from "../i18n.js";
 import type { Monitor } from "../api/types.js";
+import { errorBox } from "./ui.js";
 
 import "./http-monitor-detail.js";
 import "./ssl-monitor-detail.js";
@@ -60,19 +61,18 @@ export class MonitorDetailView extends AppElement {
   override render() {
     if (this.loading && !this.monitor) {
       return html`<div class="flex flex-col gap-6" aria-busy="true">
-        <div class="skeleton h-9 w-64"></div>
-        <div class="skeleton h-24 w-full"></div>
-        <div class="skeleton h-56 w-full"></div>
-        <div class="skeleton h-48 w-full"></div>
+        <div class="h-9 w-64 bg-paper animate-pulse"></div>
+        <div class="h-24 w-full bg-paper animate-pulse"></div>
+        <div class="h-56 w-full bg-paper animate-pulse"></div>
+        <div class="h-48 w-full bg-paper animate-pulse"></div>
       </div>`;
     }
     if (this.error || !this.monitor) {
-      return html`<div role="alert" class="alert alert-error">
-        <span>${this.error ?? t("state.error")}</span>
-        <button class="btn btn-sm" @click=${() => this.load()}>
-          ${t("state.retry")}
-        </button>
-      </div>`;
+      return errorBox(
+        this.error ?? t("state.error"),
+        () => this.load(),
+        t("state.retry"),
+      );
     }
     return this.monitor.type === "ssl"
       ? html`<ssl-monitor-detail .monitor=${this.monitor}></ssl-monitor-detail>`

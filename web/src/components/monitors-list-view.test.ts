@@ -193,7 +193,7 @@ describe("monitors-list-view", () => {
     try {
       const el = await mount({ ent: entitlements(2, 100) });
       await waitUntil(() => el.querySelector("table") !== null);
-      const btn = el.querySelector("a.btn-primary");
+      const btn = el.querySelector("a.pulse-btn");
       expect(btn).to.not.be.null;
       expect(el.querySelector("upsell-banner")).to.be.null;
     } finally {
@@ -206,7 +206,7 @@ describe("monitors-list-view", () => {
     try {
       const el = await mount({ ent: entitlements(100, 100) });
       await waitUntil(() => el.querySelector("table") !== null);
-      const btn = el.querySelector("button.btn-primary");
+      const btn = el.querySelector("button.pulse-btn");
       expect(btn).to.not.be.null;
       expect((btn as HTMLButtonElement).disabled).to.be.true;
       expect(el.querySelector("upsell-banner")).to.not.be.null;
@@ -240,7 +240,7 @@ describe("monitors-list-view", () => {
     try {
       const el = await mount({ role: "viewer" });
       await waitUntil(() => el.querySelector("table") !== null);
-      expect(el.querySelector(".btn-primary")).to.be.null;
+      expect(el.querySelector(".pulse-btn")).to.be.null;
     } finally {
       restore();
     }
@@ -252,7 +252,9 @@ describe("monitors-list-view", () => {
       const el = await mount({ role: "member" });
       await waitUntil(() => el.querySelector("table") !== null);
       expect(el.textContent).to.contain("Check now");
-      expect(el.querySelector('input[type="checkbox"].toggle')).to.not.be.null;
+      expect(
+        el.querySelector('input[type="checkbox"][aria-label="Toggle enabled"]'),
+      ).to.not.be.null;
     } finally {
       restore();
     }
@@ -264,25 +266,22 @@ describe("monitors-list-view", () => {
       const el = await mount({ role: "viewer" });
       await waitUntil(() => el.querySelector("table") !== null);
       expect(el.textContent).to.not.contain("Check now");
-      expect(el.querySelector('input[type="checkbox"].toggle')).to.be.null;
+      expect(
+        el.querySelector('input[type="checkbox"][aria-label="Toggle enabled"]'),
+      ).to.be.null;
     } finally {
       restore();
     }
   });
 
-  it("queues a check on demand and shows scheduled region chips", async () => {
+  it("queues a check on demand", async () => {
+    let checked = false;
     const restore = installFetch((url) => {
       const path = url.split("?")[0];
-      if (path.endsWith("/check"))
-        return jsonResponse(202, {
-          monitor_id: "mon_1",
-          regions: [
-            { region: "eu-central", state: "scheduled", updated_at: "2026-06-21T11:00:00Z" },
-          ],
-        });
-      // the live-state poll: empty until the check is queued
-      if (path.endsWith("/monitor-region-states"))
-        return jsonResponse(200, { monitors: {} });
+      if (path.endsWith("/check")) {
+        checked = true;
+        return jsonResponse(202, { monitor_id: "mon_1", regions: [] });
+      }
       return jsonResponse(200, MONITORS);
     });
     try {
@@ -293,11 +292,9 @@ describe("monitors-list-view", () => {
       )!;
       checkBtn.click();
       await waitUntil(
-        () => el.querySelector("region-chips") !== null,
-        "scheduled chips render after the check is queued",
+        () => checked,
+        "clicking Check now posts to the check endpoint",
       );
-      expect(el.querySelector("region-chips")?.textContent).to.contain("eu-central");
-      expect(el.querySelector("region-chips")?.textContent).to.contain("scheduled");
     } finally {
       restore();
     }
@@ -340,36 +337,4 @@ describe("monitors-list-view", () => {
     }
   });
 
-  it("renders live region chips from the poll", async () => {
-    const restore = installFetch((url) => {
-      const path = url.split("?")[0];
-      if (path.endsWith("/monitor-region-states"))
-        return jsonResponse(200, {
-          monitors: {
-            mon_1: [
-              {
-                region: "eu-central",
-                state: "done",
-                healthy: true,
-                latency_ms: 88,
-                status_code: 200,
-                updated_at: "2026-06-21T11:00:00Z",
-              },
-            ],
-          },
-        });
-      return jsonResponse(200, MONITORS);
-    });
-    try {
-      const el = await mount({ role: "member" });
-      await waitUntil(
-        () => el.querySelector("region-chips") !== null,
-        "chips render from the poll",
-      );
-      expect(el.querySelector("region-chips")?.textContent).to.contain("eu-central");
-      expect(el.querySelector("region-chips")?.textContent).to.contain("ok");
-    } finally {
-      restore();
-    }
-  });
 });

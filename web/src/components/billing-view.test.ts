@@ -153,19 +153,21 @@ describe("billing-view", () => {
       const monitorsMeter = el.querySelector<HTMLElement>(
         '[data-meter="billing.meterMonitors"]',
       )!;
-      const bar = monitorsMeter.querySelector("progress")!;
-      expect(bar.getAttribute("value")).to.equal("9");
-      expect(bar.getAttribute("max")).to.equal("10");
+      const bar = monitorsMeter.querySelector('[role="progressbar"]')!;
+      expect(bar.getAttribute("aria-valuenow")).to.equal("9");
+      expect(bar.getAttribute("aria-valuemax")).to.equal("10");
       // 9/10 is over the near-cap threshold: warning color + a near-cap note
-      expect(bar.className).to.contain("progress-warning");
+      expect(
+        monitorsMeter.querySelector("[data-meter-fill]")!.className,
+      ).to.contain("bg-deg");
       expect(monitorsMeter.textContent).to.contain("Near your plan limit");
       // a comfortably-under meter is not warning-colored
       const seatsMeter = el.querySelector<HTMLElement>(
         '[data-meter="billing.meterSeats"]',
       )!;
-      expect(seatsMeter.querySelector("progress")!.className).to.contain(
-        "progress-primary",
-      );
+      expect(
+        seatsMeter.querySelector("[data-meter-fill]")!.className,
+      ).to.contain("bg-brand");
     } finally {
       restore();
     }

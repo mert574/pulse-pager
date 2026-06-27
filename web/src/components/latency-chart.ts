@@ -15,11 +15,11 @@ export interface LatencyPoint {
 }
 
 // Latency chart (RFC-013 section 7.2, decision D12) on uPlot: a line + soft area
-// of latency over recent checks, failed checks marked in the theme error color,
-// and a hover tooltip with the check time, latency, and result. uPlot draws on
-// canvas, so colors are read from the daisyUI theme variables (getComputedStyle)
-// and the chart is rebuilt when the theme changes; a ResizeObserver keeps it the
-// container width. uPlot's stylesheet is imported once in the app entry (main.ts).
+// of latency over recent checks, failed checks drawn in the down color, and a
+// hover tooltip with the check time, latency, and result. uPlot draws on canvas,
+// so colors are read from our design tokens (getComputedStyle of the --color-*
+// vars) and the chart is rebuilt when the theme changes; a ResizeObserver keeps it
+// the container width. uPlot's stylesheet is imported once in the app entry (main.ts).
 @customElement("latency-chart")
 export class LatencyChart extends AppElement {
   // chronological order (oldest first)
@@ -91,9 +91,9 @@ export class LatencyChart extends AppElement {
     if (!this.chart) return;
     const tip = document.createElement("div");
     tip.className =
-      "absolute z-10 hidden pointer-events-none flex flex-col gap-1 rounded-lg " +
-      "border border-base-300 bg-base-100 px-3.5 py-2.5 text-xs leading-relaxed " +
-      "shadow-lg min-w-40 whitespace-nowrap";
+      "absolute z-10 hidden pointer-events-none flex flex-col gap-1 " +
+      "border border-line bg-bg px-3.5 py-2.5 text-xs leading-relaxed " +
+      "min-w-40 whitespace-nowrap";
     tip.style.transform = "translate(-50%, calc(-100% - 12px))";
     this.chart.over.appendChild(tip);
     this.tip = tip;
@@ -118,23 +118,23 @@ export class LatencyChart extends AppElement {
     tip.style.top = `${top}px`;
     tip.classList.remove("hidden");
 
-    const resultClass = p.healthy ? "text-success" : "text-error";
+    const resultClass = p.healthy ? "text-up" : "text-down";
     const rows: string[] = [];
     if (p.label) {
       rows.push(
-        `<div class="font-semibold pb-1.5 mb-0.5 border-b border-base-200">${p.label}</div>`,
+        `<div class="font-semibold pb-1.5 mb-0.5 border-b border-hair">${p.label}</div>`,
       );
     }
     if (p.latency != null) {
       rows.push(
         `<div class="flex items-center justify-between gap-6">` +
-          `<span class="text-base-content/60">${this.latencyLabel}</span>` +
+          `<span class="text-ink3">${this.latencyLabel}</span>` +
           `<span class="font-semibold tabular-nums">${p.latency} ms</span></div>`,
       );
     }
     if (p.result) {
       rows.push(
-        `<div class="flex items-center gap-1.5"><span class="size-2 rounded-full ${p.healthy ? "bg-success" : "bg-error"}"></span><span class="${resultClass}">${p.result}</span></div>`,
+        `<div class="flex items-center gap-1.5"><span class="size-2 ${p.healthy ? "bg-up" : "bg-down"}"></span><span class="${resultClass}">${p.result}</span></div>`,
       );
     }
     tip.innerHTML = rows.join("");
@@ -158,16 +158,27 @@ export class LatencyChart extends AppElement {
   }
 
   private withAlpha(color: string, alpha: number): string {
-    return color.startsWith("oklch(")
-      ? color.replace(/\)\s*$/, ` / ${alpha})`)
-      : color;
+    if (color.startsWith("oklch(")) {
+      return color.replace(/\)\s*$/, ` / ${alpha})`);
+    }
+    // Our tokens are plain #rrggbb hex, so append a two-digit alpha channel to keep
+    // the area fill soft instead of a solid block.
+    if (/^#[0-9a-fA-F]{6}$/.test(color)) {
+      const a = Math.round(Math.max(0, Math.min(1, alpha)) * 255)
+        .toString(16)
+        .padStart(2, "0");
+      return `${color}${a}`;
+    }
+    return color;
   }
 
   private opts(width: number): uPlot.Options {
-    const primary = this.cssVar("--color-primary", "#2563eb");
-    const error = this.cssVar("--color-error", "#dc2626");
-    const text = this.cssVar("--color-base-content", "#1c2128");
-    const grid = this.cssVar("--color-base-300", "#e2e5ea");
+    // Read straight from our design tokens (app.css). Fallbacks are the light-theme
+    // seed values, used only if the var is somehow missing.
+    const brand = this.cssVar("--color-brand", "#6b3f1f");
+    const down = this.cssVar("--color-down", "#cf2a0c");
+    const text = this.cssVar("--color-ink", "#191309");
+    const grid = this.cssVar("--color-hair", "#ddd4c4");
     return {
       width,
       height: CHART_HEIGHT,
@@ -189,15 +200,15 @@ export class LatencyChart extends AppElement {
         {},
         {
           label: "ms",
-          stroke: primary,
+          stroke: brand,
           width: 2,
-          fill: this.withAlpha(primary, 0.12),
+          fill: this.withAlpha(brand, 0.12),
           points: { show: false },
         },
         {
           label: "fail",
-          stroke: error,
-          fill: error,
+          stroke: down,
+          fill: down,
           paths: () => null,
           points: { show: true, size: 7 },
         },

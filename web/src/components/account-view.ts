@@ -1,14 +1,16 @@
-import { html } from "lit";
+import { html, nothing, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { AppElement } from "./base.js";
 import { client, ApiError } from "../api/client.js";
 import { navigate } from "../router.js";
 import { session } from "../state/session.js";
+import { pageShell, errorBox } from "./ui.js";
 import {
   availableLocales,
   currentLocale,
   setLocale,
   t,
+  tDynamic,
   type Locale,
 } from "../i18n.js";
 import { toast } from "../toast.js";
@@ -45,14 +47,18 @@ function timezones(): string[] {
 
 const PROVIDERS: IdentityProviderName[] = ["google", "github"];
 
-// Account settings (RFC-013 section 9.3). Three blocks: profile (name + locale +
-// timezone, saved via PATCH /me), linked providers (GET /me/identities, connect
-// via the /auth/{provider}/link redirect, unlink via DELETE with a guard against
-// removing the last one), and session actions (log out, log out of all devices).
+// Account settings (RFC-013 section 9.3). An editorial settings page: a masthead,
+// then label-rail sections (Profile, Preferences, Linked accounts, Sessions), each
+// a section title + a short lead on the left and the controls on the right.
 //
-// Profile reads its initial values from the session /me. On a locale change we
-// also flip the UI locale immediately via i18n so the page reflects the choice
-// before the save round-trips.
+// Profile + Preferences share one PATCH /me form (name + locale + timezone) with a
+// single Save bar. Linked providers come from GET /me/identities (connect via the
+// /auth/{provider}/link redirect, unlink via DELETE with a guard against removing
+// the last one). Sessions hold the log out / log out everywhere actions.
+//
+// Profile reads its initial values from the session /me. On a locale change we also
+// flip the UI locale immediately via i18n so the page reflects the choice before the
+// save round-trips.
 @customElement("account-view")
 export class AccountView extends AppElement {
   @state() private name = "";
@@ -196,142 +202,186 @@ export class AccountView extends AppElement {
     return p === "google" ? t("account.google") : t("account.github");
   }
 
-  override render() {
-    return html`
-      <div class="flex flex-col gap-8 max-w-2xl">
-        <h1 class="text-2xl font-bold">${t("account.heading")}</h1>
-        ${this.profileSection()} ${this.identitiesSection()}
-        ${this.sessionsSection()}
+  // One numbered, letterpress settings section: a mono index sits over the title on
+  // the left rail with the lead beneath, the controls fill the right column. `first`
+  // drops the top hairline so the leading section sits flush under the masthead.
+  private section(
+    index: string,
+    title: string,
+    lead: string,
+    body: TemplateResult,
+    first = false,
+  ): TemplateResult {
+    return html`<section
+      class="grid grid-cols-1 lg:grid-cols-[minmax(0,260px)_1fr] gap-x-12 gap-y-6 ${first
+        ? ""
+        : "border-t border-hair pt-10 mt-10"}"
+    >
+      <div>
+        <div
+          class="font-mono text-[12px] tracking-[0.28em] text-brand mb-2.5 tabular-nums"
+        >
+          ${index}
+        </div>
+        <h2 class="pulse-section-title text-[15px]">${title}</h2>
+        ${lead ? html`<p class="text-ink3 text-sm mt-2">${lead}</p>` : nothing}
       </div>
-    `;
+      <div class="flex flex-col gap-5">${body}</div>
+    </section>`;
   }
 
-  private profileSection() {
-    return html`
-      <section class="flex flex-col gap-4">
-        <h2 class="text-lg font-semibold">${t("account.profile")}</h2>
-        ${this.saveError && !this.saveError.fields
-          ? html`<div role="alert" class="alert alert-error">
-              <span>${this.saveError.message}</span>
-            </div>`
-          : ""}
-        <form class="flex flex-col gap-4" @submit=${this.saveProfile}>
-          <form-field
-            label=${t("account.name")}
-            fieldName="name"
-            .error=${this.saveError?.fields?.name ?? null}
-            .control=${html`<input
-              id="name"
-              class="input w-full"
-              .value=${this.name}
-              @input=${this.onNameInput}
-              autocomplete="name"
-            />`}
-          ></form-field>
-
-          <form-field
-            label=${t("account.email")}
-            fieldName="email"
-            hint=${t("account.emailHint")}
-            .control=${html`<input
-              id="email"
-              class="input w-full"
-              .value=${session.me?.email ?? ""}
-              disabled
-            />`}
-          ></form-field>
-
-          <form-field
-            label=${t("account.language")}
-            fieldName="locale"
-            .error=${this.saveError?.fields?.locale ?? null}
-            .control=${html`<select
-              id="locale"
-              class="select w-full"
-              .value=${this.locale}
-              @change=${this.onLocaleChange}
-            >
-              ${availableLocales.map(
-                (l) =>
-                  html`<option
-                    value=${l.code}
-                    ?selected=${l.code === (this.locale || currentLocale())}
-                  >
-                    ${l.name}
-                  </option>`,
-              )}
-            </select>`}
-          ></form-field>
-
-          <form-field
-            label=${t("account.timezone")}
-            fieldName="timezone"
-            .error=${this.saveError?.fields?.timezone ?? null}
-            .control=${html`<select
-              id="timezone"
-              class="select w-full"
-              .value=${this.timezone}
-              @change=${this.onTimezoneChange}
-            >
-              ${timezones().map(
-                (tz) =>
-                  html`<option value=${tz} ?selected=${tz === this.timezone}>
-                    ${tz}
-                  </option>`,
-              )}
-            </select>`}
-          ></form-field>
-
-          <div>
-            <button
-              type="submit"
-              class="btn btn-primary"
-              ?disabled=${this.saving}
-            >
+  override render() {
+    return pageShell(
+      t("account.heading"),
+      nothing,
+      html`
+        <form @submit=${this.saveProfile} novalidate>
+          ${this.section(
+            "01",
+            t("account.profile"),
+            tDynamic("account.profileLead", "Your name and sign-in email.", {}),
+            this.profileFields(),
+            true,
+          )}
+          ${this.section(
+            "02",
+            tDynamic("account.preferences", "Preferences", {}),
+            tDynamic(
+              "account.preferencesLead",
+              "How the interface and dates read for you.",
+              {},
+            ),
+            this.preferenceFields(),
+          )}
+          ${this.saveError && !this.saveError.fields
+            ? html`<div
+                role="alert"
+                class="border border-down px-4 py-3 text-down mt-8"
+              >
+                <span>${this.saveError.message}</span>
+              </div>`
+            : ""}
+          <div class="flex items-center gap-3 border-t border-line pt-6 mt-10">
+            <button type="submit" class="pulse-btn" ?disabled=${this.saving}>
               ${this.saving ? t("account.saving") : t("account.save")}
             </button>
           </div>
         </form>
-      </section>
+        ${this.section(
+          "03",
+          t("account.providers"),
+          t("account.providersHint"),
+          this.identitiesBody(),
+        )}
+        ${this.section(
+          "04",
+          t("account.sessions"),
+          tDynamic("account.sessionsLead", "Sign out of this or every device.", {}),
+          this.sessionsBody(),
+        )}
+      `,
+    );
+  }
+
+  private profileFields() {
+    return html`
+      <form-field
+        label=${t("account.name")}
+        fieldName="name"
+        .error=${this.saveError?.fields?.name ?? null}
+        .control=${html`<input
+          id="name"
+          class="pulse-input w-full"
+          .value=${this.name}
+          @input=${this.onNameInput}
+          autocomplete="name"
+        />`}
+      ></form-field>
+
+      <form-field
+        label=${t("account.email")}
+        fieldName="email"
+        hint=${t("account.emailHint")}
+        .control=${html`<input
+          id="email"
+          class="pulse-input w-full"
+          .value=${session.me?.email ?? ""}
+          disabled
+        />`}
+      ></form-field>
     `;
   }
 
-  private identitiesSection() {
+  private preferenceFields() {
     return html`
-      <section class="flex flex-col gap-4">
-        <h2 class="text-lg font-semibold">${t("account.providers")}</h2>
-        <p class="text-base-content/60 text-sm">
-          ${t("account.providersHint")}
-        </p>
-        ${this.identitiesError
-          ? html`<div role="alert" class="alert alert-error">
-              <span>${t("state.error")}</span>
-              <button class="btn btn-sm" @click=${() => this.loadIdentities()}>
-                ${t("state.retry")}
-              </button>
-            </div>`
-          : this.identities === null
-            ? html`<div class="skeleton h-12 w-full"></div>`
-            : this.providerRows()}
-      </section>
+      <form-field
+        label=${t("account.language")}
+        fieldName="locale"
+        .error=${this.saveError?.fields?.locale ?? null}
+        .control=${html`<select
+          id="locale"
+          class="pulse-input w-full"
+          .value=${this.locale}
+          @change=${this.onLocaleChange}
+        >
+          ${availableLocales.map(
+            (l) =>
+              html`<option
+                value=${l.code}
+                ?selected=${l.code === (this.locale || currentLocale())}
+              >
+                ${l.name}
+              </option>`,
+          )}
+        </select>`}
+      ></form-field>
+
+      <form-field
+        label=${t("account.timezone")}
+        fieldName="timezone"
+        .error=${this.saveError?.fields?.timezone ?? null}
+        .control=${html`<select
+          id="timezone"
+          class="pulse-input w-full"
+          .value=${this.timezone}
+          @change=${this.onTimezoneChange}
+        >
+          ${timezones().map(
+            (tz) =>
+              html`<option value=${tz} ?selected=${tz === this.timezone}>
+                ${tz}
+              </option>`,
+          )}
+        </select>`}
+      ></form-field>
     `;
+  }
+
+  private identitiesBody() {
+    return html`${this.identitiesError
+      ? errorBox(t("state.error"), () => this.loadIdentities(), t("state.retry"))
+      : this.identities === null
+        ? html`<div class="h-12 w-full bg-paper animate-pulse"></div>`
+        : this.providerRows()}`;
   }
 
   private providerRows() {
     const linked = this.identities ?? [];
     const canUnlink = linked.length > 1;
-    return html`<ul class="flex flex-col divide-y divide-base-300 rounded-box border border-base-300">
+    return html`<ul class="flex flex-col divide-y divide-hair border border-hair">
       ${PROVIDERS.map((p) => {
         const id = linked.find((i) => i.provider === p);
-        return html`<li class="flex items-center justify-between gap-3 p-3">
+        return html`<li class="flex items-center justify-between gap-3 p-3.5">
           <span class="font-medium">${this.providerLabel(p)}</span>
           ${id
             ? html`<div class="flex items-center gap-2">
-                <span class="badge badge-success badge-sm gap-1"
-                  >${icon("check", "size-3")}${t("account.connected")}</span
+                <span class="pulse-state text-up"
+                  ><span class="pulse-state-sq bg-up"></span
+                  >${t("account.connected")}</span
                 >
                 <button
-                  class="btn btn-sm btn-ghost"
+                  type="button"
+                  class="pulse-btn pulse-btn-ghost pulse-btn-sm"
                   ?disabled=${!canUnlink || this.unlinking === p}
                   title=${!canUnlink ? t("account.unlinkLast") : ""}
                   @click=${() => this.unlink(p)}
@@ -340,7 +390,8 @@ export class AccountView extends AppElement {
                 </button>
               </div>`
             : html`<button
-                class="btn btn-sm"
+                type="button"
+                class="pulse-btn pulse-btn-sm"
                 @click=${() => this.connect(p)}
               >
                 ${t("account.connect")}
@@ -350,20 +401,21 @@ export class AccountView extends AppElement {
     </ul>`;
   }
 
-  private sessionsSection() {
+  private sessionsBody() {
     return html`
-      <section class="flex flex-col gap-4">
-        <h2 class="text-lg font-semibold">${t("account.sessions")}</h2>
-        <div class="flex flex-wrap gap-2">
-          <button class="btn gap-2" @click=${this.logout}>
-            ${icon("logout", "size-4 opacity-70")}${t("account.logout")}
-          </button>
-          <button class="btn btn-outline btn-error" @click=${this.logoutAll}>
-            ${t("account.logoutAll")}
-          </button>
-        </div>
-        <p class="text-base-content/60 text-sm">${t("account.logoutAllHint")}</p>
-      </section>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="pulse-btn pulse-btn-ghost" @click=${this.logout}>
+          ${icon("logout", "size-4")}${t("account.logout")}
+        </button>
+        <button
+          type="button"
+          class="pulse-btn pulse-btn-ghost border-down text-down"
+          @click=${this.logoutAll}
+        >
+          ${t("account.logoutAll")}
+        </button>
+      </div>
+      <p class="text-ink3 text-sm">${t("account.logoutAllHint")}</p>
     `;
   }
 }

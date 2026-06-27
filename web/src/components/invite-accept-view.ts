@@ -9,6 +9,7 @@ import { session } from "../state/session.js";
 import { t, tDynamic } from "../i18n.js";
 import { toast } from "../toast.js";
 import { icon } from "../icons.js";
+import { spinner } from "./ui.js";
 import type { InvitationPreview, Role } from "../api/types.js";
 
 // Invitation accept page (RFC-003 2.6), route /invitations/:token. Reachable
@@ -102,15 +103,21 @@ export class InviteAcceptView extends AppElement {
 
   override render() {
     return html`
-      <div class="min-h-screen flex items-center justify-center p-4">
-        <div
-          class="card w-full max-w-sm bg-base-100 shadow-md border border-base-300"
-        >
-          <div class="card-body items-center text-center gap-4">
-            <span class="text-primary">${icon("users", "size-8")}</span>
-            <h1 class="text-2xl font-bold">${t("accept.heading")}</h1>
-            ${this.body()}
+      <div class="min-h-screen grid place-items-center p-6 bg-bg">
+        <div class="w-full max-w-sm flex flex-col gap-6">
+          <!-- Editorial header: a mono kicker over a heavy Archivo heading. -->
+          <div class="flex items-center gap-3">
+            <span class="text-brand">${icon("users", "size-8")}</span>
+            <div class="flex flex-col gap-1">
+              <span class="pulse-label">${tDynamic("accept.kicker", "Invitation")}</span>
+              <h1
+                class="m-0 font-disp font-black uppercase tracking-[-0.04em] leading-[0.85] text-[30px]"
+              >
+                ${t("accept.heading")}
+              </h1>
+            </div>
           </div>
+          <div class="border border-hair bg-bg p-7">${this.body()}</div>
         </div>
       </div>
     `;
@@ -118,52 +125,63 @@ export class InviteAcceptView extends AppElement {
 
   private body() {
     if (this.loading) {
-      return html`<span
-        class="loading loading-spinner loading-md text-base-content/60"
-      ></span>`;
+      return html`<span class="text-ink3">${spinner()}</span>`;
     }
 
     if (this.loadError || !this.preview) {
-      return html`<div role="alert" class="alert alert-error w-full text-sm">
+      return html`<div
+        role="alert"
+        class="border border-down px-4 py-3 w-full text-sm text-down"
+      >
         <span>${this.loadError ?? t("accept.errNotFound")}</span>
       </div>`;
     }
 
     const p = this.preview;
     return html`
-      <p class="text-base-content/80">
-        ${tDynamic("accept.prompt", "", {
-          org: p.org_name,
-          role: this.roleLabel(p.role),
-        })}
-      </p>
-      ${p.inviter_name
-        ? html`<p class="text-base-content/60 text-sm">
-            ${tDynamic("accept.invitedBy", "", { name: p.inviter_name })}
-          </p>`
-        : ""}
-      <p class="text-base-content/60 text-sm">
-        ${tDynamic("accept.invitedEmail", "", { email: p.email })}
-      </p>
-      ${this.acceptError
-        ? html`<div role="alert" class="alert alert-error w-full text-sm">
-            <span>${this.acceptError}</span>
-          </div>`
-        : ""}
-      ${this.loggedIn ? this.acceptActions() : this.signInActions()}
+      <div class="flex flex-col gap-5">
+        <div>
+          <div class="pulse-label">${tDynamic("accept.joinLabel", "Join")}</div>
+          <div
+            class="font-disp font-black text-[28px] tracking-[-0.035em] leading-[0.95] mt-1.5"
+          >
+            ${p.org_name}
+          </div>
+          <div class="mt-2.5 flex flex-wrap items-center gap-2.5">
+            <span class="pulse-tag">${this.roleLabel(p.role)}</span>
+            ${p.inviter_name
+              ? html`<span class="font-mono text-[11.5px] text-ink3">
+                  ${tDynamic("accept.invitedBy", "", { name: p.inviter_name })}
+                </span>`
+              : ""}
+          </div>
+        </div>
+        <p class="font-mono text-[11.5px] text-ink3">
+          ${tDynamic("accept.invitedEmail", "", { email: p.email })}
+        </p>
+        ${this.acceptError
+          ? html`<div
+              role="alert"
+              class="border border-down px-4 py-3 w-full text-sm text-down"
+            >
+              <span>${this.acceptError}</span>
+            </div>`
+          : ""}
+        ${this.loggedIn ? this.acceptActions() : this.signInActions()}
+      </div>
     `;
   }
 
   private acceptActions() {
     return html`<div class="w-full flex flex-col gap-2">
       <button
-        class="btn btn-primary btn-block"
+        class="pulse-btn w-full"
         ?disabled=${this.accepting}
         @click=${this.accept}
       >
         ${this.accepting ? t("accept.accepting") : t("accept.accept")}
       </button>
-      <a class="btn btn-ghost btn-sm btn-block" href="/">
+      <a class="pulse-btn pulse-btn-ghost pulse-btn-sm w-full" href="/">
         ${t("accept.decline")}
       </a>
     </div>`;
@@ -171,8 +189,8 @@ export class InviteAcceptView extends AppElement {
 
   private signInActions() {
     return html`<div class="w-full flex flex-col gap-2">
-      <p class="text-base-content/60 text-sm">${t("accept.signInPrompt")}</p>
-      <button class="btn btn-primary btn-block" @click=${this.signIn}>
+      <p class="text-ink3 text-sm">${t("accept.signInPrompt")}</p>
+      <button class="pulse-btn w-full" @click=${this.signIn}>
         ${t("accept.signIn")}
       </button>
     </div>`;

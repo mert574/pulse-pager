@@ -14,27 +14,34 @@ const STATUS_LABEL: Record<CoverageStatus, MessageKey> = {
   "coverage-degraded": "status.coverageDegraded",
 };
 
-// daisyUI badge variant per status. Status is never shown by color alone: the
-// text label is always present (PRD-004 / RFC-013 section 9.1). disabled uses
-// badge-ghost (a base-toned badge that stays legible in both themes); soft-neutral
-// would be dark-on-dark in the coffee theme.
-const STATUS_CLASS: Record<CoverageStatus, string> = {
-  up: "badge-success badge-soft",
-  down: "badge-error badge-soft",
-  disabled: "badge-ghost",
-  pending: "badge-warning badge-soft",
-  "coverage-degraded": "badge-secondary badge-soft",
+// Text + square color per status (Swiss). Status is never shown by color alone:
+// the text label is always present (PRD-004 / RFC-013 section 9.1). Red is reserved
+// for down; degraded/pending share the amber, disabled is muted ink.
+const STATUS_TEXT: Record<CoverageStatus, string> = {
+  up: "text-up",
+  down: "text-down",
+  disabled: "text-ink3",
+  pending: "text-deg",
+  "coverage-degraded": "text-deg",
 };
 
-// A small pill showing a monitor's status.
+const STATUS_SQUARE: Record<CoverageStatus, string> = {
+  up: "bg-up",
+  down: "bg-down",
+  disabled: "bg-ink3",
+  pending: "bg-deg",
+  "coverage-degraded": "bg-deg",
+};
+
+// A small status marker: a colored square plus its label.
 @customElement("status-badge")
 export class StatusBadge extends AppElement {
   @property({ type: String }) status: CoverageStatus = "pending";
 
   override render() {
-    return html`<span class="badge ${STATUS_CLASS[this.status]} gap-1">
+    return html`<span class="pulse-state ${STATUS_TEXT[this.status]}">
       <span
-        class="inline-block size-2 rounded-full bg-current"
+        class="pulse-state-sq ${STATUS_SQUARE[this.status]}"
         aria-hidden="true"
       ></span>
       ${t(STATUS_LABEL[this.status])}

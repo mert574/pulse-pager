@@ -112,7 +112,7 @@ describe("org-create-view", () => {
       await el.updateComplete;
       expect(f.calls.filter((c) => c.method === "POST").length).to.equal(0);
       // the field error renders
-      expect(el.querySelector('[role="alert"], .text-error')).to.not.be.null;
+      expect(el.querySelector('[role="alert"], .text-down')).to.not.be.null;
     } finally {
       f.restore();
     }

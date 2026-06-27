@@ -8,6 +8,7 @@ import { navigate } from "../router.js";
 import { toast } from "../toast.js";
 import { t, tDynamic } from "../i18n.js";
 import { icon } from "../icons.js";
+import { pageShell, errorBox, spinner } from "./ui.js";
 import type {
   CatalogField,
   Channel,
@@ -31,6 +32,13 @@ import "./upsell-banner.js";
 // silently keeping the old one.
 
 type FieldValue = string | string[];
+
+// One titled form group's parts, packaged before it knows its running number.
+interface FormSection {
+  title: string;
+  lead: string;
+  body: TemplateResult;
+}
 
 // True when an edit-mode channel already has this secret stored. We accept either
 // a "<key>_set" boolean marker or a present non-empty value at the key, mirroring
@@ -275,56 +283,66 @@ export class ChannelFormView extends AppElement {
   override render() {
     if (this.loading && this.isEdit && !this.loadError) {
       return html`<div class="flex flex-col gap-4" aria-busy="true">
-        <div class="skeleton h-9 w-64"></div>
-        <div class="skeleton h-96 w-full"></div>
+        <div class="h-9 w-64 bg-paper animate-pulse"></div>
+        <div class="h-96 w-full bg-paper animate-pulse"></div>
       </div>`;
     }
     if (this.loadError) {
-      return html`<div role="alert" class="alert alert-error">
-        <span>${this.loadError}</span>
-        <button class="btn btn-sm" @click=${() => this.load()}>
-          ${t("state.retry")}
-        </button>
-      </div>`;
+      return errorBox(this.loadError, () => this.load(), t("state.retry"));
     }
 
-    return html`
-      <form class="flex flex-col gap-6 max-w-3xl" @submit=${this.onSubmit} novalidate>
-        <h1 class="text-2xl font-bold">
-          ${t(this.isEdit ? "channelForm.editHeading" : "channelForm.createHeading")}
-        </h1>
-
-        ${this.basicsCard()} ${this.typeCard()} ${this.configCard()}
-
-        <div class="flex items-center gap-2">
-          <button class="btn btn-primary" type="submit" ?disabled=${this.submitting}>
-            ${this.submitting
-              ? html`<span class="loading loading-spinner loading-sm"></span>`
-              : ""}
-            ${t(this.isEdit ? "channelForm.saveChanges" : "channelForm.create")}
-          </button>
-          <a class="btn btn-ghost" href=${`${this.base}/channels`}
-            >${t("dialog.cancel")}</a
-          >
-        </div>
-      </form>
-    `;
+    // basics + type always show; the config group only once a type with fields is
+    // picked, so it is appended (and numbered) only when present.
+    const groups: FormSection[] = [this.basicsCard(), this.typeCard()];
+    const config = this.configCard();
+    if (config) groups.push(config);
+    return pageShell(
+      t(this.isEdit ? "channelForm.editHeading" : "channelForm.createHeading"),
+      nothing,
+      html`
+        <form class="flex flex-col gap-9" @submit=${this.onSubmit} novalidate>
+          <div class="flex flex-col gap-8 lg:gap-10">
+            ${groups.map((g, i) => this.group(String(i + 1).padStart(2, "0"), g))}
+          </div>
+          <div class="flex items-center gap-3 border-t border-line pt-6">
+            <button class="pulse-btn" type="submit" ?disabled=${this.submitting}>
+              ${this.submitting ? spinner() : ""}
+              ${t(this.isEdit ? "channelForm.saveChanges" : "channelForm.create")}
+            </button>
+            <a class="pulse-btn pulse-btn-ghost" href=${`${this.base}/channels`}
+              >${t("dialog.cancel")}</a
+            >
+          </div>
+        </form>
+      `,
+    );
   }
 
-  private card(titleKey: TemplateResult | string, body: TemplateResult) {
-    return html`<div class="card bg-base-100 border border-base-300 shadow-sm">
-      <div class="card-body gap-4 p-5">
-        ${typeof titleKey === "string"
-          ? html`<h2 class="font-semibold">${titleKey}</h2>`
-          : titleKey}
-        ${body}
+  // section() packages a group's parts; group() renders one with its running index:
+  // a numbered, ruled header (mono index + title, lead beneath) over a hairline panel
+  // of controls. The config group drops out until a type is picked, so numbering it at
+  // render keeps the indices right.
+  private section(title: string, lead: string, body: TemplateResult): FormSection {
+    return { title, lead, body };
+  }
+
+  private group(index: string, s: FormSection) {
+    return html`<section class="flex flex-col gap-4">
+      <div class="border-b border-line pb-2.5">
+        <div class="flex items-baseline gap-3">
+          <span class="font-mono text-[12px] text-ink3 tabular-nums">${index}</span>
+          <h2 class="pulse-section-title">${s.title}</h2>
+        </div>
+        ${s.lead ? html`<p class="text-ink3 text-sm mt-1.5">${s.lead}</p>` : nothing}
       </div>
-    </div>`;
+      <div class="pulse-panel p-5 lg:p-6 flex flex-col gap-5">${s.body}</div>
+    </section>`;
   }
 
   private basicsCard() {
-    return this.card(
-      t("channelForm.name"),
+    return this.section(
+      tDynamic("channelForm.sectionBasics", "Details", {}),
+      tDynamic("channelForm.leadBasics", "Name this channel and turn it on.", {}),
       html`
         <form-field
           label=${t("channelForm.name")}
@@ -333,16 +351,16 @@ export class ChannelFormView extends AppElement {
           .help=${t("channelForm.helpName")}
           .control=${html`<input
             id="name"
-            class="input w-full"
+            class="pulse-input w-full"
             maxlength="200"
             .value=${this.name}
             @input=${(e: Event) => (this.name = (e.target as HTMLInputElement).value)}
           />`}
         ></form-field>
-        <label class="label cursor-pointer justify-start gap-3">
+        <label class="inline-flex items-center justify-start gap-3 cursor-pointer">
           <input
             type="checkbox"
-            class="toggle toggle-sm"
+            class="size-4 accent-brand"
             .checked=${this.enabled}
             @change=${(e: Event) =>
               (this.enabled = (e.target as HTMLInputElement).checked)}
@@ -359,18 +377,20 @@ export class ChannelFormView extends AppElement {
   private typeCard() {
     // In edit mode the type is fixed; show it as a read-only label.
     if (this.isEdit) {
-      return this.card(
+      return this.section(
         t("channelForm.type"),
-        html`<p class="text-base-content/70">
+        tDynamic("channelForm.leadType", "How notifications reach you.", {}),
+        html`<p class="text-ink2">
           ${this.entry?.display_name ?? this.selectedType}
         </p>`,
       );
     }
-    return this.card(
+    return this.section(
       t("channelForm.type"),
+      tDynamic("channelForm.leadType", "How notifications reach you.", {}),
       html`
         ${this.errors.type
-          ? html`<p class="text-error text-sm" role="alert">${this.errors.type}</p>`
+          ? html`<p class="text-down text-sm" role="alert">${this.errors.type}</p>`
           : ""}
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
           ${this.catalog.map((e) => this.typeOption(e))}
@@ -384,7 +404,7 @@ export class ChannelFormView extends AppElement {
     const selected = e.type === this.selectedType;
     if (!e.available) {
       return html`<div
-        class="rounded-box border border-base-300 p-3 flex items-center justify-between gap-2 opacity-50 cursor-not-allowed"
+        class="border border-hair p-3 flex items-center justify-between gap-2 opacity-50 cursor-not-allowed"
         aria-disabled="true"
       >
         <span>${e.display_name}</span>
@@ -393,13 +413,13 @@ export class ChannelFormView extends AppElement {
     }
     return html`<button
       type="button"
-      class="rounded-box border p-3 flex items-center justify-between gap-2 text-left ${selected
-        ? "border-primary bg-primary/10"
-        : "border-base-300 hover:border-base-content/30"}"
+      class="border p-3 flex items-center justify-between gap-2 text-left ${selected
+        ? "border-brand bg-brand text-cream"
+        : "border-hair hover:border-brand"}"
       @click=${() => this.selectType(e.type)}
     >
       <span>${e.display_name}</span>
-      ${selected ? icon("check", "size-4 text-primary") : ""}
+      ${selected ? icon("check", "size-4") : ""}
     </button>`;
   }
 
@@ -416,12 +436,17 @@ export class ChannelFormView extends AppElement {
     ></upsell-banner>`;
   }
 
-  private configCard() {
+  private configCard(): FormSection | null {
     const entry = this.entry;
-    if (!entry) return "";
-    if (entry.config_fields.length === 0) return "";
-    return this.card(
+    if (!entry) return null;
+    if (entry.config_fields.length === 0) return null;
+    return this.section(
       t("channelForm.sectionConfig"),
+      tDynamic(
+        "channelForm.leadConfig",
+        "Where this channel sends, and how it signs in.",
+        {},
+      ),
       html`${entry.config_fields.map((f) => this.configField(f))}`,
     );
   }
@@ -478,7 +503,7 @@ export class ChannelFormView extends AppElement {
       ? (this.values[field.key] as string[])
       : [];
     if (this.members.length === 0) {
-      return html`<p class="text-base-content/60 text-sm" id=${field.key}>
+      return html`<p class="text-ink3 text-sm" id=${field.key}>
         ${t("channelForm.memberListEmpty")}
       </p>`;
     }
@@ -492,15 +517,13 @@ export class ChannelFormView extends AppElement {
         (m) => html`<label class="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
-            class="checkbox checkbox-sm"
+            class="size-4 accent-brand"
             .checked=${selected.includes(m.user_id)}
             @change=${(e: Event) =>
               toggle(m.user_id, (e.target as HTMLInputElement).checked)}
           />
           <span>${m.name || m.email}</span>
-          ${m.name
-            ? html`<span class="text-base-content/50">${m.email}</span>`
-            : nothing}
+          ${m.name ? html`<span class="text-ink3">${m.email}</span>` : nothing}
         </label>`,
       )}
     </div>`;
@@ -510,7 +533,7 @@ export class ChannelFormView extends AppElement {
     const value = typeof this.values[field.key] === "string" ? (this.values[field.key] as string) : "";
     return html`<input
       id=${field.key}
-      class="input w-full"
+      class="pulse-input w-full"
       type=${field.secret ? "password" : "text"}
       autocomplete=${field.secret ? "new-password" : "off"}
       placeholder=${field.secret && this.configuredSecrets[field.key]
@@ -525,7 +548,7 @@ export class ChannelFormView extends AppElement {
     const value = typeof this.values[field.key] === "string" ? (this.values[field.key] as string) : "";
     return html`<input
       id=${field.key}
-      class="input w-full"
+      class="pulse-input w-full"
       type="number"
       .value=${value}
       @input=${(e: Event) => this.setValue(field.key, (e.target as HTMLInputElement).value)}
@@ -537,7 +560,7 @@ export class ChannelFormView extends AppElement {
     return html`<input
       id=${field.key}
       type="checkbox"
-      class="toggle"
+      class="size-4 accent-brand"
       .checked=${on}
       @change=${(e: Event) =>
         this.setValue(field.key, (e.target as HTMLInputElement).checked ? "true" : "false")}
@@ -549,7 +572,7 @@ export class ChannelFormView extends AppElement {
     const options = field.enum ?? [];
     return html`<select
       id=${field.key}
-      class="select w-full"
+      class="pulse-input w-full"
       .value=${value}
       @change=${(e: Event) => this.setValue(field.key, (e.target as HTMLSelectElement).value)}
     >
@@ -566,7 +589,7 @@ export class ChannelFormView extends AppElement {
       ${list.map(
         (item, i) => html`<div class="flex items-center gap-2">
           <input
-            class="input input-sm flex-1"
+            class="pulse-input flex-1"
             .value=${item}
             @input=${(e: Event) =>
               this.setValue(
@@ -576,7 +599,7 @@ export class ChannelFormView extends AppElement {
           />
           <button
             type="button"
-            class="btn btn-sm btn-ghost btn-square"
+            class="pulse-iconbtn hover:text-down"
             aria-label=${t("channelForm.removeItem")}
             @click=${() => this.setValue(field.key, list.filter((_, idx) => idx !== i))}
           >
@@ -586,7 +609,7 @@ export class ChannelFormView extends AppElement {
       )}
       <button
         type="button"
-        class="btn btn-sm btn-ghost self-start gap-1.5"
+        class="pulse-btn pulse-btn-ghost pulse-btn-sm self-start"
         @click=${() => this.setValue(field.key, [...list, ""])}
       >
         ${icon("plus", "size-4")}${t("channelForm.addItem")}

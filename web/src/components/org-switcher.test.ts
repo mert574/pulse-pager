@@ -42,7 +42,7 @@ async function mount(activeId: string): Promise<OrgSwitcher> {
 }
 
 function items(el: OrgSwitcher): HTMLAnchorElement[] {
-  return [...el.querySelectorAll<HTMLAnchorElement>(".dropdown-content a")];
+  return [...el.querySelectorAll<HTMLAnchorElement>('[role="menu"] a')];
 }
 
 describe("org-switcher", () => {

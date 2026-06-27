@@ -2,8 +2,9 @@ import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { AppElement } from "./base.js";
 import { client, ApiError } from "../api/client.js";
-import { t, type MessageKey } from "../i18n.js";
+import { t, tDynamic, type MessageKey } from "../i18n.js";
 import { icon } from "../icons.js";
+import { errorBox, spinner } from "./ui.js";
 import { formatDuration } from "../format.js";
 import type {
   AdminBilling,
@@ -13,6 +14,17 @@ import type {
   MonitorType,
   Plan,
 } from "../api/types.js";
+
+import "./pulse-ledger.js";
+
+// The org ledger wants a few per-org counts (monitors, members, open incidents) that
+// GET /admin/orgs does not return yet. We read them off the row when present and show
+// the no-value placeholder otherwise, so the surface is ready for the richer payload.
+type AdminOrgRow = AdminOrg & {
+  monitors?: number;
+  members?: number;
+  incidents_open?: number;
+};
 
 // Operator admin panel: platform-wide totals across every org (signed-up users,
 // orgs, monitors, channels), orgs by plan, and a 30-day signup trend. It lives in
@@ -69,6 +81,9 @@ export class AdminView extends AppElement {
   @state() private fCustomAmount = "";
   @state() private fCustomCurrency = "USD";
   @state() private fCycle: "monthly" | "annual" = "monthly";
+
+  // The small Archivo-caps title sitting above a section, with a hairline rule.
+  private readonly sectionHeading = "pulse-section-title border-b border-line pb-3";
 
   override firstUpdated(): void {
     void this.load();
@@ -194,46 +209,122 @@ export class AdminView extends AppElement {
   }
 
   override render() {
-    return html`
-      <div class="flex flex-col gap-8 w-full">
-        <div>
-          <h1 class="text-2xl font-bold">${t("admin.title")}</h1>
-          <p class="text-base-content/60 text-sm mt-1">
-            ${t("admin.subtitle")}
-          </p>
-        </div>
-        ${this.body()}
-      </div>
-    `;
+    return html`<div class="w-full">${this.body()}</div>`;
   }
 
+  // The padded states (forbidden / error / loading) and, once metrics land, the
+  // control-room layout: the dense instrument cluster up top, then the operator
+  // sections. Everything sits in the px-6 lg:px-10 column so the org ledger can break
+  // back out to the folio edge.
   private body() {
     if (this.forbidden) {
-      return html`<div role="status" class="alert alert-info">
-        <span>${icon("lock", "size-5")}</span>
-        <span>${t("admin.forbidden")}</span>
+      return html`<div class="px-6 lg:px-10 py-8">
+        <div
+          role="status"
+          class="flex items-center gap-3 border border-hair bg-paper px-4 py-3 text-ink2"
+        >
+          <span>${icon("lock", "size-5")}</span>
+          <span>${t("admin.forbidden")}</span>
+        </div>
       </div>`;
     }
     if (this.error) {
-      return html`<div role="alert" class="alert alert-error">
-        <span>${this.error}</span>
-        <button class="btn btn-sm" @click=${this.retry}>
-          ${t("state.retry")}
-        </button>
+      return html`<div class="px-6 lg:px-10 py-8">
+        ${errorBox(this.error, () => this.retry(), t("state.retry"))}
       </div>`;
     }
     if (!this.metrics) {
-      return html`<div class="flex flex-col gap-4" aria-busy="true">
+      return html`<div class="px-6 lg:px-10 py-8 flex flex-col gap-4" aria-busy="true">
         ${Array.from({ length: 3 }).map(
-          () => html`<div class="skeleton h-24 w-full"></div>`,
+          () => html`<div class="h-24 w-full bg-paper animate-pulse"></div>`,
         )}
       </div>`;
     }
     return html`
-      ${this.totals(this.metrics)} ${this.activation(this.metrics)}
-      ${this.byPlan(this.metrics)} ${this.billingSection()} ${this.orgsTable()}
-      ${this.byType(this.metrics)} ${this.signups(this.metrics)}
+      <div class="px-6 lg:px-10 py-8 flex flex-col gap-10">
+        ${this.instrumentCluster(this.metrics)} ${this.billingSection()}
+        ${this.orgsLedger()} ${this.breakdowns(this.metrics)}
+        ${this.signups(this.metrics)}
+      </div>
     `;
+  }
+
+  // The instrument cluster: a dense grid of small gauges (the control-room glance),
+  // not one giant numeral. Each gauge is a mono micro-label over a compact Archivo
+  // value; the gap-px hairline grid reads like a panel of dials. Open incidents are
+  // summed across the org rows when that field is present (see totalOpenIncidents).
+  private instrumentCluster(m: AdminMetrics) {
+    const rate =
+      m.orgs > 0 ? Math.round((m.orgs_with_monitor / m.orgs) * 100) : 0;
+    const ttfm =
+      m.median_time_to_first_monitor_seconds == null
+        ? "—"
+        : formatDuration(m.median_time_to_first_monitor_seconds);
+    const incidents = this.totalOpenIncidents();
+    return html`<section class="flex flex-col gap-3">
+      <div class="flex items-baseline justify-between border-b border-line pb-3">
+        <h2 class="pulse-section-title">${tDynamic("admin.cluster", "Platform")}</h2>
+        <span class="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink3"
+          >${tDynamic("admin.clusterReadout", "Live readout")}</span
+        >
+      </div>
+      <div
+        class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-px bg-hair border border-hair"
+      >
+        ${this.gauge(t("admin.orgs"), m.orgs)}
+        ${this.gauge(t("admin.users"), m.users)}
+        ${this.gauge(
+          t("admin.monitors"),
+          m.monitors_total,
+          `${m.monitors_enabled} ${t("admin.monitorsEnabled").toLowerCase()} · ${m.monitors_disabled} ${t("admin.monitorsDisabled").toLowerCase()}`,
+        )}
+        ${this.gauge(t("admin.channels"), m.channels)}
+        ${this.gauge(
+          t("admin.activationRate"),
+          html`${rate}<span class="text-[15px] text-ink3">%</span>`,
+          `${m.orgs_with_monitor} / ${m.orgs} ${t("admin.orgsCount").toLowerCase()}`,
+        )}
+        ${this.gauge(t("admin.activeOrgs7d"), m.active_orgs_7d)}
+        ${this.gauge(
+          tDynamic("admin.openIncidents", "Open incidents"),
+          incidents.value,
+          undefined,
+          incidents.tone,
+        )}
+        ${this.gauge(t("admin.timeToFirstMonitor"), ttfm)}
+      </div>
+    </section>`;
+  }
+
+  // One gauge in the cluster: a mono micro-label, a compact Archivo value (tone can
+  // color it), and an optional mono sub-line. The bg-bg cell over the gap-px bg-hair
+  // grid draws the hairline dividers between dials.
+  private gauge(label: string, value: unknown, sub?: unknown, tone = "") {
+    return html`<div class="bg-bg px-4 py-4 flex flex-col">
+      <div class="pulse-label">${label}</div>
+      <div
+        class="font-disp font-extrabold text-[26px] leading-[0.95] tracking-[-0.035em] mt-2 ${tone}"
+      >
+        ${value}
+      </div>
+      ${sub
+        ? html`<div class="font-mono text-[10.5px] text-ink3 mt-1.5 leading-snug">
+            ${sub}
+          </div>`
+        : nothing}
+    </div>`;
+  }
+
+  // Open incidents across the platform, summed from the org rows that carry the
+  // assumed incidents_open count. When no row has it we show the no-value placeholder
+  // rather than a misleading zero (see AdminOrgRow).
+  private totalOpenIncidents(): { value: string; tone: string } {
+    const orgs = this.orgs as AdminOrgRow[] | null;
+    if (!orgs) return { value: "—", tone: "" };
+    const known = orgs.filter((o) => o.incidents_open != null);
+    if (known.length === 0) return { value: "—", tone: "" };
+    const total = known.reduce((sum, o) => sum + (o.incidents_open ?? 0), 0);
+    return { value: String(total), tone: total > 0 ? "text-down" : "" };
   }
 
   // --- billing & paid users (RFC-018): paid orgs, subscription statuses, revenue ---
@@ -244,45 +335,58 @@ export class AdminView extends AppElement {
     const hasActivity =
       b.subscriptions_by_status.length > 0 || b.revenue_by_currency.length > 0;
     return html`
-      <section class="flex flex-col gap-3">
-        <div>
-          <h2 class="text-lg font-semibold">${t("admin.billing")}</h2>
-          <p class="text-base-content/60 text-sm">${t("admin.billingHint")}</p>
+      <section class="flex flex-col gap-4">
+        <div class="flex flex-col gap-2 border-b border-line pb-3">
+          <h2 class="pulse-section-title">${t("admin.billing")}</h2>
+          <p class="font-mono text-[11.5px] text-ink2">${t("admin.billingHint")}</p>
         </div>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          ${this.card(t("admin.paidOrgs"), b.paid_orgs)}
-          ${this.card(t("admin.activeSubs"), this.subCount(b, "active"))}
-          ${this.card(t("admin.pastDueSubs"), this.subCount(b, "past_due"))}
-          ${this.card(t("admin.canceledSubs"), this.subCount(b, "canceled"))}
+        <div
+          class="grid grid-cols-2 lg:grid-cols-4 gap-px bg-hair border border-hair"
+        >
+          ${this.gauge(t("admin.paidOrgs"), b.paid_orgs)}
+          ${this.gauge(t("admin.activeSubs"), this.subCount(b, "active"))}
+          ${this.gauge(
+            t("admin.pastDueSubs"),
+            this.subCount(b, "past_due"),
+            undefined,
+            this.subCount(b, "past_due") ? "text-deg" : "",
+          )}
+          ${this.gauge(t("admin.canceledSubs"), this.subCount(b, "canceled"))}
         </div>
         ${b.revenue_by_currency.length > 0
-          ? html`<table class="table border border-base-300 rounded-box">
-              <thead>
-                <tr>
-                  <th>${t("admin.currency")}</th>
-                  <th class="text-right">${t("admin.revenueGross")}</th>
-                  <th class="text-right">${t("admin.revenueRefunded")}</th>
-                  <th class="text-right">${t("admin.revenuePayments")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${b.revenue_by_currency.map(
-                  (r) => html`<tr>
-                    <td>${r.currency}</td>
-                    <td class="text-right tabular-nums">
-                      ${this.money(r.gross, r.currency)}
-                    </td>
-                    <td class="text-right tabular-nums">
-                      ${this.money(r.refunded, r.currency)}
-                    </td>
-                    <td class="text-right tabular-nums">${r.payments}</td>
-                  </tr>`,
-                )}
-              </tbody>
-            </table>`
+          ? html`<div class="flex flex-col">
+              ${b.revenue_by_currency.map(
+                (r) => html`<div
+                  class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1.5 py-3 border-b border-hair"
+                >
+                  <span
+                    class="font-disp font-extrabold text-[15px] uppercase tracking-[0.04em]"
+                    >${r.currency}</span
+                  >
+                  <div
+                    class="flex flex-wrap gap-x-6 gap-y-1 font-mono text-[12px] text-ink2"
+                  >
+                    <span
+                      >${t("admin.revenueGross")}
+                      <b class="text-ink">${this.money(r.gross, r.currency)}</b></span
+                    >
+                    <span
+                      >${t("admin.revenueRefunded")}
+                      <b class="text-ink"
+                        >${this.money(r.refunded, r.currency)}</b
+                      ></span
+                    >
+                    <span
+                      >${t("admin.revenuePayments")}
+                      <b class="text-ink">${r.payments}</b></span
+                    >
+                  </div>
+                </div>`,
+              )}
+            </div>`
           : nothing}
         ${!hasActivity
-          ? html`<p class="text-base-content/50 text-sm">
+          ? html`<p class="font-mono text-[12px] text-ink3">
               ${t("admin.billingEmpty")}
             </p>`
           : nothing}
@@ -303,75 +407,93 @@ export class AdminView extends AppElement {
 
   // --- organizations (see and change each org's plan) ---
 
-  private orgsTable() {
+  private orgsLedger() {
     const orgs = this.orgs;
     if (!orgs) return nothing;
     return html`
       <section class="flex flex-col gap-3">
-        <h2 class="text-lg font-semibold">${t("admin.organizations")}</h2>
+        <div class="flex items-baseline justify-between border-b border-line pb-3">
+          <h2 class="pulse-section-title">${t("admin.organizations")}</h2>
+          <span class="font-mono text-[11px] text-ink3"
+            >${String(orgs.length).padStart(2, "0")}</span
+          >
+        </div>
         ${this.planError
-          ? html`<div role="alert" class="alert alert-error">
-              <span>${this.planError}</span>
+          ? html`<div role="alert" class="border border-down px-4 py-3 text-down">
+              ${this.planError}
             </div>`
           : nothing}
-        <table class="table border border-base-300 rounded-box">
-          <thead>
-            <tr>
-              <th>${t("admin.orgName")}</th>
-              <th>${t("admin.orgSlug")}</th>
-              <th>${t("admin.plan")}</th>
-              <th>${t("admin.actions")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${orgs.map(
-              (o) =>
-                html`<tr>
-                  <td>${o.name}</td>
-                  <td class="text-base-content/60">${o.slug}</td>
-                  <td>
-                    <select
-                      class="select select-sm select-bordered w-44"
-                      aria-label=${`${t("admin.plan")} — ${o.name}`}
-                      .value=${o.plan}
-                      ?disabled=${this.savingOrgId === o.id}
-                      @change=${(e: Event) =>
-                        this.changePlan(
-                          o,
-                          (e.target as HTMLSelectElement).value as Plan,
-                        )}
-                    >
-                      ${PLAN_ORDER.map(
-                        (p) =>
-                          html`<option value=${p} ?selected=${p === o.plan}>
-                            ${t(PLAN_LABEL[p])}
-                          </option>`,
-                      )}
-                    </select>
-                  </td>
-                  <td>
-                    <div class="flex gap-2">
-                      <button
-                        class="btn btn-sm btn-ghost"
-                        @click=${() => this.openAction({ kind: "cancel", org: o })}
-                      >
-                        ${t("admin.cancelSub")}
-                      </button>
-                      <button
-                        class="btn btn-sm btn-ghost text-error"
-                        @click=${() => this.openAction({ kind: "refund", org: o })}
-                      >
-                        ${t("admin.refund")}
-                      </button>
-                    </div>
-                  </td>
-                </tr>`,
-            )}
-          </tbody>
-        </table>
+        <pulse-ledger
+          .items=${orgs}
+          .renderRow=${(item: unknown, i: number) =>
+            this.orgRow(item as AdminOrg, i)}
+        ></pulse-ledger>
       </section>
       ${this.actionDialog()}
     `;
+  }
+
+  // One org per ledger row: an index, the org name (with its slug as a tag) over the
+  // per-org counts, then the plan select and the operator actions. The select stays
+  // one-per-row in org order so an operator can change any org's plan inline.
+  private orgRow(o: AdminOrg, i: number) {
+    const r = o as AdminOrgRow;
+    const n = String(i + 1).padStart(2, "0");
+    const num = (v?: number): string => (v == null ? "—" : String(v));
+    return html`<div
+      class="grid grid-cols-[36px_1fr] sm:grid-cols-[44px_1fr_auto] gap-x-4 gap-y-3 px-6 lg:px-10 py-5 border-b border-hair sm:items-center"
+    >
+      <span class="font-mono text-[12px] text-brand">${n}</span>
+      <div class="min-w-0">
+        <div class="flex items-center gap-2.5 flex-wrap">
+          <span
+            class="font-disp font-extrabold text-[17px] tracking-[-0.025em] truncate"
+            >${o.name}</span
+          >
+          <span class="pulse-tag">${o.slug}</span>
+        </div>
+        <div
+          class="font-mono text-[11.5px] text-ink3 mt-1 flex flex-wrap gap-x-4 gap-y-0.5"
+        >
+          <span>${num(r.monitors)} ${tDynamic("admin.colMonitors", "monitors")}</span>
+          <span>${num(r.members)} ${tDynamic("admin.colMembers", "members")}</span>
+          <span class=${r.incidents_open ? "text-down" : ""}
+            >${num(r.incidents_open)} ${tDynamic("admin.colOpenIncidents", "open")}</span
+          >
+        </div>
+      </div>
+      <div
+        class="col-start-2 sm:col-start-3 flex flex-wrap items-center gap-2 sm:justify-end"
+      >
+        <select
+          class="pulse-input w-36"
+          aria-label=${`${t("admin.plan")} — ${o.name}`}
+          .value=${o.plan}
+          ?disabled=${this.savingOrgId === o.id}
+          @change=${(e: Event) =>
+            this.changePlan(o, (e.target as HTMLSelectElement).value as Plan)}
+        >
+          ${PLAN_ORDER.map(
+            (p) =>
+              html`<option value=${p} ?selected=${p === o.plan}>
+                ${t(PLAN_LABEL[p])}
+              </option>`,
+          )}
+        </select>
+        <button
+          class="pulse-btn pulse-btn-ghost pulse-btn-sm"
+          @click=${() => this.openAction({ kind: "cancel", org: o })}
+        >
+          ${t("admin.cancelSub")}
+        </button>
+        <button
+          class="pulse-btn pulse-btn-ghost pulse-btn-sm border-down text-down"
+          @click=${() => this.openAction({ kind: "refund", org: o })}
+        >
+          ${t("admin.refund")}
+        </button>
+      </div>
+    </div>`;
   }
 
   // --- operator action dialog (cancel / refund / custom price) ---
@@ -380,37 +502,44 @@ export class AdminView extends AppElement {
     const a = this.action;
     if (!a) return nothing;
     return html`
-      <div class="modal modal-open" role="dialog" aria-modal="true">
-        <div class="modal-box flex flex-col gap-4">
-          <h3 class="text-lg font-semibold">
+      <div
+        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div
+          class="absolute inset-0 bg-black/50"
+          @click=${this.closeAction}
+        ></div>
+        <div
+          class="relative z-10 w-full max-w-md border border-hair bg-bg p-5 flex flex-col gap-4"
+        >
+          <h3 class="font-disp font-extrabold text-[15px] uppercase tracking-[0.03em]">
             ${this.dialogTitle(a)} — ${a.org.name}
           </h3>
           ${this.dialogBody(a)}
           ${this.actionError
-            ? html`<div role="alert" class="alert alert-error">
-                <span>${this.actionError}</span>
+            ? html`<div role="alert" class="border border-down px-4 py-3 text-down">
+                ${this.actionError}
               </div>`
             : nothing}
-          <div class="modal-action">
+          <div class="flex justify-end gap-2">
             <button
-              class="btn btn-ghost"
+              class="pulse-btn pulse-btn-ghost"
               ?disabled=${this.actionBusy}
               @click=${this.closeAction}
             >
               ${t("admin.dialogCancel")}
             </button>
             <button
-              class=${`btn ${a.kind === "refund" ? "btn-error" : "btn-primary"}`}
+              class=${`pulse-btn ${a.kind === "refund" ? "pulse-btn-ghost border-down text-down" : ""}`}
               ?disabled=${this.actionBusy || !this.canSubmit(a)}
               @click=${this.submitAction}
             >
-              ${this.actionBusy
-                ? html`<span class="loading loading-spinner loading-sm"></span>`
-                : t("admin.confirm")}
+              ${this.actionBusy ? spinner() : t("admin.confirm")}
             </button>
           </div>
         </div>
-        <div class="modal-backdrop" @click=${this.closeAction}></div>
       </div>
     `;
   }
@@ -430,9 +559,9 @@ export class AdminView extends AppElement {
   private dialogBody(a: AdminAction) {
     if (a.kind === "cancel") {
       return html`
-        <p class="text-sm text-base-content/70">${t("admin.cancelHelp")}</p>
+        <p class="text-sm text-ink2">${t("admin.cancelHelp")}</p>
         <select
-          class="select select-bordered w-full"
+          class="pulse-input w-full"
           .value=${this.fCancelWhen}
           @change=${(e: Event) =>
             (this.fCancelWhen = (e.target as HTMLSelectElement).value as
@@ -446,16 +575,16 @@ export class AdminView extends AppElement {
     }
     if (a.kind === "refund") {
       return html`
-        <p class="text-sm text-base-content/70">${t("admin.refundHelp")}</p>
+        <p class="text-sm text-ink2">${t("admin.refundHelp")}</p>
         <input
-          class="input input-bordered w-full"
+          class="pulse-input w-full"
           placeholder=${t("admin.refundPaymentId")}
           .value=${this.fPaymentId}
           @input=${(e: Event) =>
             (this.fPaymentId = (e.target as HTMLInputElement).value)}
         />
         <input
-          class="input input-bordered w-full"
+          class="pulse-input w-full"
           type="number"
           min="0"
           placeholder=${t("admin.refundAmount")}
@@ -466,9 +595,9 @@ export class AdminView extends AppElement {
       `;
     }
     return html`
-      <p class="text-sm text-base-content/70">${t("admin.customHelp")}</p>
+      <p class="text-sm text-ink2">${t("admin.customHelp")}</p>
       <input
-        class="input input-bordered w-full"
+        class="pulse-input w-full"
         type="number"
         min="0"
         placeholder=${t("admin.customAmount")}
@@ -478,14 +607,14 @@ export class AdminView extends AppElement {
       />
       <div class="flex gap-2">
         <input
-          class="input input-bordered w-24"
+          class="pulse-input w-24"
           placeholder=${t("admin.customCurrency")}
           .value=${this.fCustomCurrency}
           @input=${(e: Event) =>
             (this.fCustomCurrency = (e.target as HTMLInputElement).value)}
         />
         <select
-          class="select select-bordered flex-1"
+          class="pulse-input flex-1"
           .value=${this.fCycle}
           @change=${(e: Event) =>
             (this.fCycle = (e.target as HTMLSelectElement).value as
@@ -499,133 +628,59 @@ export class AdminView extends AppElement {
     `;
   }
 
-  // --- activation (orgs actually using the product) ---
+  // --- orgs by plan + monitors by check type (editorial breakdowns) ---
 
-  private activation(m: AdminMetrics) {
-    const rate =
-      m.orgs > 0 ? Math.round((m.orgs_with_monitor / m.orgs) * 100) : 0;
-    const ttfm =
-      m.median_time_to_first_monitor_seconds == null
-        ? "—"
-        : formatDuration(m.median_time_to_first_monitor_seconds);
-    return html`
-      <section class="flex flex-col gap-3">
-        <h2 class="text-lg font-semibold">${t("admin.activation")}</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          ${this.card(
-            t("admin.activationRate"),
-            rate,
-            `${m.orgs_with_monitor} / ${m.orgs} ${t("admin.orgsCount").toLowerCase()}`,
-            "%",
-          )}
-          ${this.card(t("admin.activeOrgs7d"), m.active_orgs_7d)}
-          ${this.textCard(t("admin.timeToFirstMonitor"), ttfm)}
-        </div>
-      </section>
-    `;
-  }
-
-  // A card whose value is already-formatted text (not a raw number).
-  private textCard(label: string, value: string) {
-    return html`<div
-      class="rounded-box border border-base-300 p-5 flex flex-col gap-1"
-    >
-      <span class="text-base-content/60 text-sm">${label}</span>
-      <span class="text-3xl font-bold tabular-nums">${value}</span>
+  private breakdowns(m: AdminMetrics) {
+    const planCounts = new Map<Plan, number>();
+    for (const p of m.orgs_by_plan) planCounts.set(p.plan, p.count);
+    const typeCounts = new Map<MonitorType, number>();
+    for (const c of m.monitors_by_type) typeCounts.set(c.type, c.count);
+    return html`<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+      ${this.breakdown(
+        t("admin.byPlan"),
+        PLAN_ORDER.map((p) => ({
+          label: t(PLAN_LABEL[p]),
+          count: planCounts.get(p) ?? 0,
+        })),
+      )}
+      ${this.breakdown(
+        t("admin.byType"),
+        TYPE_ORDER.map((ty) => ({
+          label: t(TYPE_LABEL[ty]),
+          count: typeCounts.get(ty) ?? 0,
+        })),
+      )}
     </div>`;
   }
 
-  // --- core totals ---
-
-  private totals(m: AdminMetrics) {
-    return html`
-      <section class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        ${this.card(t("admin.users"), m.users)}
-        ${this.card(t("admin.orgs"), m.orgs)}
-        ${this.card(
-          t("admin.monitors"),
-          m.monitors_total,
-          `${m.monitors_enabled} ${t("admin.monitorsEnabled")} · ${m.monitors_disabled} ${t("admin.monitorsDisabled")}`,
+  // A labelled breakdown: each row is a name, a proportional brand bar, and a mono
+  // count. The bar is decorative; the count is always shown so it never relies on it.
+  private breakdown(title: string, rows: { label: string; count: number }[]) {
+    const max = Math.max(1, ...rows.map((r) => r.count));
+    return html`<section class="flex flex-col gap-3">
+      <h2 class=${this.sectionHeading}>${title}</h2>
+      <div class="flex flex-col">
+        ${rows.map(
+          (r) => html`<div
+            class="flex items-center gap-4 py-3 border-b border-hair"
+          >
+            <span
+              class="flex-1 font-disp font-extrabold text-[14px] tracking-[-0.01em]"
+              >${r.label}</span
+            >
+            <div class="w-24 sm:w-32 h-1.5 bg-paper" aria-hidden="true">
+              <div
+                class="h-full bg-brand"
+                style=${`width:${Math.round((r.count / max) * 100)}%`}
+              ></div>
+            </div>
+            <span class="font-mono text-[13px] w-8 text-right tabular-nums"
+              >${r.count}</span
+            >
+          </div>`,
         )}
-        ${this.card(t("admin.channels"), m.channels)}
-      </section>
-    `;
-  }
-
-  private card(label: string, value: number, sub?: string, suffix?: string) {
-    return html`<div
-      class="rounded-box border border-base-300 p-5 flex flex-col gap-1"
-    >
-      <span class="text-base-content/60 text-sm">${label}</span>
-      <span class="text-3xl font-bold tabular-nums"
-        >${value}${suffix
-          ? html`<span class="text-xl">${suffix}</span>`
-          : nothing}</span
-      >
-      ${sub
-        ? html`<span class="text-xs text-base-content/50">${sub}</span>`
-        : nothing}
-    </div>`;
-  }
-
-  // --- orgs by plan ---
-
-  private byPlan(m: AdminMetrics) {
-    const counts = new Map<Plan, number>();
-    for (const p of m.orgs_by_plan) counts.set(p.plan, p.count);
-    return html`
-      <section class="flex flex-col gap-3">
-        <h2 class="text-lg font-semibold">${t("admin.byPlan")}</h2>
-        <table class="table border border-base-300 rounded-box">
-          <thead>
-            <tr>
-              <th>${t("admin.plan")}</th>
-              <th class="text-right">${t("admin.orgsCount")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${PLAN_ORDER.map(
-              (p) =>
-                html`<tr>
-                  <td>${t(PLAN_LABEL[p])}</td>
-                  <td class="text-right tabular-nums">${counts.get(p) ?? 0}</td>
-                </tr>`,
-            )}
-          </tbody>
-        </table>
-      </section>
-    `;
-  }
-
-  // --- monitors by check type ---
-
-  private byType(m: AdminMetrics) {
-    const counts = new Map<MonitorType, number>();
-    for (const c of m.monitors_by_type) counts.set(c.type, c.count);
-    return html`
-      <section class="flex flex-col gap-3">
-        <h2 class="text-lg font-semibold">${t("admin.byType")}</h2>
-        <table class="table border border-base-300 rounded-box">
-          <thead>
-            <tr>
-              <th>${t("admin.type")}</th>
-              <th class="text-right">${t("admin.monitors")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${TYPE_ORDER.map(
-              (ty) =>
-                html`<tr>
-                  <td>${t(TYPE_LABEL[ty])}</td>
-                  <td class="text-right tabular-nums">
-                    ${counts.get(ty) ?? 0}
-                  </td>
-                </tr>`,
-            )}
-          </tbody>
-        </table>
-      </section>
-    `;
+      </div>
+    </section>`;
   }
 
   // --- 30-day signup trend ---
@@ -636,8 +691,8 @@ export class AdminView extends AppElement {
     const max = Math.max(1, ...m.signups.map((s) => s.users));
     return html`
       <section class="flex flex-col gap-3">
-        <h2 class="text-lg font-semibold">${t("admin.signups")}</h2>
-        <div class="rounded-box border border-base-300 p-5 flex flex-col gap-4">
+        <h2 class=${this.sectionHeading}>${t("admin.signups")}</h2>
+        <div class="border border-hair p-5 flex flex-col gap-4">
           <div class="flex gap-6 text-sm">
             <span
               >${t("admin.newUsers")}:
@@ -656,13 +711,13 @@ export class AdminView extends AppElement {
             ${m.signups.map(
               (s) =>
                 html`<div
-                  class="flex-1 bg-primary/70 rounded-t min-h-px"
+                  class="flex-1 bg-brand min-h-px"
                   style=${`height:${Math.round((s.users / max) * 100)}%`}
                   title=${`${s.date}: ${s.users} ${t("admin.newUsers")}, ${s.orgs} ${t("admin.newOrgs")}`}
                 ></div>`,
             )}
           </div>
-          <div class="flex justify-between text-xs text-base-content/50">
+          <div class="flex justify-between text-xs text-ink3">
             <span>${m.signups[0]?.date ?? ""}</span>
             <span>${m.signups[m.signups.length - 1]?.date ?? ""}</span>
           </div>

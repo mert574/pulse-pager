@@ -1,14 +1,83 @@
-/* The single app stylesheet (RFC-013 section 2.5). Tailwind utilities plus the
-   daisyUI plugin. Two built-in themes: "caramellatte" (light, the default) and
-   "coffee" (warm dark, auto under prefers-color-scheme). coffee is the warm dark
-   counterpart to caramellatte so the toggle stays in the same palette family. The
-   active theme is the data-theme attribute on <html>, set early by an inline
-   script (index.html) and switched by the sidebar theme toggle. */
+/* The single app stylesheet. An owned design system in the Swiss / International
+   Typographic Style: design tokens plus a small set of `pulse-` primitives that
+   every component uses.
+
+   Two themes via the data-theme attribute: "caramellatte" (light, default) and
+   "coffee" (warm dark). The inline script in index.html sets data-theme on <html>
+   before first paint; the sidebar toggle flips it. */
 
 @import "tailwindcss";
 
-@plugin "daisyui" {
-  themes: caramellatte --default, coffee --prefersdark;
+/* Type families. Archivo is the heavy display grotesk (headings, the wordmark),
+   Inter the body, JetBrains Mono every numeric/data string (latency, uptime,
+   timestamps, ids). Static across themes, so a plain @theme block. */
+@theme {
+  --font-sans: "Inter Variable", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-disp: "Archivo Variable", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo,
+    monospace;
+}
+
+/* Color tokens. Plain @theme (NOT inline): it emits the --color-* variables to
+   :root AND generates utilities that reference them (text-ink -> color:
+   var(--color-ink)), so the per-theme overrides below switch every utility at
+   runtime. @theme inline would bake the light literal into each utility and break
+   dark mode. The seed values here are the light theme. Red is reserved for DOWN
+   only; up/deg carry the other states. --tex is not a utility token, so it lives
+   only in the per-theme blocks below. */
+@theme {
+  --color-bg: #f4f0e8;
+  --color-paper: #ece4d4;
+  --color-ink: #191309;
+  --color-ink2: #5d5142;
+  --color-ink3: #988a76;
+  --color-line: #191309;
+  --color-hair: #ddd4c4;
+  --color-brand: #6b3f1f;
+  --color-tan: #b58044;
+  --color-cream: #f3e8d4;
+  --color-down: #cf2a0c;
+  --color-up: #3f7a35;
+  --color-deg: #aa7008;
+}
+
+/* Light theme (default). Same values as the @theme seed; declared on the
+   attribute so source order beats the @theme :root block. */
+[data-theme="caramellatte"] {
+  --color-bg: #f4f0e8;
+  --color-paper: #ece4d4;
+  --color-ink: #191309;
+  --color-ink2: #5d5142;
+  --color-ink3: #988a76;
+  --color-line: #191309;
+  --color-hair: #ddd4c4;
+  --color-brand: #6b3f1f;
+  --color-tan: #b58044;
+  --color-cream: #f3e8d4;
+  --color-down: #cf2a0c;
+  --color-up: #3f7a35;
+  --color-deg: #aa7008;
+  --tex: rgba(107, 63, 31, 0.07);
+}
+
+/* Warm dark theme. Ink and line flip to cream; brand lightens so it reads on the
+   dark paper; cream collapses to the dark bg so "cream on brand" chips stay dark. */
+[data-theme="coffee"] {
+  --color-bg: #161514;
+  --color-paper: #201e1b;
+  --color-ink: #f1e8d7;
+  --color-ink2: #b3a68f;
+  --color-ink3: #7d7160;
+  --color-line: #f1e8d7;
+  --color-hair: #302c27;
+  --color-brand: #c98a4e;
+  --color-tan: #d9a567;
+  --color-cream: #161514;
+  --color-down: #ff4f30;
+  --color-up: #52b85f;
+  --color-deg: #dca33a;
+  --tex: rgba(217, 165, 103, 0.09);
 }
 
 @layer base {
@@ -18,27 +87,22 @@
   }
   body {
     margin: 0;
-    background-color: var(--color-base-100);
-    color: var(--color-base-content);
-    font-family:
-      "Inter Variable", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-      Roboto, Helvetica, Arial, sans-serif;
-    font-feature-settings: "cv11", "ss01"; /* Inter: simpler glyphs, tabular-friendly */
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
-  /* tighten large headings, the Inter look */
-  h1,
-  h2 {
-    letter-spacing: -0.01em;
+  /* Tabular figures everywhere numbers line up (tables, stats). */
+  .font-mono {
+    font-variant-numeric: tabular-nums;
   }
 }
 
 /* Skeleton loaders (the aria-busy="true" containers in each view and the router
    placeholder) hold at opacity 0 for a short delay, then fade in quick. On a fast
    network the data lands inside the delay and the skeleton never shows, so there
-   is no flash; on a slow load it eases in instead of popping. backwards fill keeps
-   it hidden during the delay. */
+   is no flash; on a slow load it eases in instead of popping. */
 @keyframes skeleton-fade-in {
   from {
     opacity: 0;
@@ -56,15 +120,305 @@
   }
 }
 
-/* Public status-page branding hook (RFC-013 section 9.3): the status build may
-   override the accent from the published branding; the app uses the theme primary. */
-:root {
-  --brand-accent: var(--color-primary);
+/* ---- Primitives (Swiss). Owned, daisyUI-free. ---- */
+@layer components {
+  /* Buttons. Square corners, Archivo caps. Solid is brand-on-cream; ghost is an
+     outlined ink button. */
+  .pulse-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-family: var(--font-disp);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    font-size: 12.5px;
+    line-height: 1;
+    padding: 11px 18px;
+    background: var(--color-brand);
+    color: var(--color-cream);
+    border: 1px solid var(--color-brand);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.12s ease;
+  }
+  .pulse-btn:hover {
+    opacity: 0.88;
+    text-decoration: none;
+  }
+  .pulse-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .pulse-btn-ghost {
+    background: transparent;
+    color: var(--color-ink);
+    border-color: var(--color-line);
+  }
+  .pulse-btn-sm {
+    padding: 7px 12px;
+    font-size: 11.5px;
+  }
+
+  /* Text inputs, textareas, selects. Square, hairline, brand focus ring. The
+     caller sets width (usually w-full). */
+  .pulse-input {
+    display: block;
+    background: var(--color-bg);
+    color: var(--color-ink);
+    border: 1px solid var(--color-line);
+    padding: 9px 12px;
+    font-size: 14px;
+    font-family: var(--font-sans);
+  }
+  .pulse-input::placeholder {
+    color: var(--color-ink3);
+  }
+  .pulse-input:focus,
+  .pulse-input:focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: -1px;
+  }
+  textarea.pulse-input {
+    line-height: 1.5;
+  }
+
+  /* Section heading: the small Archivo caps title above a block or table. */
+  .pulse-section-title {
+    font-family: var(--font-disp);
+    font-weight: 800;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0;
+  }
+
+  /* Flat bordered panel (replaces card). Pair with padding utilities. */
+  .pulse-panel {
+    border: 1px solid var(--color-hair);
+  }
+
+  /* Quiet square icon button (edit/delete/etc). */
+  .pulse-iconbtn {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    color: var(--color-ink3);
+  }
+  .pulse-iconbtn:hover {
+    color: var(--color-ink);
+  }
+
+  /* Mono uppercase tag (a type/role/format label). */
+  .pulse-tag {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-ink2);
+  }
+
+  /* Mono micro-label above a stat or field value. */
+  .pulse-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--color-ink3);
+  }
+
+  /* Status pill. The colored square never carries meaning alone; the label is
+     always present. */
+  .pulse-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .pulse-state-sq {
+    width: 9px;
+    height: 9px;
+    flex: none;
+  }
+
+  /* Command field (the ⌘K search affordance). */
+  .pulse-cmdk {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--color-line);
+    padding: 9px 12px;
+    /* width is set by the caller; min-width:0 so it shrinks on a narrow phone
+       instead of forcing the masthead to overflow */
+    min-width: 0;
+    color: var(--color-ink3);
+    font-size: 12.5px;
+    font-family: var(--font-mono);
+    cursor: text;
+  }
+  .pulse-cmdk .pulse-kbd {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    border: 1px solid var(--color-hair);
+    padding: 1px 6px;
+    color: var(--color-ink2);
+  }
+
+  /* Sidebar vertical dateline label. */
+  .pulse-vlabel {
+    position: absolute;
+    right: -1px;
+    bottom: 118px;
+    writing-mode: vertical-rl;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.4em;
+    color: var(--color-ink3);
+    text-transform: uppercase;
+  }
+
+  /* Dateline / folio: contrasty strip with a slow marquee of org facts. */
+  .pulse-folio {
+    background: var(--color-ink);
+    color: var(--color-bg);
+    border-bottom: 1px solid var(--color-line);
+    overflow: hidden;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+  /* dark: don't invert to a bright cream bar; a quiet raised-dark strip instead. */
+  [data-theme="coffee"] .pulse-folio {
+    background: #221f1b;
+    color: var(--color-ink2);
+    border-bottom-color: var(--color-hair);
+  }
+  .pulse-folio-track {
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 9px 0;
+    animation: pulse-marq 105s linear infinite;
+  }
+  .pulse-folio-track b {
+    font-weight: 500;
+    padding: 0 44px;
+  }
+  .pulse-folio-track i {
+    font-style: normal;
+    width: 5px;
+    height: 5px;
+    background: var(--color-tan);
+    transform: rotate(45deg);
+    flex: none;
+  }
+  @keyframes pulse-marq {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  /* Hazard tape: the animated red stripe above a DOWN incident banner. */
+  .pulse-hazard {
+    position: relative;
+    padding-top: 22px;
+  }
+  .pulse-hazard::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 6px;
+    background-color: var(--color-down);
+    background-image: repeating-linear-gradient(
+      45deg,
+      rgba(0, 0, 0, 0.2) 0 1px,
+      transparent 1px 7px
+    );
+    animation: pulse-bardrift 1.5s linear infinite;
+  }
+  @keyframes pulse-bardrift {
+    from {
+      background-position: 0 0;
+    }
+    to {
+      background-position: -9.9px 0;
+    }
+  }
+
+  /* Sliding row highlighter: one textured panel that follows the hovered row. */
+  .pulse-highlighter {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 0;
+    background-color: var(--color-paper);
+    background-image: radial-gradient(var(--tex) 1.1px, transparent 1.6px);
+    background-size: 11px 11px;
+    opacity: 0;
+    z-index: 0;
+    pointer-events: none;
+    transition:
+      transform 0.26s cubic-bezier(0.22, 0.61, 0.36, 1),
+      height 0.26s cubic-bezier(0.22, 0.61, 0.36, 1),
+      opacity 0.18s ease;
+    animation: pulse-texdrift 8s linear infinite;
+  }
+  @keyframes pulse-texdrift {
+    from {
+      background-position: 0 0;
+    }
+    to {
+      background-position: 11px 11px;
+    }
+  }
+
+  /* Colophon: the big outlined wordmark in the footer. */
+  .pulse-cmark {
+    font-family: var(--font-disp);
+    font-weight: 900;
+    font-size: 110px;
+    letter-spacing: -0.06em;
+    text-transform: uppercase;
+    line-height: 0.8;
+    color: transparent;
+    -webkit-text-stroke: 1px var(--color-hair);
+    padding: 30px 40px 6px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pulse-folio-track,
+    .pulse-hazard::before,
+    .pulse-highlighter {
+      animation: none;
+    }
+  }
 }
 
-/* Logo swaps with the theme: the dark-coffee badge (logo.svg) reads on the light
-   caramellatte theme, the cream badge (logo-dark.svg) reads on the dark coffee
-   theme. Show one per theme. */
+/* Public status-page branding hook (RFC-013 section 9.3): the status build may
+   override the accent from the published branding. */
+:root {
+  --brand-accent: var(--color-brand);
+}
+
+/* Logo swaps with the theme: dark badge on light, cream badge on dark. */
 .logo-on-dark {
   display: none;
 }
@@ -73,40 +427,4 @@
 }
 [data-theme="coffee"] .logo-on-dark {
   display: inline-block;
-}
-
-/* The "Pulse Pager" wordmark matches the logo badge per theme: dark coffee on
-   caramellatte, cream on coffee. */
-.brand-name {
-  color: #5b4231;
-}
-[data-theme="coffee"] .brand-name {
-  color: #e7dac2;
-}
-
-/* Mobile nav drawer. daisyUI lays .drawer-side out as a 1-cell grid expecting the
-   overlay and the sidebar to overlap in that cell. Our sidebar is wrapped in a
-   custom element (app-nav), which breaks that placement: the overlay takes grid row
-   1 and the sidebar lands in a second row, so they stack instead of overlapping
-   (confirmed in Safari Web Inspector). Rather than fight the grid placement through
-   the wrapper, treat the overlay as an absolute backdrop filling the (position:fixed)
-   drawer-side, and let the sidebar be the single full-height layer above it. This is
-   the normal drawer structure and keeps daisyUI's slide-in (it still transforms the
-   app-nav box). */
-.drawer-side > .drawer-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-}
-/* app-nav is an AppElement, whose host carries an inline display:contents (set in
-   connectedCallback). A class cannot override that inline style, so the <app-nav>
-   host generates no box and a z-index on it does nothing. The stacking layer must
-   therefore be its first child, the <aside>: it is the grid item (hoisted by the
-   host's display:contents), so it takes the positioning, the z-index above the
-   overlay, and the full height. */
-.drawer-side > app-nav > aside {
-  position: relative;
-  /* well above the overlay (z-index:1); mobile Safari needs a clear gap, not +1 */
-  z-index: 50;
-  align-self: stretch; /* full 100dvh height; width stays the aside's w-64 */
 }

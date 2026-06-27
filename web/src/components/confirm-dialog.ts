@@ -48,9 +48,9 @@ export class ConfirmDialog extends AppElement {
     );
   }
 
-  // the action buttons inside the modal box (excludes any backdrop element)
+  // the action buttons inside the dialog panel (excludes the backdrop element)
   private buttons(): HTMLElement[] {
-    return Array.from(this.querySelectorAll<HTMLElement>(".modal-box button"));
+    return Array.from(this.querySelectorAll<HTMLElement>(".pulse-dialog button"));
   }
 
   // Escape closes; Tab is trapped so focus cannot leave the open dialog.
@@ -109,23 +109,38 @@ export class ConfirmDialog extends AppElement {
   override render() {
     if (!this.isOpen) return html``;
     return html`
-      <div class="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="cd-heading">
-        <div class="modal-box">
-          <h3 id="cd-heading" class="text-lg font-bold">${this.heading}</h3>
-          ${this.message ? html`<p class="py-4">${this.message}</p>` : ""}
-          <div class="modal-action">
-            <button class="btn" @click=${this.onCancel}>
+      <div
+        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cd-heading"
+      >
+        <div class="absolute inset-0 bg-black/40" @click=${this.onCancel}></div>
+        <div
+          class="pulse-dialog relative w-full max-w-md border border-line bg-bg p-6 flex flex-col gap-4"
+        >
+          <h3
+            id="cd-heading"
+            class="font-disp font-extrabold text-lg uppercase tracking-[-0.01em]"
+          >
+            ${this.heading}
+          </h3>
+          ${this.message ? html`<p class="text-ink2">${this.message}</p>` : ""}
+          <div class="flex justify-end gap-2">
+            <button class="pulse-btn pulse-btn-ghost" @click=${this.onCancel}>
               ${this.cancelLabel}
             </button>
             <button
-              class="btn ${this.danger ? "btn-error" : "btn-primary"}"
+              data-confirm
+              class=${this.danger
+                ? "pulse-btn pulse-btn-ghost border-down text-down"
+                : "pulse-btn"}
               @click=${this.onConfirm}
             >
               ${this.confirmLabel}
             </button>
           </div>
         </div>
-        <div class="modal-backdrop" @click=${this.onCancel}></div>
       </div>
     `;
   }

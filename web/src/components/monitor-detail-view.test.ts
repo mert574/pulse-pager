@@ -112,8 +112,11 @@ describe("monitor-detail-view", () => {
       await waitUntil(() => el.querySelector("table") !== null, "loaded");
       expect(el.textContent).to.contain("Marketing site");
       expect(el.querySelector("status-badge")).to.not.be.null;
-      // uptime 3/4 = 75%
+      // uptime 3/4 = 75%, shown as the dominant figure numeral in the band
       expect(el.textContent).to.contain("75%");
+      // the secondary latency stats sit in the spec strip below the uptime figure
+      expect(el.textContent).to.contain("Avg latency");
+      expect(el.textContent).to.contain("p95 latency");
       // a row per result
       expect(el.querySelectorAll("tbody tr").length).to.equal(4);
       // the failed check shows its localized reason
@@ -137,7 +140,7 @@ describe("monitor-detail-view", () => {
       // 4 results across 2 ticks -> 2 run rows (collapsed, no detail rows yet).
       expect(el.querySelectorAll("tbody tr").length).to.equal(2);
       // the run with a failing region shows how many of its regions are down.
-      expect(el.textContent).to.contain("1/2 down");
+      expect(el.textContent?.replace(/\s+/g, " ")).to.contain("1/2 down");
       // the per-region reason is hidden until the run is expanded.
       expect(el.textContent).to.not.contain("Status mismatch");
 
@@ -162,11 +165,17 @@ describe("monitor-detail-view", () => {
     try {
       const el = await mount("owner");
       await waitUntil(() => el.querySelector("table") !== null);
-      const labels = Array.from(el.querySelectorAll("button, a.btn")).map(
+      const labels = Array.from(el.querySelectorAll("button, a.pulse-btn")).map(
         (b) => b.textContent?.trim(),
       );
       expect(labels.join(" ")).to.contain("Check now");
       expect(labels.join(" ")).to.contain("Edit");
+      // the header also carries the enable toggle, checked since the monitor is on
+      const toggle = el.querySelector<HTMLInputElement>(
+        'input[type="checkbox"][aria-label="Toggle enabled"]',
+      );
+      expect(toggle).to.not.be.null;
+      expect(toggle!.checked).to.be.true;
     } finally {
       restore();
     }
@@ -180,6 +189,8 @@ describe("monitor-detail-view", () => {
       const text = el.textContent ?? "";
       expect(text).to.not.contain("Check now");
       expect(text).to.not.contain("Edit");
+      // no enable toggle either: a viewer cannot change the monitor
+      expect(el.querySelector('input[type="checkbox"]')).to.be.null;
     } finally {
       restore();
     }
@@ -337,6 +348,9 @@ describe("monitor-detail-view", () => {
       expect(el.textContent).to.contain("example.com");
       expect(el.textContent).to.contain("R3");
       expect(el.textContent).to.contain("Issued by");
+      // the expiry countdown is the dominant figure: an "Expires in N days" numeral
+      expect(el.textContent).to.contain("Expires in");
+      expect(el.textContent).to.contain("days");
       // the http-only sections are absent: no uptime/latency stats, no region card,
       // no recent-checks table, no latency chart.
       expect(el.textContent).to.not.contain("Status by region");

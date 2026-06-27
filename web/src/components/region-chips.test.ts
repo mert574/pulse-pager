@@ -12,7 +12,7 @@ async function mount(states: RegionState[]): Promise<RegionChips> {
 describe("region-chips", () => {
   it("renders nothing for an empty state list", async () => {
     const el = await mount([]);
-    expect(el.querySelector(".badge")).to.be.null;
+    expect(el.querySelector("span[title]")).to.be.null;
   });
 
   it("renders one chip per region with the region name and a label", async () => {
@@ -20,7 +20,7 @@ describe("region-chips", () => {
       { region: "eu-central", state: "scheduled", updated_at: "2026-06-21T10:00:00Z" },
       { region: "us-west", state: "running", updated_at: "2026-06-21T10:00:00Z" },
     ]);
-    const chips = el.querySelectorAll(".badge");
+    const chips = el.querySelectorAll("span[title]");
     expect(chips.length).to.equal(2);
     expect(el.textContent).to.contain("eu-central");
     expect(el.textContent).to.contain("scheduled");
@@ -39,9 +39,9 @@ describe("region-chips", () => {
         updated_at: "2026-06-21T10:00:00Z",
       },
     ]);
-    const chip = el.querySelector(".badge")!;
+    const chip = el.querySelector("span[title]")!;
     expect(chip.textContent).to.contain("ok");
-    expect(chip.className).to.contain("badge-success");
+    expect(chip.querySelector("span")!.className).to.contain("bg-up");
   });
 
   it("reads done + unhealthy as down with the error color", async () => {
@@ -54,9 +54,9 @@ describe("region-chips", () => {
         updated_at: "2026-06-21T10:00:00Z",
       },
     ]);
-    const chip = el.querySelector(".badge")!;
+    const chip = el.querySelector("span[title]")!;
     expect(chip.textContent).to.contain("down");
-    expect(chip.className).to.contain("badge-error");
+    expect(chip.querySelector("span")!.className).to.contain("bg-down");
   });
 
   it("reads failed as down with the error color", async () => {
@@ -68,9 +68,9 @@ describe("region-chips", () => {
         updated_at: "2026-06-21T10:00:00Z",
       },
     ]);
-    const chip = el.querySelector(".badge")!;
+    const chip = el.querySelector("span[title]")!;
     expect(chip.textContent).to.contain("down");
-    expect(chip.className).to.contain("badge-error");
+    expect(chip.querySelector("span")!.className).to.contain("bg-down");
   });
 
   it("puts latency and status code in the chip tooltip when present", async () => {
@@ -84,7 +84,7 @@ describe("region-chips", () => {
         updated_at: "2026-06-21T10:00:00Z",
       },
     ]);
-    const title = el.querySelector(".badge")?.getAttribute("title") ?? "";
+    const title = el.querySelector("span[title]")?.getAttribute("title") ?? "";
     expect(title).to.contain("eu-central");
     expect(title).to.contain("88 ms");
     expect(title).to.contain("200");

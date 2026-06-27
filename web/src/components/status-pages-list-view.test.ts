@@ -86,8 +86,11 @@ describe("status-pages-list-view", () => {
   it("renders a row per status page with state and public link", async () => {
     const { el, restore } = await mount({});
     try {
-      await waitUntil(() => el.querySelector("table") !== null, "table renders");
-      expect(el.querySelectorAll("tbody tr").length).to.equal(2);
+      await waitUntil(
+        () => el.querySelector("[data-status-page-card]") !== null,
+        "ledger renders",
+      );
+      expect(el.querySelectorAll("[data-status-page-card]").length).to.equal(2);
       expect(el.textContent).to.contain("Public");
       expect(el.textContent).to.contain("Published");
       expect(el.textContent).to.contain("Draft");
@@ -105,7 +108,7 @@ describe("status-pages-list-view", () => {
         () => el.textContent?.includes("No status pages yet") ?? false,
         "empty state",
       );
-      expect(el.querySelector("table")).to.be.null;
+      expect(el.querySelector("[data-status-page-card]")).to.be.null;
     } finally {
       restore();
     }
@@ -120,9 +123,10 @@ describe("status-pages-list-view", () => {
       },
     });
     try {
-      await waitUntil(() => el.querySelector("table") !== null);
-      const publishBtn = Array.from(el.querySelectorAll("button")).find((b) =>
-        b.textContent?.trim().includes("Publish"),
+      await waitUntil(() => el.querySelector("[data-status-page-card]") !== null);
+      // exact match picks the draft row's "Publish" (not the published row's "Unpublish")
+      const publishBtn = Array.from(el.querySelectorAll("button")).find(
+        (b) => b.textContent?.trim() === "Publish",
       )!;
       publishBtn.click();
       await waitUntil(
@@ -145,22 +149,22 @@ describe("status-pages-list-view", () => {
       },
     });
     try {
-      await waitUntil(() => el.querySelector("table") !== null);
+      await waitUntil(() => el.querySelector("[data-status-page-card]") !== null);
       const deleteBtn = el.querySelector<HTMLButtonElement>(
         'button[aria-label="Delete"]',
       )!;
       deleteBtn.click();
       await waitUntil(
-        () => el.querySelector(".modal-open") !== null,
+        () => el.querySelector(".pulse-dialog") !== null,
         "confirm dialog opens",
       );
-      const confirm = el.querySelector<HTMLButtonElement>(".modal-box .btn-error")!;
+      const confirm = el.querySelector<HTMLButtonElement>("[data-confirm]")!;
       confirm.click();
       await waitUntil(() => calls.some((c) => c.method === "DELETE"), "DELETE fired");
       const del = calls.find((c) => c.method === "DELETE")!;
       expect(del.url).to.contain("/orgs/o1/status-pages/sp_1");
       await waitUntil(
-        () => el.querySelectorAll("tbody tr").length === 1,
+        () => el.querySelectorAll("[data-status-page-card]").length === 1,
         "row removed",
       );
     } finally {
@@ -171,11 +175,12 @@ describe("status-pages-list-view", () => {
   it("hides mutating actions for a viewer (read-only)", async () => {
     const { el, restore } = await mount({ role: "viewer" });
     try {
-      await waitUntil(() => el.querySelector("table") !== null);
-      expect(el.querySelector(".btn-primary")).to.be.null;
+      await waitUntil(() => el.querySelector("[data-status-page-card]") !== null);
+      // both rows still render for a viewer, just with no action controls
+      expect(el.querySelectorAll("[data-status-page-card]").length).to.equal(2);
+      expect(el.querySelector(".pulse-btn")).to.be.null;
       expect(el.querySelector('button[aria-label="Delete"]')).to.be.null;
-      // the actions column is dropped entirely for a viewer (name, slug, state, url)
-      expect(el.querySelectorAll("thead th").length).to.equal(4);
+      expect(el.querySelector(".pulse-iconbtn")).to.be.null;
     } finally {
       restore();
     }

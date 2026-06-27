@@ -113,8 +113,8 @@ describe("incidents-view", () => {
     const restore = installFetch(route([OPEN_INCIDENT, CLOSED_INCIDENT]));
     try {
       const el = await mount();
-      await waitUntil(() => el.querySelector("table") !== null, "table renders");
-      expect(el.querySelectorAll("tbody tr").length).to.equal(2);
+      await waitUntil(() => el.querySelector("[data-incident-row]") !== null, "table renders");
+      expect(el.querySelectorAll("[data-incident-row]").length).to.equal(2);
       // monitor names are resolved from the monitor list
       expect(el.textContent).to.contain("Marketing site");
       expect(el.textContent).to.contain("Prod API");
@@ -133,7 +133,7 @@ describe("incidents-view", () => {
     const restore = installFetch(route([OPEN_INCIDENT, CLOSED_INCIDENT]));
     try {
       const el = await mount();
-      await waitUntil(() => el.querySelector("table") !== null);
+      await waitUntil(() => el.querySelector("[data-incident-row]") !== null);
       expect(lastIncidentsUrl).to.not.contain("status=");
     } finally {
       restore();
@@ -144,7 +144,7 @@ describe("incidents-view", () => {
     const restore = installFetch(route([OPEN_INCIDENT]));
     try {
       const el = await mount();
-      await waitUntil(() => el.querySelector("table") !== null);
+      await waitUntil(() => el.querySelector("[data-incident-row]") !== null);
       const link = el.querySelector(
         'a[href="/orgs/o1/incidents/inc_1"]',
       ) as HTMLAnchorElement;
@@ -163,7 +163,9 @@ describe("incidents-view", () => {
         () => el.textContent?.includes("No incidents") ?? false,
         "empty state",
       );
-      expect(el.querySelector("table")).to.be.null;
+      expect(el.querySelector("[data-incident-row]")).to.be.null;
+      // with nothing open the slim status strip reads calm, not a hazard band
+      expect(el.textContent).to.contain("All systems operational");
     } finally {
       restore();
     }

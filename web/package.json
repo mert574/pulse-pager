@@ -16,7 +16,9 @@
     "size": "node scripts/check-bundle-size.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/archivo": "^5.2.8",
     "@fontsource-variable/inter": "^5.2.8",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@lit/context": "^1.1.6",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/core": "^2.8.0",
@@ -35,7 +37,6 @@
     "@tailwindcss/vite": "^4.3.1",
     "@web/dev-server-esbuild": "^1.0.5",
     "@web/test-runner": "^0.20.2",
-    "daisyui": "^5.5.23",
     "openapi-typescript": "^7.13.0",
     "tailwindcss": "^4.3.1",
     "typescript": "^6.0.3",

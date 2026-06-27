@@ -1,5 +1,5 @@
 import { html, type TemplateResult } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { customElement, property, query } from "lit/decorators.js";
 import {
   createTable,
   getCoreRowModel,
@@ -27,8 +27,9 @@ export interface DataColumn {
   class?: string;
 }
 
-// Reusable sortable + paginated table (RFC-013 decision D13). daisyUI `.table`
-// styles the markup; TanStack Table (headless) owns the sort/paginate behavior.
+// Reusable sortable + paginated table (RFC-013 decision D13). Swiss styling
+// (hairline rows, mono uppercase headers) on the markup; TanStack Table (headless)
+// owns the sort/paginate behavior.
 //
 // table-core is fully controlled, so we keep one persistent table instance and
 // own the full TableState ourselves: onStateChange folds the updater into our
@@ -38,6 +39,10 @@ export class DataTable extends AppElement {
   @property({ attribute: false }) columns: DataColumn[] = [];
   @property({ attribute: false }) data: unknown[] = [];
   @property({ type: Number }) pageSize = 10;
+  // When true, each row gets a leading positional index cell (01, 02, ...), the
+  // broadsheet "indexed rows" look. The index is the row's position in the current
+  // sorted/paged view.
+  @property({ type: Boolean }) indexed = false;
   // When set, each row gets a toggle in a leading cell and this renders the detail
   // shown below it when open. A row whose renderDetail returns null has no toggle.
   @property({ attribute: false }) renderDetail?: (row: unknown) => TemplateResult | null;
@@ -45,6 +50,29 @@ export class DataTable extends AppElement {
   private table?: Table<unknown>;
   private tableState!: TableState;
   private expanded = new Set<string>();
+
+  // The sliding highlighter (Swiss design): one textured panel per table that
+  // follows the hovered row, instead of a per-row hover background.
+  @query(".pulse-dt-scroll") private scrollWrap?: HTMLElement;
+  @query(".pulse-highlighter") private highlighter?: HTMLElement;
+
+  private onRowEnter = (e: MouseEvent): void => {
+    const wrap = this.scrollWrap;
+    const hl = this.highlighter;
+    const row = e.currentTarget as HTMLElement;
+    if (!wrap || !hl) return;
+    // getBoundingClientRect keeps this correct regardless of the row's
+    // offsetParent and of horizontal scroll; the wrapper has no vertical scroll.
+    const wr = wrap.getBoundingClientRect();
+    const rr = row.getBoundingClientRect();
+    hl.style.height = `${rr.height}px`;
+    hl.style.transform = `translateY(${rr.top - wr.top}px)`;
+    hl.style.opacity = "1";
+  };
+
+  private hideHighlighter = (): void => {
+    if (this.highlighter) this.highlighter.style.opacity = "0";
+  };
 
   private toggleRow(id: string): void {
     if (this.expanded.has(id)) this.expanded.delete(id);
@@ -109,17 +137,24 @@ export class DataTable extends AppElement {
     const rows = table.getRowModel().rows;
     const pageCount = table.getPageCount();
     const expandable = !!this.renderDetail;
-    const colCount = this.columns.length + (expandable ? 1 : 0);
+    const pag = table.getState().pagination;
+    const colCount =
+      this.columns.length + (expandable ? 1 : 0) + (this.indexed ? 1 : 0);
 
     return html`
       <!-- min-w-0: as a flex item the scroll container defaults to min-width:auto, so
            it grows to the table's content width and overflows its parent instead of
            scrolling. min-w-0 lets it shrink to the available width, so the scrollbar
            only appears when the columns truly do not fit (mobile), not on desktop. -->
-      <div class="overflow-x-auto rounded-box border border-base-200 min-w-0">
-        <table class="table table-zebra">
+      <div
+        class="pulse-dt-scroll relative overflow-x-auto overflow-y-hidden border border-hair min-w-0"
+        @mouseleave=${this.hideHighlighter}
+      >
+        <div class="pulse-highlighter"></div>
+        <table class="relative z-[1] w-full border-collapse text-sm">
           <thead>
-            <tr>
+            <tr class="border-b border-line">
+              ${this.indexed ? html`<th class="w-10"></th>` : ""}
               ${expandable ? html`<th class="w-8"></th>` : ""}
               ${header.headers.map((h) => {
                 const col = h.column;
@@ -127,20 +162,20 @@ export class DataTable extends AppElement {
                 const sorted = col.getIsSorted();
                 const hint = this.columns.find((c) => c.id === col.id)?.headerHint;
                 return html`<th
-                  class="text-xs uppercase tracking-wide ${sortable
+                  class="text-left font-mono text-[10px] uppercase tracking-[0.12em] text-ink3 font-semibold px-4 py-2.5 ${sortable
                     ? "cursor-pointer select-none"
                     : ""}"
                 >
                   <span class="inline-flex items-center gap-1">
                     <span
                       class="inline-flex items-center gap-1 ${sortable
-                        ? "hover:text-base-content"
+                        ? "hover:text-ink"
                         : ""}"
                       @click=${sortable ? col.getToggleSortingHandler() : null}
                       ?data-sortable=${sortable}
                     >
                       ${String(col.columnDef.header)}
-                      <span class="text-primary"
+                      <span class="text-brand"
                         >${sorted === "asc" ? "▲" : sorted === "desc" ? "▼" : ""}</span
                       >
                     </span>
@@ -151,15 +186,28 @@ export class DataTable extends AppElement {
             </tr>
           </thead>
           <tbody>
-            ${rows.map((row) => {
+            ${rows.map((row, i) => {
               const detail = expandable ? this.renderDetail!(row.original) : null;
               const open = this.expanded.has(row.id);
-              return html`<tr class="hover">
+              return html`<tr
+                  class="border-b border-hair"
+                  @mouseenter=${this.onRowEnter}
+                >
+                  ${this.indexed
+                    ? html`<td
+                        class="px-4 align-middle font-mono text-[12px] font-medium text-brand"
+                      >
+                        ${String(pag.pageIndex * pag.pageSize + i + 1).padStart(
+                          2,
+                          "0",
+                        )}
+                      </td>`
+                    : ""}
                   ${expandable
-                    ? html`<td class="w-8">
+                    ? html`<td class="w-8 pl-4">
                         ${detail
                           ? html`<button
-                              class="btn btn-ghost btn-xs"
+                              class="text-ink3 hover:text-ink px-1"
                               aria-expanded=${open ? "true" : "false"}
                               @click=${() => this.toggleRow(row.id)}
                             >
@@ -169,7 +217,7 @@ export class DataTable extends AppElement {
                       </td>`
                     : ""}
                   ${this.columns.map(
-                    (c) => html`<td class=${c.class ?? ""}>
+                    (c) => html`<td class="px-4 py-3 align-middle ${c.class ?? ""}">
                       ${c.cell
                         ? c.cell(row.original)
                         : String(row.getValue(c.id) ?? "")}
@@ -177,7 +225,7 @@ export class DataTable extends AppElement {
                   )}
                 </tr>
                 ${detail && open
-                  ? html`<tr class="bg-base-200/40">
+                  ? html`<tr class="bg-paper">
                       <td colspan=${colCount} class="p-0">${detail}</td>
                     </tr>`
                   : ""}`;
@@ -186,19 +234,19 @@ export class DataTable extends AppElement {
         </table>
       </div>
       ${pageCount > 1
-        ? html`<div class="flex items-center justify-end gap-2 mt-2">
+        ? html`<div class="flex items-center justify-end gap-2 mt-3">
             <button
-              class="btn btn-sm btn-ghost"
+              class="pulse-btn pulse-btn-ghost pulse-btn-sm"
               ?disabled=${!table.getCanPreviousPage()}
               @click=${() => table.previousPage()}
             >
               ${t("table.previous")}
             </button>
-            <span class="text-sm text-base-content/60">
+            <span class="font-mono text-[12px] text-ink3">
               ${table.getState().pagination.pageIndex + 1} / ${pageCount}
             </span>
             <button
-              class="btn btn-sm btn-ghost"
+              class="pulse-btn pulse-btn-ghost pulse-btn-sm"
               ?disabled=${!table.getCanNextPage()}
               @click=${() => table.nextPage()}
             >

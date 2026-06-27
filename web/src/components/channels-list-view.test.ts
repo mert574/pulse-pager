@@ -88,8 +88,11 @@ describe("channels-list-view", () => {
   it("renders a row per channel with type and enabled flag", async () => {
     const { el, restore } = await mount({});
     try {
-      await waitUntil(() => el.querySelector("table") !== null, "table renders");
-      expect(el.querySelectorAll("tbody tr").length).to.equal(2);
+      await waitUntil(
+        () => el.querySelector("[data-channel-row]") !== null,
+        "ledger renders",
+      );
+      expect(el.querySelectorAll("[data-channel-row]").length).to.equal(2);
       expect(el.textContent).to.contain("Ops Slack");
       expect(el.textContent).to.contain("slack");
     } finally {
@@ -104,7 +107,7 @@ describe("channels-list-view", () => {
         () => el.textContent?.includes("No channels yet") ?? false,
         "empty state",
       );
-      expect(el.querySelector("table")).to.be.null;
+      expect(el.querySelector("[data-channel-row]")).to.be.null;
     } finally {
       restore();
     }
@@ -130,10 +133,12 @@ describe("channels-list-view", () => {
   it("shows New channel and row actions for an owner", async () => {
     const { el, restore } = await mount({ role: "owner" });
     try {
-      await waitUntil(() => el.querySelector("table") !== null);
-      expect(el.querySelector("a.btn-primary")).to.not.be.null;
+      await waitUntil(() => el.querySelector("[data-channel-row]") !== null);
+      expect(el.querySelector("a.pulse-btn")).to.not.be.null;
       // edit + delete + send test all present
-      expect(el.textContent).to.contain("Send test");
+      expect(el.querySelector('button[aria-label="Send test"]')).to.not.be.null;
+      expect(el.querySelector('a[aria-label="Edit"]')).to.not.be.null;
+      expect(el.querySelector('button[aria-label="Delete"]')).to.not.be.null;
     } finally {
       restore();
     }
@@ -142,11 +147,12 @@ describe("channels-list-view", () => {
   it("hides mutating actions for a viewer (read-only)", async () => {
     const { el, restore } = await mount({ role: "viewer" });
     try {
-      await waitUntil(() => el.querySelector("table") !== null);
-      expect(el.querySelector(".btn-primary")).to.be.null;
-      expect(el.textContent).to.not.contain("Send test");
-      // the actions column is dropped entirely for a viewer
-      expect(el.querySelectorAll("thead th").length).to.equal(3);
+      await waitUntil(() => el.querySelector("[data-channel-row]") !== null);
+      // both rows still render for a viewer, just with no action controls
+      expect(el.querySelectorAll("[data-channel-row]").length).to.equal(2);
+      expect(el.querySelector(".pulse-btn")).to.be.null;
+      expect(el.querySelector(".pulse-iconbtn")).to.be.null;
+      expect(el.querySelector('button[aria-label="Send test"]')).to.be.null;
     } finally {
       restore();
     }
@@ -161,9 +167,9 @@ describe("channels-list-view", () => {
       },
     });
     try {
-      await waitUntil(() => el.querySelector("table") !== null);
-      const testBtn = Array.from(el.querySelectorAll("button")).find((b) =>
-        b.textContent?.includes("Send test"),
+      await waitUntil(() => el.querySelector("[data-channel-row]") !== null);
+      const testBtn = el.querySelector<HTMLButtonElement>(
+        'button[aria-label="Send test"]',
       )!;
       testBtn.click();
       await waitUntil(
@@ -186,16 +192,16 @@ describe("channels-list-view", () => {
       },
     });
     try {
-      await waitUntil(() => el.querySelector("table") !== null);
+      await waitUntil(() => el.querySelector("[data-channel-row]") !== null);
       const deleteBtn = el.querySelector<HTMLButtonElement>(
         'button[aria-label="Delete"]',
       )!;
       deleteBtn.click();
       await waitUntil(
-        () => el.querySelector(".modal-open") !== null,
+        () => el.querySelector(".pulse-dialog") !== null,
         "confirm dialog opens",
       );
-      const confirm = el.querySelector<HTMLButtonElement>(".modal-box .btn-error")!;
+      const confirm = el.querySelector<HTMLButtonElement>("[data-confirm]")!;
       confirm.click();
       await waitUntil(
         () => calls.some((c) => c.method === "DELETE"),
@@ -204,7 +210,7 @@ describe("channels-list-view", () => {
       const del = calls.find((c) => c.method === "DELETE")!;
       expect(del.url).to.contain("/orgs/o1/channels/ch_1");
       await waitUntil(
-        () => el.querySelectorAll("tbody tr").length === 1,
+        () => el.querySelectorAll("[data-channel-row]").length === 1,
         "row removed",
       );
     } finally {

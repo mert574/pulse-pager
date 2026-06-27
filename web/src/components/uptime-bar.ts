@@ -21,9 +21,9 @@ export class UptimeBarStrip extends AppElement {
         ${this.bars.map(
           (b) => html`<div
             title=${b.title ?? ""}
-            class="flex-1 min-w-0.5 rounded-sm transition-opacity hover:opacity-70 ${b.healthy
-              ? "bg-success"
-              : "bg-error"}"
+            class="flex-1 min-w-0.5 transition-opacity hover:opacity-70 ${b.healthy
+              ? "bg-up"
+              : "bg-down"}"
           ></div>`,
         )}
       </div>

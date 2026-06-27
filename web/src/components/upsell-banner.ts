@@ -13,10 +13,15 @@ export class UpsellBanner extends AppElement {
 
   override render() {
     return html`
-      <div role="status" class="alert alert-warning">
+      <div
+        role="status"
+        class="flex flex-wrap items-center justify-between gap-3 border border-deg bg-paper px-4 py-3 text-ink2"
+      >
         <span>${this.message || t("upsell.limit")}</span>
         ${this.upgradeHref
-          ? html`<a class="btn btn-sm whitespace-nowrap" href=${this.upgradeHref}
+          ? html`<a
+              class="pulse-btn pulse-btn-sm whitespace-nowrap"
+              href=${this.upgradeHref}
               >${t("upsell.upgrade")}</a
             >`
           : ""}

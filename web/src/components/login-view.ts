@@ -124,7 +124,7 @@ export class LoginView extends AppElement {
       href=${href}
       target="_blank"
       rel="noopener"
-      class="link link-primary"
+      class="text-brand"
       @click=${(e: Event) => e.stopPropagation()}
       >${label}</a
     >`;
@@ -136,33 +136,43 @@ export class LoginView extends AppElement {
   override render() {
     const err = this.errorCode();
     return html`
-      <div
-        class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-base-200 via-base-100 to-base-200"
-      >
-        <div
-          class="card w-full max-w-sm bg-base-100 shadow-xl border border-base-300 rounded-2xl"
-        >
-          <div class="card-body gap-5 p-8">
-            <div class="flex flex-col items-center text-center gap-2">
-              <div class="flex items-center gap-2">
-                <img src="logo.svg" alt="" class="size-9 logo-on-light" />
-                <img src="logo-dark.svg" alt="" class="size-9 logo-on-dark" />
-                <h1 class="text-2xl font-bold brand-name">Pulse Pager</h1>
-              </div>
-              <p class="text-base-content/60 text-sm">${t("login.tagline")}</p>
+      <div class="min-h-screen grid place-items-center p-6 bg-bg">
+        <div class="w-full max-w-sm flex flex-col gap-7">
+          <!-- Editorial wordmark: a heavy two-line Archivo mark over a mono tagline. -->
+          <div class="flex flex-col gap-3">
+            <div class="flex items-center gap-3">
+              <img src="logo.svg" alt="" class="size-11 logo-on-light" />
+              <img src="logo-dark.svg" alt="" class="size-11 logo-on-dark" />
+              <h1
+                class="m-0 font-disp font-black uppercase tracking-[-0.045em] leading-[0.78] text-[40px] brand-name"
+              >
+                Pulse<br />Pager
+              </h1>
             </div>
+            <p
+              class="font-mono text-[10.5px] tracking-[0.16em] uppercase text-ink3"
+            >
+              ${t("login.tagline")}
+            </p>
+          </div>
 
+          <div class="border border-hair bg-bg p-7 flex flex-col gap-5">
             ${err
-              ? html`<div role="alert" class="alert alert-error w-full text-sm">
+              ? html`<div
+                  role="alert"
+                  class="border border-down px-4 py-3 w-full text-sm text-down"
+                >
                   <span>${this.errorMessage(err)}</span>
                 </div>`
               : nothing}
 
             <!-- Until this is ticked every sign-in method below stays disabled. -->
-            <label class="flex items-center justify-center gap-2 text-xs text-base-content/70 cursor-pointer">
+            <label
+              class="flex items-start gap-2.5 text-xs text-ink2 cursor-pointer"
+            >
               <input
                 type="checkbox"
-                class="checkbox checkbox-xs h-4 w-4 shrink-0"
+                class="size-4 accent-brand shrink-0 mt-0.5"
                 data-agree
                 .checked=${this.agreed}
                 @change=${(e: Event) =>
@@ -175,60 +185,65 @@ export class LoginView extends AppElement {
               ${this.emailSent
                 ? html`<div
                     role="status"
-                    class="alert alert-success w-full text-sm"
+                    class="border border-hair bg-paper px-4 py-3 w-full text-sm text-ink2"
                   >
                     <span>${t("login.emailSent")}</span>
                   </div>`
                 : html`<form
-                    class="w-full flex flex-col gap-2"
+                    class="w-full flex flex-col gap-2.5"
                     @submit=${(e: Event) => this.emailLogin(e)}
                   >
-                    <label class="input input-bordered flex items-center gap-2 w-full">
-                      <span class="text-base-content/50">${icon("mail", "size-4")}</span>
-                      <input
-                        type="email"
-                        required
-                        class="grow"
-                        aria-label=${t("login.emailLabel")}
-                        placeholder=${t("login.emailPlaceholder")}
-                        .value=${this.email}
-                        @input=${(e: Event) =>
-                          (this.email = (e.target as HTMLInputElement).value)}
-                      />
-                    </label>
+                    <label class="pulse-label" for="login-email"
+                      >${t("login.emailLabel")}</label
+                    >
+                    <input
+                      id="login-email"
+                      type="email"
+                      required
+                      class="pulse-input w-full"
+                      aria-label=${t("login.emailLabel")}
+                      placeholder=${t("login.emailPlaceholder")}
+                      .value=${this.email}
+                      @input=${(e: Event) =>
+                        (this.email = (e.target as HTMLInputElement).value)}
+                    />
                     <button
                       type="submit"
-                      class="btn btn-primary btn-block"
+                      class="pulse-btn w-full"
                       ?disabled=${this.emailSending || !this.agreed}
                     >
-                      ${this.emailSending
+                      ${icon("mail", "size-4")}${this.emailSending
                         ? t("login.emailSending")
                         : t("login.emailSubmit")}
                     </button>
                   </form>`}
 
-              <div class="divider my-0 text-xs text-base-content/50">
+              <div
+                class="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.14em] text-ink3"
+              >
+                <span class="flex-1 border-t border-hair"></span>
                 ${t("login.emailOr")}
+                <span class="flex-1 border-t border-hair"></span>
               </div>
 
               <button
-                class="btn btn-block gap-2"
+                class="pulse-btn pulse-btn-ghost w-full"
                 data-provider="github"
                 ?disabled=${!this.agreed}
                 @click=${() => this.signInGithub()}
               >
                 ${icon("github", "size-5")} ${t("login.github")}
               </button>
-            </div>
 
-            ${import.meta.env.DEV
-              ? html`<button
-                  class="btn btn-ghost btn-sm btn-block"
-                  @click=${() => this.devSignIn()}
-                >
-                  ${t("login.dev")}
-                </button>`
-              : nothing}
+              ${import.meta.env.DEV
+                ? html`<button
+                    class="pulse-btn pulse-btn-ghost pulse-btn-sm w-full"
+                    @click=${() => this.devSignIn()}
+                  >
+                    ${t("login.dev")}
+                  </button>`
+                : nothing}
+            </div>
           </div>
         </div>
       </div>

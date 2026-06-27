@@ -201,7 +201,7 @@ describe("incident-detail-view", () => {
       await el.updateComplete;
       // confirm in the dialog
       const confirmBtn = Array.from(
-        el.querySelectorAll(".modal-box button"),
+        el.querySelectorAll(".pulse-dialog button"),
       ).find((b) => b.textContent?.trim() === "Close incident") as HTMLButtonElement;
       confirmBtn.click();
       await waitUntil(() => closed, "close endpoint called");
@@ -253,7 +253,7 @@ describe("incident-detail-view", () => {
       closeBtn.click();
       await el.updateComplete;
       const confirmBtn = Array.from(
-        el.querySelectorAll(".modal-box button"),
+        el.querySelectorAll(".pulse-dialog button"),
       ).find((b) => b.textContent?.trim() === "Close incident") as HTMLButtonElement;
       confirmBtn.click();
       // the close fails with 409 and the view toasts the localized already-closed

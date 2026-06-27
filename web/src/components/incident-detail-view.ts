@@ -15,6 +15,7 @@ import type {
   IncidentDetail,
 } from "../api/types.js";
 import { icon } from "../icons.js";
+import { errorBox, spinner } from "./ui.js";
 import type { ConfirmDialog } from "./confirm-dialog.js";
 
 import "./status-badge.js";
@@ -168,22 +169,24 @@ export class IncidentDetailView extends AppElement {
   override render() {
     if (this.loading && !this.incident) {
       return html`<div class="flex flex-col gap-6" aria-busy="true">
-        <div class="skeleton h-9 w-64"></div>
-        <div class="skeleton h-24 w-full"></div>
-        <div class="skeleton h-48 w-full"></div>
+        <div class="h-9 w-64 bg-paper animate-pulse"></div>
+        <div class="h-24 w-full bg-paper animate-pulse"></div>
+        <div class="h-48 w-full bg-paper animate-pulse"></div>
       </div>`;
     }
     if (this.error || !this.incident) {
-      return html`<div role="alert" class="alert alert-error">
-        <span>${this.error ?? t("state.error")}</span>
-        <button class="btn btn-sm" @click=${() => this.load()}>
-          ${t("state.retry")}
-        </button>
-      </div>`;
+      return errorBox(
+        this.error ?? t("state.error"),
+        () => this.load(),
+        t("state.retry"),
+      );
     }
     return html`
-      <div class="flex flex-col gap-6">
-        ${this.header()} ${this.timelineCard()} ${this.addNoteCard()}
+      <div class="-mx-6 lg:-mx-10 -my-7">
+        ${this.header()}
+        <div class="px-6 lg:px-10 py-7 flex flex-col gap-6">
+          ${this.timelineCard()} ${this.addNoteCard()}
+        </div>
       </div>
       <confirm-dialog
         .heading=${t("incident.closeHeading")}
@@ -200,55 +203,70 @@ export class IncidentDetailView extends AppElement {
     const canClose = can(this.ctx?.role ?? null, "incident.close");
     return html`
       <div
-        class="flex flex-wrap items-start justify-between gap-3 pb-4 border-b border-base-300"
+        class="flex flex-wrap items-start justify-between gap-4 px-6 lg:px-10 pt-8 pb-6 border-b border-line"
       >
-        <div class="min-w-0 flex flex-col gap-2">
-          <div class="flex items-center gap-3">
-            <a class="link link-hover" href=${`${this.base}/monitors/${i.monitor_id}`}>
-              <h1 class="text-2xl font-bold truncate">${this.headerName}</h1>
+        <div class="min-w-0 flex flex-col gap-3">
+          <div class="flex flex-wrap items-center gap-3">
+            <a
+              class="hover:no-underline"
+              href=${`${this.base}/monitors/${i.monitor_id}`}
+            >
+              <h1
+                class="m-0 font-disp font-black uppercase tracking-[-0.04em] leading-[0.85] text-3xl lg:text-4xl text-ink hover:text-brand truncate"
+              >
+                ${this.headerName}
+              </h1>
             </a>
             ${open
-              ? html`<span class="badge badge-error badge-soft"
+              ? html`<span class="pulse-state text-down"
+                  ><span class="pulse-state-sq bg-down"></span
                   >${t("incidents.statusOpen")}</span
                 >`
-              : html`<span class="badge badge-ghost"
+              : html`<span class="pulse-state text-ink3"
+                  ><span class="pulse-state-sq bg-ink3"></span
                   >${t("incidents.statusClosed")}</span
                 >`}
           </div>
           <dl
-            class="text-sm text-base-content/70 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1"
+            class="font-mono text-[12px] text-ink2 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5"
           >
-            <dt class="font-medium">${t("incident.started")}</dt>
+            <dt class="text-ink3 uppercase tracking-[0.08em]">
+              ${t("incident.started")}
+            </dt>
             <dd><relative-time .datetime=${i.started_at}></relative-time></dd>
-            <dt class="font-medium">${t("incident.ended")}</dt>
+            <dt class="text-ink3 uppercase tracking-[0.08em]">
+              ${t("incident.ended")}
+            </dt>
             <dd>
               ${open
                 ? t("incidents.ongoing")
                 : html`<relative-time .datetime=${i.ended_at ?? ""}></relative-time>`}
             </dd>
-            <dt class="font-medium">${t("incident.duration")}</dt>
+            <dt class="text-ink3 uppercase tracking-[0.08em]">
+              ${t("incident.duration")}
+            </dt>
             <dd>${open ? t("incidents.ongoing") : formatDuration(i.duration_seconds)}</dd>
-            <dt class="font-medium">${t("incident.cause")}</dt>
-            <dd>
-              <span class="badge badge-ghost badge-sm"
-                >${t(FAILURE_LABEL[i.cause_reason])}</span
-              >
-            </dd>
+            <dt class="text-ink3 uppercase tracking-[0.08em]">
+              ${t("incident.cause")}
+            </dt>
+            <dd class="uppercase">${t(FAILURE_LABEL[i.cause_reason])}</dd>
             ${i.close_reason
-              ? html`<dt class="font-medium">${t("incident.closeReason")}</dt>
+              ? html`<dt class="text-ink3 uppercase tracking-[0.08em]">
+                    ${t("incident.closeReason")}
+                  </dt>
                   <dd>${t(CLOSE_REASON_LABEL[i.close_reason])}</dd>`
               : ""}
           </dl>
         </div>
         ${open && canClose
           ? html`<button
-              class="btn btn-sm btn-error gap-1.5"
+              class="pulse-btn pulse-btn-ghost border-down text-down"
               ?disabled=${this.closing}
               @click=${() => this.closeDialog.open()}
             >
-              ${this.closing
-                ? html`<span class="loading loading-spinner loading-xs"></span>`
-                : icon("incident", "size-4")}${t("incident.close")}
+              ${this.closing ? spinner() : icon("incident", "size-4")}${t(
+                "incident.close",
+              )}
             </button>`
           : ""}
       </div>
@@ -264,23 +282,29 @@ export class IncidentDetailView extends AppElement {
   private timelineCard() {
     const i = this.incident!;
     return html`
-      <div class="card bg-base-100 border border-base-300 shadow-sm">
-        <div class="card-body gap-4 p-5">
-          <h2 class="font-semibold">${t("incident.timelineTitle")}</h2>
+      <div class="border border-hair">
+        <div class="flex flex-col gap-4 p-5">
+          <h2
+            class="m-0 pulse-section-title"
+          >
+            ${t("incident.timelineTitle")}
+          </h2>
           ${i.annotations.length === 0
-            ? html`<p class="text-base-content/60">${t("incident.noNotes")}</p>`
-            : html`<ul class="flex flex-col gap-3">
+            ? html`<p class="text-ink3">${t("incident.noNotes")}</p>`
+            : html`<ul class="flex flex-col gap-3 m-0 p-0 list-none">
                 ${i.annotations.map(
                   (a) => html`<li
-                    class="flex flex-col gap-1 border-l-2 border-base-300 pl-3"
+                    class="flex flex-col gap-1 border-l-2 border-hair pl-3"
                   >
                     <div class="flex flex-wrap items-center gap-2 text-sm">
-                      <span class="font-medium">${this.authorLabel(a)}</span>
-                      <span class="text-base-content/50">
+                      <span class="font-medium text-ink">${this.authorLabel(a)}</span>
+                      <span class="font-mono text-[11px] text-ink3">
                         <relative-time .datetime=${a.created_at}></relative-time>
                       </span>
                     </div>
-                    <p class="whitespace-pre-wrap break-words">${a.note}</p>
+                    <p class="whitespace-pre-wrap break-words text-ink2 m-0">
+                      ${a.note}
+                    </p>
                   </li>`,
                 )}
               </ul>`}
@@ -292,16 +316,20 @@ export class IncidentDetailView extends AppElement {
   private addNoteCard() {
     if (!can(this.ctx?.role ?? null, "incident.annotate")) return "";
     return html`
-      <div class="card bg-base-100 border border-base-300 shadow-sm">
-        <div class="card-body gap-3 p-5">
-          <h2 class="font-semibold">${t("incident.addNoteTitle")}</h2>
+      <div class="border border-hair">
+        <div class="flex flex-col gap-3 p-5">
+          <h2
+            class="m-0 pulse-section-title"
+          >
+            ${t("incident.addNoteTitle")}
+          </h2>
           <form class="flex flex-col gap-3" @submit=${this.onAddNote}>
             <form-field
               label=${t("incident.note")}
               fieldName="incident-note"
               .control=${html`<textarea
                 id="incident-note"
-                class="textarea w-full"
+                class="pulse-input w-full"
                 rows="3"
                 .value=${this.note}
                 @input=${(e: Event) =>
@@ -311,7 +339,7 @@ export class IncidentDetailView extends AppElement {
             <div class="flex justify-end">
               <button
                 type="submit"
-                class="btn btn-primary btn-sm"
+                class="pulse-btn pulse-btn-sm"
                 ?disabled=${this.adding || this.note.trim() === ""}
               >
                 ${this.adding ? t("incident.addingNote") : t("incident.addNote")}

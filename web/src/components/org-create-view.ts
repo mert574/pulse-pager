@@ -1,11 +1,11 @@
-import { html } from "lit";
+import { html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { consume } from "@lit/context";
 import { AppElement } from "./base.js";
 import { appContext, rememberLastOrg, type AppContext } from "../state/context.js";
 import { client, ApiError } from "../api/client.js";
 import { navigate } from "../router.js";
-import { t } from "../i18n.js";
+import { t, tDynamic } from "../i18n.js";
 import { toast } from "../toast.js";
 import type { OrgInput } from "../api/types.js";
 
@@ -56,16 +56,32 @@ export class OrgCreateView extends AppElement {
     }
   }
 
+  // An onboarding brand moment, not a list page: a mono kicker over a heavy Archivo
+  // heading and the lead, then the form in a pulse-panel. Left in the content column
+  // where the switcher lands it (no full-screen takeover, the user is already in).
   override render() {
     return html`
-      <div class="flex flex-col gap-6 max-w-md">
-        <h1 class="text-2xl font-bold">${t("orgForm.heading")}</h1>
+      <div class="max-w-md flex flex-col gap-7">
+        <div class="flex flex-col gap-2.5">
+          <span class="pulse-label">${tDynamic("orgForm.kicker", "New workspace")}</span>
+          <h1
+            class="m-0 font-disp font-black uppercase tracking-[-0.04em] leading-[0.85] text-[36px] lg:text-[42px]"
+          >
+            ${t("orgForm.heading")}
+          </h1>
+          <p class="font-mono text-[12px] leading-relaxed text-ink2">
+            ${tDynamic(
+              "orgForm.lead",
+              "A workspace for your monitors, channels, and teammates. You can rename it later.",
+            )}
+          </p>
+        </div>
         ${this.error && !this.error.fields
-          ? html`<div role="alert" class="alert alert-error">
+          ? html`<div role="alert" class="border border-down px-4 py-3 text-down">
               <span>${this.error.message}</span>
             </div>`
-          : ""}
-        <form class="flex flex-col gap-4" @submit=${this.submit}>
+          : nothing}
+        <form class="pulse-panel p-6 flex flex-col gap-5" @submit=${this.submit}>
           <form-field
             label=${t("orgForm.name")}
             fieldName="name"
@@ -73,7 +89,7 @@ export class OrgCreateView extends AppElement {
             .error=${this.error?.fields?.name ?? null}
             .control=${html`<input
               id="name"
-              class="input w-full"
+              class="pulse-input w-full"
               .value=${this.name}
               @input=${(e: Event) =>
                 (this.name = (e.target as HTMLInputElement).value)}
@@ -81,11 +97,7 @@ export class OrgCreateView extends AppElement {
             />`}
           ></form-field>
           <div class="flex gap-2">
-            <button
-              type="submit"
-              class="btn btn-primary"
-              ?disabled=${this.saving}
-            >
+            <button type="submit" class="pulse-btn" ?disabled=${this.saving}>
               ${this.saving ? t("orgForm.creating") : t("orgForm.create")}
             </button>
           </div>

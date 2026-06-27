@@ -28,65 +28,118 @@ export class SslMonitorDetail extends MonitorDetailBase {
   }
 
   protected override headerSubtitle() {
-    return html`<span class="badge badge-ghost badge-sm">TLS</span>
+    return html`<span
+        class="pulse-tag"
+        >TLS</span
+      >
       <span class="truncate">${this.monitor.url}</span>`;
+  }
+
+  // The dominant figure band for an ssl monitor, full-bleed under the header: the
+  // days-to-expiry as one very large Archivo countdown on the left (amber within two
+  // weeks, red once expired, where it reads "Expired" instead of a number), with the
+  // issuer and validity window as a subordinate spec block on the right. Only shown
+  // once a cert was seen.
+  protected override instrumentBand() {
+    const cert = this.monitor.cert;
+    if (cert == null) return "";
+    const days = Math.floor(
+      (new Date(cert.not_after).getTime() - Date.now()) / (24 * 60 * 60 * 1000),
+    );
+    const expired = days < 0;
+    const tone = expired ? "text-down" : days <= 14 ? "text-deg" : "text-up";
+    const numeral = expired
+      ? html`<span class="text-down">${t("monitor.certExpired")}</span>`
+      : html`<span class=${tone}>${days}</span
+          ><span class="text-[0.26em] align-top text-ink3">
+            ${t("monitor.certDaysUnit")}</span
+          >`;
+
+    const spec: { label: MessageKey; value: string }[] = [
+      { label: "monitor.certIssuedBy", value: cert.issuer },
+      { label: "monitor.certIssuedTo", value: cert.subject },
+      {
+        label: "monitor.certValidFrom",
+        value: formatDateTime(cert.not_before) ?? "—",
+      },
+      { label: "monitor.certValidTo", value: formatDateTime(cert.not_after) ?? "—" },
+    ];
+
+    return html`
+      <section class="border-b border-line">
+        <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_1.2fr]">
+          <div
+            class="flex flex-col justify-center gap-3 px-6 lg:px-10 pt-8 pb-7 border-line lg:border-r"
+          >
+            <div class="pulse-label">${t("monitor.certExpiresIn")}</div>
+            <div
+              class="font-disp font-black leading-[0.82] tracking-[-0.05em] text-7xl lg:text-8xl"
+            >
+              ${numeral}
+            </div>
+            <div class="font-mono text-[12px] text-ink2">
+              ${formatDateTime(cert.not_after) ?? ""}
+            </div>
+          </div>
+          <div
+            class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-5 content-center px-6 lg:px-10 py-7 bg-paper"
+          >
+            ${spec.map(
+              (c) => html`<div class="min-w-0">
+                <div class="pulse-label">${t(c.label)}</div>
+                <div
+                  class="font-disp font-bold text-[17px] tracking-[-0.02em] mt-1 break-all"
+                >
+                  ${c.value}
+                </div>
+              </div>`,
+            )}
+          </div>
+        </div>
+      </section>
+    `;
   }
 
   protected override body() {
     return html`${this.certCard()} ${this.incidentsCard()}`;
   }
 
-  // The certificate card. cert is the latest leaf detail from getMonitor, null until
-  // the first ssl check records one.
+  // The certificate detail card. The expiry countdown and the issuer/validity live
+  // in the instrument band above; this carries the serial and the alternative names,
+  // and the empty state when no cert has been seen yet. cert is the latest leaf
+  // detail from getMonitor, null until the first ssl check records one.
   private certCard() {
     const cert = this.monitor.cert;
     return html`
-      <div class="card bg-base-100 border border-base-300 shadow-sm">
-        <div class="card-body gap-4 p-5">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <h2 class="font-semibold">${t("monitor.certTitle")}</h2>
-            <span class="text-xs text-base-content/50">${t("monitor.certCheckCadence")}</span>
-          </div>
-          ${cert == null
-            ? html`<p class="text-base-content/60">${t("monitor.certNone")}</p>`
-            : html`
-                <div class="flex items-center gap-2">
-                  ${this.certExpiryBadge(cert.not_after)}
-                </div>
-                <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                  ${this.certRow("monitor.certIssuedTo", cert.subject)}
-                  ${this.certRow("monitor.certIssuedBy", cert.issuer)}
-                  ${this.certRow("monitor.certValidFrom", formatDateTime(cert.not_before) ?? "")}
-                  ${this.certRow("monitor.certValidTo", formatDateTime(cert.not_after) ?? "")}
-                  ${this.certRow("monitor.certSerial", cert.serial)}
-                  ${cert.dns_names.length
-                    ? this.certRow("monitor.certSans", cert.dns_names.join(", "))
-                    : ""}
-                </dl>
-              `}
+      <div class="pulse-panel p-5 flex flex-col gap-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="m-0 pulse-section-title">${t("monitor.certTitle")}</h2>
+          <span class="font-mono text-[11px] text-ink3"
+            >${t("monitor.certCheckCadence")}</span
+          >
         </div>
+        ${cert == null
+          ? html`<p class="font-mono text-[12px] text-ink3">
+              ${t("monitor.certNone")}
+            </p>`
+          : html`<dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+              ${this.certRow("monitor.certSerial", cert.serial)}
+              ${cert.dns_names.length
+                ? this.certRow("monitor.certSans", cert.dns_names.join(", "))
+                : ""}
+            </dl>`}
       </div>
     `;
   }
 
   private certRow(labelKey: MessageKey, value: string) {
     if (!value) return "";
-    return html`<div class="flex flex-col">
-      <dt class="text-base-content/60">${t(labelKey)}</dt>
-      <dd class="font-medium break-all">${value}</dd>
+    return html`<div class="flex flex-col gap-0.5">
+      <dt class="font-mono text-[11px] uppercase tracking-[0.08em] text-ink3">
+        ${t(labelKey)}
+      </dt>
+      <dd class="m-0 font-medium break-all">${value}</dd>
     </div>`;
-  }
-
-  private certExpiryBadge(notAfter: string) {
-    const ms = new Date(notAfter).getTime() - Date.now();
-    const days = Math.floor(ms / (24 * 60 * 60 * 1000));
-    if (days < 0) {
-      return html`<span class="badge badge-error badge-soft">${t("monitor.certExpired")}</span>`;
-    }
-    const cls = days <= 7 ? "badge-warning" : "badge-success";
-    return html`<span class="badge ${cls} badge-soft"
-      >${days} ${t("monitor.certDaysLeft")}</span
-    >`;
   }
 }
 

@@ -34,21 +34,21 @@ export class FormField extends AppElement {
 
   override render() {
     return html`
-      <fieldset class="fieldset">
+      <div class="flex flex-col gap-1.5">
         ${this.label
           ? html`<label
-              class="fieldset-legend inline-flex w-fit items-center gap-1.5"
+              class="inline-flex w-fit items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-ink2"
               for=${this.fieldName}
               >${this.label}${this.help ? fieldHelp(this.help) : ""}</label
             >`
           : ""}
         ${this.control}
         ${this.error
-          ? html`<p class="text-error text-sm" role="alert">${this.error}</p>`
+          ? html`<p class="text-down text-sm" role="alert">${this.error}</p>`
           : this.hint
-            ? html`<p class="text-base-content/60 text-sm">${this.hint}</p>`
+            ? html`<p class="text-ink3 text-sm">${this.hint}</p>`
             : ""}
-      </fieldset>
+      </div>
     `;
   }
 }

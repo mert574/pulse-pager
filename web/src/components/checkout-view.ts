@@ -2,7 +2,8 @@ import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { AppElement } from "./base.js";
 import { navigate } from "../router.js";
-import { t } from "../i18n.js";
+import { spinner } from "./ui.js";
+import { t, tDynamic } from "../i18n.js";
 
 // /checkout is set as Paddle's default payment link, so the checkout redirect lands
 // here as /checkout?_ptxn=<txn>. We load Paddle.js, call Initialize with the public
@@ -129,19 +130,21 @@ export class CheckoutView extends AppElement {
   // app for the states where no overlay will appear (no txn / not configured / error).
   private message(text: string, showReturn: boolean) {
     return html`
-      <div class="flex min-h-[60vh] items-center justify-center">
+      <div class="grid min-h-[60vh] place-items-center p-6">
         <div
-          class="rounded-box border border-base-300 bg-base-100 p-10 text-center"
+          class="border border-hair bg-bg p-8 max-w-sm w-full flex flex-col items-center text-center gap-4"
         >
+          <span class="pulse-label">${tDynamic("checkout.kicker", "Secure checkout")}</span>
           ${this.status === "opening"
-            ? html`<span
-                class="loading loading-spinner loading-lg text-primary"
-                aria-hidden="true"
-              ></span>`
+            ? html`<span class="text-brand" aria-hidden="true">${spinner()}</span>`
             : null}
-          <p class="text-base-content mt-4 text-lg">${text}</p>
+          <p
+            class="font-disp font-extrabold text-[20px] leading-tight tracking-[-0.02em] text-ink"
+          >
+            ${text}
+          </p>
           ${showReturn
-            ? html`<a class="btn btn-primary mt-6" href="/account"
+            ? html`<a class="pulse-btn mt-1" href="/account"
                 >${t("checkout.return")}</a
               >`
             : null}

@@ -1,4 +1,4 @@
-import { html, type TemplateResult } from "lit";
+import { html, nothing, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { consume } from "@lit/context";
 import { AppElement } from "./base.js";
@@ -8,6 +8,7 @@ import { navigate } from "../router.js";
 import { toast, toastError } from "../toast.js";
 import { t, tDynamic, type MessageKey } from "../i18n.js";
 import { icon } from "../icons.js";
+import { pageShell, errorBox, spinner } from "./ui.js";
 import { publicStatusUrl } from "./status-page-url.js";
 import type {
   MonitorListItem,
@@ -18,6 +19,13 @@ import type {
 
 import "./form-field.js";
 import "./upsell-banner.js";
+
+// One titled form group's parts, packaged before it knows its running number.
+interface FormSection {
+  title: string;
+  lead: string;
+  body: TemplateResult;
+}
 
 const THEMES: StatusPageTheme[] = ["light", "dark"];
 const THEME_LABEL: Record<StatusPageTheme, MessageKey> = {
@@ -255,63 +263,81 @@ export class StatusPageFormView extends AppElement {
     ></form-field>`;
   }
 
-  private card(titleKey: MessageKey, body: TemplateResult) {
-    return html`<div class="card bg-base-100 border border-base-300 shadow-sm">
-      <div class="card-body gap-4 p-5">
-        <h2 class="font-semibold">${t(titleKey)}</h2>
-        ${body}
+  // section() packages a group's parts; group() renders one with its running index:
+  // a numbered, ruled header (mono index + title, lead beneath) over a hairline panel
+  // of controls. The publish group only exists in edit mode, so numbering at render
+  // keeps the indices right.
+  private section(title: string, lead: string, body: TemplateResult): FormSection {
+    return { title, lead, body };
+  }
+
+  private group(index: string, s: FormSection) {
+    return html`<section class="flex flex-col gap-4">
+      <div class="border-b border-line pb-2.5">
+        <div class="flex items-baseline gap-3">
+          <span class="font-mono text-[12px] text-ink3 tabular-nums">${index}</span>
+          <h2 class="pulse-section-title">${s.title}</h2>
+        </div>
+        ${s.lead ? html`<p class="text-ink3 text-sm mt-1.5">${s.lead}</p>` : nothing}
       </div>
-    </div>`;
+      <div class="pulse-panel p-5 lg:p-6 flex flex-col gap-5">${s.body}</div>
+    </section>`;
   }
 
   override render() {
     if (this.loading && this.isEdit && !this.loadError) {
       return html`<div class="flex flex-col gap-4" aria-busy="true">
-        <div class="skeleton h-9 w-64"></div>
-        <div class="skeleton h-96 w-full"></div>
+        <div class="h-9 w-64 bg-paper animate-pulse"></div>
+        <div class="h-96 w-full bg-paper animate-pulse"></div>
       </div>`;
     }
     if (this.loadError) {
-      return html`<div role="alert" class="alert alert-error">
-        <span>${this.loadError}</span>
-        <button class="btn btn-sm" @click=${() => this.load()}>${t("state.retry")}</button>
-      </div>`;
+      return errorBox(this.loadError, () => this.load(), t("state.retry"));
     }
 
-    return html`
-      <form class="flex flex-col gap-6 max-w-3xl" @submit=${this.onSubmit} novalidate>
-        <h1 class="text-2xl font-bold">
-          ${t(this.isEdit ? "statusPageForm.editHeading" : "statusPageForm.createHeading")}
-        </h1>
-
-        ${this.capMessage
-          ? html`<upsell-banner
-              .message=${this.capMessage}
-              .upgradeHref=${`${this.base}/billing`}
-            ></upsell-banner>`
-          : ""}
-        ${this.generalCard()} ${this.brandingCard()} ${this.monitorsCard()}
-        ${this.isEdit ? this.publishCard() : ""}
-
-        <div class="flex items-center gap-2">
-          <button class="btn btn-primary" type="submit" ?disabled=${this.submitting}>
-            ${this.submitting
-              ? html`<span class="loading loading-spinner loading-sm"></span>`
-              : ""}
-            ${t(this.isEdit ? "statusPageForm.saveChanges" : "statusPageForm.create")}
-          </button>
-          <a class="btn btn-ghost" href=${`${this.base}/status-pages`}
-            >${t("dialog.cancel")}</a
-          >
-        </div>
-      </form>
-    `;
+    const groups: FormSection[] = [
+      this.generalCard(),
+      this.brandingCard(),
+      this.monitorsCard(),
+    ];
+    if (this.isEdit) groups.push(this.publishCard());
+    return pageShell(
+      t(this.isEdit ? "statusPageForm.editHeading" : "statusPageForm.createHeading"),
+      nothing,
+      html`
+        <form class="flex flex-col gap-9" @submit=${this.onSubmit} novalidate>
+          ${this.capMessage
+            ? html`<upsell-banner
+                .message=${this.capMessage}
+                .upgradeHref=${`${this.base}/billing`}
+              ></upsell-banner>`
+            : ""}
+          <div class="flex flex-col gap-8 lg:gap-10">
+            ${groups.map((g, i) => this.group(String(i + 1).padStart(2, "0"), g))}
+          </div>
+          <div class="flex items-center gap-3 border-t border-line pt-6">
+            <button class="pulse-btn" type="submit" ?disabled=${this.submitting}>
+              ${this.submitting ? spinner() : ""}
+              ${t(this.isEdit ? "statusPageForm.saveChanges" : "statusPageForm.create")}
+            </button>
+            <a class="pulse-btn pulse-btn-ghost" href=${`${this.base}/status-pages`}
+              >${t("dialog.cancel")}</a
+            >
+          </div>
+        </form>
+      `,
+    );
   }
 
   private generalCard() {
     const f = this.form;
-    return this.card(
-      "statusPageForm.sectionGeneral",
+    return this.section(
+      t("statusPageForm.sectionGeneral"),
+      tDynamic(
+        "statusPageForm.leadGeneral",
+        "The page name and its public address.",
+        {},
+      ),
       html`
         ${this.field(
           "name",
@@ -319,7 +345,7 @@ export class StatusPageFormView extends AppElement {
           "statusPageForm.helpName",
           html`<input
             id="name"
-            class="input w-full"
+            class="pulse-input w-full"
             maxlength="200"
             .value=${f.name}
             @input=${(e: Event) => this.patch("name", (e.target as HTMLInputElement).value)}
@@ -331,7 +357,7 @@ export class StatusPageFormView extends AppElement {
           "statusPageForm.helpSlug",
           html`<input
             id="slug"
-            class="input w-full"
+            class="pulse-input w-full"
             .value=${f.slug}
             @input=${(e: Event) =>
               this.patch("slug", (e.target as HTMLInputElement).value.toLowerCase())}
@@ -345,10 +371,10 @@ export class StatusPageFormView extends AppElement {
   private publicUrlRow() {
     const url = publicStatusUrl(this.form.slug);
     return html`<div class="flex flex-col gap-1">
-      <span class="text-sm text-base-content/60">${t("statusPageForm.publicUrl")}</span>
+      <span class="text-sm text-ink3">${t("statusPageForm.publicUrl")}</span>
       <div class="flex items-center gap-2">
         <a
-          class="link link-hover text-sm truncate"
+          class="text-brand hover:no-underline text-sm truncate"
           href=${url}
           target="_blank"
           rel="noopener noreferrer"
@@ -356,7 +382,7 @@ export class StatusPageFormView extends AppElement {
         >
         <button
           type="button"
-          class="btn btn-xs btn-ghost gap-1"
+          class="pulse-iconbtn"
           aria-label=${t("statusPageForm.copyUrl")}
           @click=${this.copyUrl}
         >
@@ -368,8 +394,13 @@ export class StatusPageFormView extends AppElement {
 
   private brandingCard() {
     const f = this.form;
-    return this.card(
-      "statusPageForm.sectionBranding",
+    return this.section(
+      t("statusPageForm.sectionBranding"),
+      tDynamic(
+        "statusPageForm.leadBranding",
+        "Logo, accent color and theme for the public page.",
+        {},
+      ),
       html`
         ${this.field(
           "logo_url",
@@ -378,7 +409,7 @@ export class StatusPageFormView extends AppElement {
           html`<input
             id="logo_url"
             type="url"
-            class="input w-full"
+            class="pulse-input w-full"
             placeholder="https://"
             .value=${f.logo_url}
             @input=${(e: Event) =>
@@ -394,13 +425,13 @@ export class StatusPageFormView extends AppElement {
               <input
                 id="accent_color"
                 type="color"
-                class="h-10 w-14 rounded border border-base-300 bg-base-100"
+                class="h-10 w-14 border border-line bg-bg"
                 .value=${f.accent_color}
                 @input=${(e: Event) =>
                   this.patch("accent_color", (e.target as HTMLInputElement).value)}
               />
               <input
-                class="input flex-1"
+                class="pulse-input flex-1"
                 .value=${f.accent_color}
                 @input=${(e: Event) =>
                   this.patch("accent_color", (e.target as HTMLInputElement).value)}
@@ -413,7 +444,7 @@ export class StatusPageFormView extends AppElement {
             "statusPageForm.helpAccentColor",
             html`<select
               id="theme"
-              class="select w-full"
+              class="pulse-input w-full"
               @change=${(e: Event) =>
                 this.patch("theme", (e.target as HTMLSelectElement).value as StatusPageTheme)}
             >
@@ -431,18 +462,20 @@ export class StatusPageFormView extends AppElement {
   }
 
   private monitorsCard() {
-    return this.card(
-      "statusPageForm.sectionMonitors",
+    return this.section(
+      t("statusPageForm.sectionMonitors"),
+      t("statusPageForm.monitorsHint"),
       html`
-        <p class="text-sm text-base-content/60">${t("statusPageForm.monitorsHint")}</p>
         ${this.monitors.length === 0
-          ? html`<p class="text-base-content/60 text-sm">${t("statusPageForm.noMonitors")}</p>`
+          ? html`<p class="text-ink3 text-sm">${t("statusPageForm.noMonitors")}</p>`
           : html`<div class="flex flex-col gap-2">
               ${this.monitors.map(
-                (m) => html`<label class="label cursor-pointer justify-start gap-2">
+                (m) => html`<label
+                  class="inline-flex items-center justify-start gap-2 cursor-pointer"
+                >
                   <input
                     type="checkbox"
-                    class="checkbox checkbox-sm"
+                    class="size-4 accent-brand"
                     .checked=${this.isSelected(m.id)}
                     @change=${() => this.toggleMonitor(m)}
                   />
@@ -451,7 +484,7 @@ export class StatusPageFormView extends AppElement {
               )}
             </div>`}
         ${this.form.display_monitors.length
-          ? html`<div class="flex flex-col gap-2 border-t border-base-300 pt-3">
+          ? html`<div class="flex flex-col gap-2 border-t border-hair pt-3">
               ${this.form.display_monitors.map((entry, i) => this.selectedRow(entry, i))}
             </div>`
           : ""}
@@ -462,11 +495,11 @@ export class StatusPageFormView extends AppElement {
   private selectedRow(entry: StatusPageMonitorEntry, index: number) {
     const last = this.form.display_monitors.length - 1;
     return html`<div class="flex items-center gap-2">
-      <span class="text-xs text-base-content/50 w-32 truncate" title=${this.monitorName(entry.monitor_id)}
+      <span class="text-xs text-ink3 w-32 truncate" title=${this.monitorName(entry.monitor_id)}
         >${this.monitorName(entry.monitor_id)}</span
       >
       <input
-        class="input input-sm flex-1"
+        class="pulse-input flex-1"
         placeholder=${t("statusPageForm.displayName")}
         aria-label=${t("statusPageForm.displayName")}
         .value=${entry.display_name}
@@ -475,7 +508,7 @@ export class StatusPageFormView extends AppElement {
       />
       <button
         type="button"
-        class="btn btn-sm btn-ghost btn-square"
+        class="pulse-iconbtn disabled:opacity-30 disabled:pointer-events-none"
         aria-label=${t("statusPageForm.moveUp")}
         ?disabled=${index === 0}
         @click=${() => this.move(index, -1)}
@@ -484,7 +517,7 @@ export class StatusPageFormView extends AppElement {
       </button>
       <button
         type="button"
-        class="btn btn-sm btn-ghost btn-square"
+        class="pulse-iconbtn disabled:opacity-30 disabled:pointer-events-none"
         aria-label=${t("statusPageForm.moveDown")}
         ?disabled=${index === last}
         @click=${() => this.move(index, 1)}
@@ -495,23 +528,21 @@ export class StatusPageFormView extends AppElement {
   }
 
   private publishCard() {
-    return this.card(
-      "statusPageForm.published",
+    return this.section(
+      t("statusPageForm.published"),
+      t("statusPageForm.helpPublished"),
       html`
-        <label class="label cursor-pointer justify-start gap-3">
+        <label class="inline-flex items-center justify-start gap-3 cursor-pointer">
           <input
             type="checkbox"
-            class="toggle toggle-sm"
+            class="size-4 accent-brand"
             .checked=${this.published}
             ?disabled=${this.togglingPublish}
             @change=${this.onTogglePublish}
           />
           <span>${t("statusPageForm.published")}</span>
-          ${this.togglingPublish
-            ? html`<span class="loading loading-spinner loading-xs"></span>`
-            : ""}
+          ${this.togglingPublish ? spinner() : ""}
         </label>
-        <p class="text-sm text-base-content/60">${t("statusPageForm.helpPublished")}</p>
       `,
     );
   }

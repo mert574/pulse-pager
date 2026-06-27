@@ -8,6 +8,7 @@ import { can } from "../state/can.js";
 import { t, tDynamic, type MessageKey } from "../i18n.js";
 import { formatDuration } from "../format.js";
 import { icon } from "../icons.js";
+import { pageShell, pageHeader, errorBox } from "./ui.js";
 import type {
   Entitlements,
   Payment,
@@ -20,14 +21,16 @@ import type {
 // error, and the nav entry is already hidden for them (can("billing.view")). The
 // server re-checks and 403s the entitlements call for non-owner/admin anyway.
 //
-// Three sections: the current plan, usage meters with used/cap bars (a near-cap
-// bar turns warning-colored) plus read-only plan facts, and a plan comparison
-// from GET /plans with the current tier highlighted. Stripe checkout is phased
-// (not in scope): the per-tier Upgrade button opens a "coming soon / contact us"
-// modal, it never starts a real checkout.
+// Broadsheet pricing layout: a masthead, an inked current-plan band (the plan name
+// set big with a current badge), a usage block of thin used/cap token bars (a near-
+// cap bar turns warning-colored) plus read-only plan facts, a plan-comparison grid
+// where each plan reads as a newspaper column with a huge display price and the
+// current plan wears an inked top band, then the invoices ledger. Stripe checkout is
+// phased: the per-tier Upgrade button opens a "coming soon / contact us" modal for
+// Custom; tier2/tier3 start a real hosted checkout.
 
-// The plan tiers in catalog order, so the comparison table rows are stable
-// regardless of the order the API returns them in.
+// The plan tiers in catalog order, so the comparison cards are stable regardless
+// of the order the API returns them in.
 const PLAN_ORDER: Plan[] = ["tier1", "tier2", "tier3", "tierCustom"];
 
 const PLAN_LABEL: Record<Plan, MessageKey> = {
@@ -198,139 +201,104 @@ export class BillingView extends AppElement {
     return t(PLAN_LABEL[plan]);
   }
 
+  // The no-access / error / loading states keep the simple padded shell. The full
+  // broadsheet (masthead + hero + sections) only renders once entitlements and the
+  // plan catalog are in hand.
   override render() {
+    if (!this.hasAccess) {
+      return pageShell(
+        t("billing.heading"),
+        nothing,
+        html`<div
+          role="status"
+          class="flex items-center gap-3 border border-hair bg-paper px-4 py-3 text-ink2"
+        >
+          <span>${icon("lock", "size-5")}</span>
+          <span>${t("billing.noAccess")}</span>
+        </div>`,
+      );
+    }
+    if (this.error) {
+      return pageShell(
+        t("billing.heading"),
+        nothing,
+        errorBox(this.error, () => this.retry(), t("state.retry")),
+      );
+    }
+    if (!this.ent || !this.plans) {
+      return pageShell(
+        t("billing.heading"),
+        nothing,
+        html`<div class="flex flex-col gap-4" aria-busy="true">
+          ${Array.from({ length: 3 }).map(
+            () => html`<div class="h-24 w-full bg-paper animate-pulse"></div>`,
+          )}
+        </div>`,
+      );
+    }
+
+    const ent = this.ent;
+    const plans = this.plans;
     return html`
-      <div class="flex flex-col gap-8 max-w-4xl">
-        <h1 class="text-2xl font-bold">${t("billing.heading")}</h1>
-        ${this.body()}
+      <div class="-mx-6 lg:-mx-10 -my-7">
+        ${pageHeader(t("billing.heading"), this.manageAction(ent))}
+        ${this.currentPlanBand(ent)}
+        <div class="px-6 lg:px-10 py-7 flex flex-col gap-12">
+          ${this.billingError
+            ? html`<div role="alert" class="border border-down px-4 py-3 text-down">
+                ${this.billingError}
+              </div>`
+            : nothing}
+          ${this.usageSection(ent)}
+          ${this.compareSection(plans, ent.plan)}
+          ${this.invoicesSection()}
+        </div>
+        ${this.upgradeModal()}
       </div>
     `;
   }
 
-  private body() {
-    if (!this.hasAccess) {
-      return html`<div role="status" class="alert alert-info">
-        <span>${icon("lock", "size-5")}</span>
-        <span>${t("billing.noAccess")}</span>
-      </div>`;
-    }
-
-    if (this.error) {
-      return html`<div role="alert" class="alert alert-error">
-        <span>${this.error}</span>
-        <button class="btn btn-sm" @click=${this.retry}>${t("state.retry")}</button>
-      </div>`;
-    }
-
-    if (!this.ent || !this.plans) {
-      return html`<div class="flex flex-col gap-4" aria-busy="true">
-        ${Array.from({ length: 3 }).map(
-          () => html`<div class="skeleton h-24 w-full"></div>`,
-        )}
-      </div>`;
-    }
-
-    return html`
-      ${this.currentPlanSection(this.ent)} ${this.usageSection(this.ent)}
-      ${this.invoicesSection()} ${this.compareSection(this.plans, this.ent.plan)}
-      ${this.upgradeModal()}
-    `;
+  // The masthead action: a paid org gets the "Manage billing" portal button (a free
+  // org has nothing to manage there yet).
+  private manageAction(ent: Entitlements) {
+    if (ent.plan === "tier1") return nothing;
+    return html`<button
+      class="pulse-btn pulse-btn-ghost pulse-btn-sm"
+      data-manage-billing
+      ?disabled=${this.billingBusy}
+      @click=${this.openPortal}
+    >
+      ${t("billing.manage")}
+    </button>`;
   }
 
-  // --- invoices / payments mirror (RFC-018 4) ---
+  // --- current plan band (the bold inked masthead band) ---
 
-  private invoicesSection() {
-    const payments = this.payments;
-    if (!payments || payments.length === 0) return nothing;
-    return html`
-      <section class="flex flex-col gap-3">
-        <h2 class="text-lg font-semibold">${t("billing.invoices")}</h2>
-        <div class="overflow-x-auto rounded-box border border-base-300">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>${t("billing.invoiceDate")}</th>
-                <th>${t("billing.invoiceAmount")}</th>
-                <th>${t("billing.invoiceStatus")}</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              ${payments.map((p) => this.invoiceRow(p))}
-            </tbody>
-          </table>
+  // A full-bleed inverse band (ink field, cream type, same pairing as the cream-on-
+  // brand chips so it flips cleanly in dark mode): the current plan name set big with
+  // a live current badge and the plan's tagline. Replaces the old hero helper.
+  private currentPlanBand(ent: Entitlements) {
+    return html`<div
+      class="bg-ink text-cream px-6 lg:px-10 py-7 lg:py-8 border-b border-line flex flex-wrap items-end justify-between gap-x-8 gap-y-4"
+    >
+      <div>
+        <div class="font-mono text-[10.5px] tracking-[0.16em] uppercase opacity-70">
+          ${tDynamic("billing.heroPlanLabel", "Current plan", {})}
         </div>
-      </section>
-    `;
-  }
-
-  private invoiceRow(p: Payment) {
-    const refunded = p.refunded_amount > 0;
-    return html`<tr data-payment=${p.id}>
-      <td>${new Date(p.created_at).toLocaleDateString()}</td>
-      <td class="tabular-nums">
-        ${this.money(p.amount, p.currency)}
-        ${refunded
-          ? html`<span class="text-base-content/60 text-xs ml-1"
-              >(${t("billing.refunded")}
-              ${this.money(p.refunded_amount, p.currency)})</span
-            >`
-          : nothing}
-      </td>
-      <td><span class="badge badge-ghost">${p.status}</span></td>
-      <td class="text-right">
-        ${p.hosted_invoice_url
-          ? html`<a
-              class="link link-primary text-sm"
-              href=${p.hosted_invoice_url}
-              target="_blank"
-              rel="noopener"
-              >${t("billing.invoiceView")}</a
-            >`
-          : nothing}
-      </td>
-    </tr>`;
-  }
-
-  // money formats minor units (cents) as a plain amount + currency. Kept simple and
-  // locale-safe (no Intl currency code validation) since the provider currency is
-  // free-form text in the mirror.
-  private money(minor: number, currency: string): string {
-    return `${(minor / 100).toFixed(2)} ${currency}`;
-  }
-
-  // --- current plan ---
-
-  private currentPlanSection(ent: Entitlements) {
-    // The portal manages an existing paid subscription, so it only shows on a paid
-    // plan (a free org has nothing to manage there yet).
-    const paid = ent.plan !== "tier1";
-    return html`
-      <section class="flex flex-col gap-3">
-        <h2 class="text-lg font-semibold">${t("billing.currentPlan")}</h2>
-        ${this.billingError
-          ? html`<div role="alert" class="alert alert-error">
-              <span>${this.billingError}</span>
-            </div>`
-          : nothing}
         <div
-          class="rounded-box border border-base-300 p-5 flex items-center gap-3"
+          class="font-disp font-black leading-[0.84] tracking-[-0.05em] text-5xl sm:text-6xl lg:text-7xl mt-2.5"
         >
-          <span class="badge badge-primary badge-lg">${this.planLabel(ent.plan)}</span>
-          <span class="text-base-content/60 text-sm">${t("billing.currentPlanBadge")}</span>
-          ${paid
-            ? html`<button
-                class="btn btn-sm btn-outline ml-auto"
-                data-manage-billing
-                ?disabled=${this.billingBusy}
-                @click=${this.openPortal}
-              >
-                ${t("billing.manage")}
-              </button>`
-            : nothing}
+          ${this.planLabel(ent.plan)}
         </div>
-      </section>
-    `;
+      </div>
+      <div class="font-mono text-[11px] flex flex-col items-start sm:items-end gap-1.5">
+        <span class="pulse-state text-up"
+          ><span class="pulse-state-sq bg-up"></span
+          >${t("billing.currentPlanBadge")}</span
+        >
+        <span class="opacity-80">${t(PLAN_TAGLINE[ent.plan])}</span>
+      </div>
+    </div>`;
   }
 
   // --- usage meters + facts ---
@@ -346,12 +314,12 @@ export class BillingView extends AppElement {
       },
     ];
     return html`
-      <section class="flex flex-col gap-3">
-        <div>
-          <h2 class="text-lg font-semibold">${t("billing.usage")}</h2>
-          <p class="text-base-content/60 text-sm">${t("billing.usageHint")}</p>
+      <section class="flex flex-col gap-4">
+        <div class="flex items-baseline justify-between border-b border-line pb-[11px]">
+          <h2 class="pulse-section-title m-0">${t("billing.usage")}</h2>
+          <span class="font-mono text-[11px] text-ink3">${t("billing.usageHint")}</span>
         </div>
-        <div class="rounded-box border border-base-300 p-5 flex flex-col gap-5">
+        <div class="pulse-panel p-5 flex flex-col gap-5">
           ${meters.map((m) => this.meter(m))}
         </div>
         ${this.factsBlock(ent)}
@@ -365,27 +333,34 @@ export class BillingView extends AppElement {
     const fraction = m.cap > 0 ? Math.min(m.used / m.cap, 1) : 1;
     const atCap = m.used >= m.cap;
     const near = !atCap && fraction >= NEAR_CAP;
-    const color = atCap || near ? "progress-warning" : "progress-primary";
+    const fill = atCap || near ? "bg-deg" : "bg-brand";
     const note = atCap
       ? t("billing.meterAtCap")
       : near
         ? t("billing.meterNearCap")
         : null;
-    return html`<div class="flex flex-col gap-1" data-meter=${m.labelKey}>
+    return html`<div class="flex flex-col gap-1.5" data-meter=${m.labelKey}>
       <div class="flex items-baseline justify-between gap-2">
-        <span class="font-medium">${t(m.labelKey)}</span>
-        <span class="text-sm text-base-content/70"
+        <span class="pulse-label">${t(m.labelKey)}</span>
+        <span class="font-mono text-[13px] text-ink2 tabular-nums"
           >${tDynamic("billing.meterUsed", "", { used: m.used, cap: m.cap })}</span
         >
       </div>
-      <progress
-        class="progress ${color} w-full"
-        value=${m.used}
-        max=${m.cap > 0 ? m.cap : 1}
+      <div
+        class="h-2 w-full bg-hair"
+        role="progressbar"
         aria-label=${t(m.labelKey)}
-      ></progress>
+        aria-valuenow=${m.used}
+        aria-valuemax=${m.cap > 0 ? m.cap : 1}
+      >
+        <div
+          data-meter-fill
+          class="h-full ${fill}"
+          style="width:${Math.round(fraction * 100)}%"
+        ></div>
+      </div>
       ${note
-        ? html`<span class="text-warning text-xs font-medium" role="status"
+        ? html`<span class="text-deg text-xs font-medium" role="status"
             >${note}</span
           >`
         : nothing}
@@ -416,12 +391,12 @@ export class BillingView extends AppElement {
       },
     ];
     return html`<dl
-      class="rounded-box border border-base-300 p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3"
+      class="pulse-panel p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3.5"
     >
       ${facts.map(
         (f) => html`<div class="flex items-center justify-between gap-3">
-          <dt class="text-base-content/70">${t(f.labelKey)}</dt>
-          <dd class="font-medium text-right">${f.value}</dd>
+          <dt class="pulse-label">${t(f.labelKey)}</dt>
+          <dd class="font-medium text-right text-sm">${f.value}</dd>
         </div>`,
       )}
     </dl>`;
@@ -429,13 +404,13 @@ export class BillingView extends AppElement {
 
   private boolFact(value: boolean) {
     return value
-      ? html`<span class="text-success inline-flex items-center gap-1"
+      ? html`<span class="text-up inline-flex items-center gap-1"
           >${icon("check", "size-4")}${t("billing.included")}</span
         >`
-      : html`<span class="text-base-content/50">${t("billing.notIncluded")}</span>`;
+      : html`<span class="text-ink3">${t("billing.notIncluded")}</span>`;
   }
 
-  // --- plan comparison (a card grid mirroring the public pricing page) ---
+  // --- plan comparison (broadsheet pricing grid) ---
 
   private compareSection(plans: PlanCatalogEntry[], current: Plan) {
     const byPlan = new Map(plans.map((p) => [p.plan, p]));
@@ -445,32 +420,32 @@ export class BillingView extends AppElement {
     const currentRank = PLAN_ORDER.indexOf(current);
     return html`
       <section class="flex flex-col gap-4">
-        <div class="flex items-end justify-between gap-3 flex-wrap">
+        <div
+          class="flex items-end justify-between gap-3 flex-wrap border-b border-line pb-[11px]"
+        >
           <div>
-            <h2 class="text-lg font-semibold">${t("billing.compare")}</h2>
-            <p class="text-base-content/60 text-sm">${t("billing.compareHint")}</p>
+            <h2 class="pulse-section-title m-0">${t("billing.compare")}</h2>
+            <p class="font-mono text-[11px] text-ink3 mt-1">${t("billing.compareHint")}</p>
           </div>
           <div class="flex flex-col items-end gap-1">
-            <div class="join" role="group" aria-label=${t("billing.cycle")}>
+            <div class="flex" role="group" aria-label=${t("billing.cycle")}>
               <button
-                class=${`btn btn-sm join-item ${this.cycle === "monthly" ? "btn-active" : ""}`}
+                class=${`pulse-btn pulse-btn-sm ${this.cycle === "monthly" ? "" : "pulse-btn-ghost"}`}
                 @click=${() => (this.cycle = "monthly")}
               >
                 ${t("billing.monthly")}
               </button>
               <button
-                class=${`btn btn-sm join-item ${this.cycle === "annual" ? "btn-active" : ""}`}
+                class=${`pulse-btn pulse-btn-sm -ml-px ${this.cycle === "annual" ? "" : "pulse-btn-ghost"}`}
                 @click=${() => (this.cycle = "annual")}
               >
                 ${t("billing.annual")}
               </button>
             </div>
-            <span class="text-success text-xs font-medium"
-              >${t("billing.annualBadge")}</span
-            >
+            <span class="text-up text-xs font-medium">${t("billing.annualBadge")}</span>
           </div>
         </div>
-        <div class="grid items-stretch gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="grid items-stretch gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
           ${ordered.map((p) => this.planCard(p, current, currentRank))}
         </div>
       </section>
@@ -490,63 +465,72 @@ export class BillingView extends AppElement {
       PLAN_PRICE[p.plan].kind === "paid" && this.ent?.trial_eligible
         ? CYCLE_TRIAL_DAYS[this.cycle]
         : undefined;
+    // Each plan reads as a newspaper column. The current plan wears a bold inked top
+    // band (ink/cream, so it flips in dark mode); the featured plan wears a brand band
+    // and keeps the brand ring; the rest are quiet hairline columns.
+    const frame = featured
+      ? "border-brand ring-1 ring-brand"
+      : isCurrent
+        ? "border-line"
+        : "border-hair";
+    const topBand = isCurrent
+      ? html`<div
+          class="bg-ink text-cream font-mono text-[10px] uppercase tracking-[0.16em] px-4 py-2 flex items-center gap-2"
+        >
+          <span class="pulse-state-sq bg-up"></span>${t("billing.currentTier")}
+        </div>`
+      : featured
+        ? html`<div
+            class="bg-brand text-cream font-mono text-[10px] uppercase tracking-[0.16em] px-4 py-2"
+          >
+            ${t("billing.recommended")}
+          </div>`
+        : html`<div class="h-[34px] border-b border-hair"></div>`;
     return html`<div
-      class=${`card border bg-base-100 ${
-        featured ? "border-primary ring-1 ring-primary" : "border-base-300"
-      } ${isCurrent ? "bg-primary/5" : ""}`}
+      class=${`flex flex-col border bg-bg ${frame}`}
       data-plan=${p.plan}
       data-current=${isCurrent ? "true" : "false"}
     >
-      <div class="card-body gap-4">
-        <div class="flex flex-col gap-1">
-          <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-            <h3 class="text-base font-semibold">${this.planLabel(p.plan)}</h3>
-            ${isCurrent
-              ? html`<span class="badge badge-primary badge-sm shrink-0"
-                  >${t("billing.currentTier")}</span
-                >`
-              : featured
-                ? html`<span
-                    class="badge badge-primary badge-outline badge-sm shrink-0"
-                    >${t("billing.recommended")}</span
-                  >`
-                : nothing}
+      ${topBand}
+      <div class="p-5 lg:p-6 flex flex-1 flex-col gap-5">
+        <span class="pulse-label">${this.planLabel(p.plan)}</span>
+        <div>
+          <div
+            class="font-disp font-black tracking-[-0.05em] leading-[0.82] text-5xl xl:text-6xl tabular-nums"
+          >
+            ${price.amount}
           </div>
-          <p class="text-base-content/60 text-sm">${t(PLAN_TAGLINE[p.plan])}</p>
-        </div>
-        <div class="flex flex-col gap-1">
-          <div class="flex items-baseline gap-1">
-            <span class="text-3xl font-bold tabular-nums">${price.amount}</span>
-            <span class="text-base-content/60 text-sm">${price.sub}</span>
+          <div class="font-mono text-[11px] uppercase tracking-[0.1em] text-ink3 mt-2.5">
+            ${price.sub}
           </div>
           ${price.save
-            ? html`<div class="flex items-center gap-2 text-xs">
+            ? html`<div class="flex items-center gap-2 text-xs mt-1.5 font-mono">
                 ${price.struck
-                  ? html`<span
-                      class="text-base-content/40 line-through tabular-nums"
+                  ? html`<span class="text-ink3 line-through tabular-nums"
                       >${price.struck}</span
                     >`
                   : nothing}
-                <span class="text-success font-medium">${price.save}</span>
+                <span class="text-up font-medium">${price.save}</span>
               </div>`
             : nothing}
           ${trialDays
-            ? html`<span class="badge badge-info badge-outline badge-sm mt-1 w-fit"
+            ? html`<span class="mt-3 inline-block w-fit border border-hair px-2 py-1 pulse-tag"
                 >${tDynamic("billing.trialDays", "", { days: trialDays })}</span
               >`
             : nothing}
         </div>
-        <ul class="flex flex-col gap-2 text-sm">
+        <p class="text-ink3 text-sm">${t(PLAN_TAGLINE[p.plan])}</p>
+        <ul class="flex flex-col gap-2 text-sm border-t border-hair pt-4">
           ${this.planFeatures(p).map(
             (f) => html`<li class="flex items-start gap-2">
-              <span class="text-success mt-0.5">${icon("check", "size-4")}</span>
+              <span class="text-up mt-0.5">${icon("check", "size-4")}</span>
               <span>${f}</span>
             </li>`,
           )}
         </ul>
-        <div class="card-actions mt-auto pt-2">
+        <div class="mt-auto pt-2">
           ${isCurrent
-            ? html`<button class="btn btn-sm btn-block btn-disabled" disabled>
+            ? html`<button class="pulse-btn pulse-btn-sm w-full" disabled>
                 ${t("billing.currentTier")}
               </button>`
             : isHigher
@@ -618,7 +602,7 @@ export class BillingView extends AppElement {
   private upgradeButton(plan: Plan) {
     if (plan === "tierCustom") {
       return html`<button
-        class="btn btn-sm btn-block btn-outline"
+        class="pulse-btn pulse-btn-ghost pulse-btn-sm w-full"
         data-upgrade=${plan}
         @click=${() => (this.upgradeTo = plan)}
       >
@@ -626,7 +610,7 @@ export class BillingView extends AppElement {
       </button>`;
     }
     return html`<button
-      class="btn btn-sm btn-primary"
+      class="pulse-btn pulse-btn-sm w-full"
       data-upgrade=${plan}
       data-checkout=${plan}
       ?disabled=${this.billingBusy}
@@ -634,6 +618,74 @@ export class BillingView extends AppElement {
     >
       ${t("billing.upgrade")}
     </button>`;
+  }
+
+  // --- invoices / payments mirror (RFC-018 4) ---
+
+  private invoicesSection() {
+    const payments = this.payments;
+    if (!payments || payments.length === 0) return nothing;
+    return html`
+      <section class="flex flex-col gap-4">
+        <h2 class="pulse-section-title m-0 border-b border-line pb-[11px]">
+          ${t("billing.invoices")}
+        </h2>
+        <div class="overflow-x-auto pulse-panel">
+          <table class="w-full text-left text-sm">
+            <thead>
+              <tr class="border-b border-hair">
+                <th class="px-4 py-2.5"><span class="pulse-label">${t("billing.invoiceDate")}</span></th>
+                <th class="px-4 py-2.5"><span class="pulse-label">${t("billing.invoiceAmount")}</span></th>
+                <th class="px-4 py-2.5"><span class="pulse-label">${t("billing.invoiceStatus")}</span></th>
+                <th class="px-4 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${payments.map((p) => this.invoiceRow(p))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    `;
+  }
+
+  private invoiceRow(p: Payment) {
+    const refunded = p.refunded_amount > 0;
+    return html`<tr data-payment=${p.id} class="border-b border-hair last:border-0">
+      <td class="px-4 py-2.5 font-mono text-ink2">
+        ${new Date(p.created_at).toLocaleDateString()}
+      </td>
+      <td class="px-4 py-2.5 font-mono tabular-nums">
+        ${this.money(p.amount, p.currency)}
+        ${refunded
+          ? html`<span class="text-ink3 text-xs ml-1"
+              >(${t("billing.refunded")}
+              ${this.money(p.refunded_amount, p.currency)})</span
+            >`
+          : nothing}
+      </td>
+      <td class="px-4 py-2.5">
+        <span class="pulse-tag">${p.status}</span>
+      </td>
+      <td class="px-4 py-2.5 text-right">
+        ${p.hosted_invoice_url
+          ? html`<a
+              class="text-sm text-brand hover:no-underline"
+              href=${p.hosted_invoice_url}
+              target="_blank"
+              rel="noopener"
+              >${t("billing.invoiceView")}</a
+            >`
+          : nothing}
+      </td>
+    </tr>`;
+  }
+
+  // money formats minor units (cents) as a plain amount + currency. Kept simple and
+  // locale-safe (no Intl currency code validation) since the provider currency is
+  // free-form text in the mirror.
+  private money(minor: number, currency: string): string {
+    return `${(minor / 100).toFixed(2)} ${currency}`;
   }
 
   // --- contact CTA for Custom (contract-negotiated, never self-serve) ---
@@ -647,32 +699,40 @@ export class BillingView extends AppElement {
     const subject = encodeURIComponent(`Upgrade to ${this.planLabel(plan)}`);
     const mailto = `mailto:sales@pulse.example?subject=${subject}`;
     return html`<div
-      class="modal modal-open"
+      class="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="upgrade-heading"
       data-upgrade-modal
     >
-      <div class="modal-box">
-        <h3 id="upgrade-heading" class="text-lg font-bold">
+      <div
+        class="absolute inset-0 bg-black/40"
+        @click=${() => (this.upgradeTo = null)}
+      ></div>
+      <div
+        class="pulse-dialog relative w-full max-w-md border border-line bg-bg p-6 flex flex-col gap-4"
+      >
+        <h3
+          id="upgrade-heading"
+          class="font-disp font-extrabold text-lg uppercase tracking-[-0.01em]"
+        >
           ${t("billing.upgradeHeading")}
         </h3>
-        <p class="py-4">
+        <p class="text-ink2">
           ${tDynamic("billing.upgradeBody", "", { plan: this.planLabel(plan) })}
         </p>
-        <div class="modal-action">
-          <button class="btn" @click=${() => (this.upgradeTo = null)}>
+        <div class="flex justify-end gap-2">
+          <button
+            class="pulse-btn pulse-btn-ghost"
+            @click=${() => (this.upgradeTo = null)}
+          >
             ${t("billing.upgradeClose")}
           </button>
-          <a class="btn btn-primary" href=${mailto}>
+          <a class="pulse-btn" href=${mailto}>
             ${t("billing.upgradeContact")}
           </a>
         </div>
       </div>
-      <div
-        class="modal-backdrop"
-        @click=${() => (this.upgradeTo = null)}
-      ></div>
     </div>`;
   }
 }

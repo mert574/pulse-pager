@@ -112,8 +112,11 @@ describe("api-keys-view", () => {
   it("renders a row per key with name, prefix and role", async () => {
     const { el, restore } = await mount({});
     try {
-      await waitUntil(() => el.querySelector("table") !== null, "table renders");
-      expect(el.querySelectorAll("tbody tr").length).to.equal(2);
+      await waitUntil(
+        () => el.querySelector("[data-api-key-row]") !== null,
+        "ledger renders",
+      );
+      expect(el.querySelectorAll("[data-api-key-row]").length).to.equal(2);
       expect(el.textContent).to.contain("CI pipeline");
       expect(el.textContent).to.contain("pulse_sk_abc123");
     } finally {
@@ -175,7 +178,7 @@ describe("api-keys-view", () => {
       },
     });
     try {
-      await waitUntil(() => el.querySelector("table") !== null);
+      await waitUntil(() => el.querySelector("[data-api-key-row]") !== null);
       const newBtn = Array.from(el.querySelectorAll("button")).find((b) =>
         b.textContent?.includes("New API key"),
       )!;
@@ -194,7 +197,7 @@ describe("api-keys-view", () => {
       );
       const secretEl = el.querySelector("[data-secret]")!;
       expect(secretEl.textContent).to.contain(FULL_SECRET);
-      expect(el.querySelector(".alert-warning")?.textContent).to.contain(
+      expect(el.querySelector("[data-warning]")?.textContent).to.contain(
         "only time",
       );
       expect(el.querySelector('button[aria-label="Copy key"]')).to.not.be.null;
@@ -205,7 +208,7 @@ describe("api-keys-view", () => {
       expect(post.body).to.deep.equal({ name: "New key", role: "member" });
 
       // dismiss it: the secret is gone and never appears in the table
-      const done = Array.from(el.querySelectorAll(".modal-box button")).find(
+      const done = Array.from(el.querySelectorAll(".pulse-dialog button")).find(
         (b) => b.textContent?.includes("Done"),
       ) as HTMLButtonElement;
       done.click();
@@ -213,7 +216,9 @@ describe("api-keys-view", () => {
         () => el.querySelector("[data-secret]") === null,
         "secret dismissed",
       );
-      expect(el.querySelector("table")?.textContent).to.not.contain(FULL_SECRET);
+      expect(el.querySelector("[data-key-list]")?.textContent).to.not.contain(
+        FULL_SECRET,
+      );
       // the new key still shows by its prefix, not its secret
       expect(el.textContent).to.contain("pulse_sk_new789");
     } finally {
@@ -230,18 +235,16 @@ describe("api-keys-view", () => {
       },
     });
     try {
-      await waitUntil(() => el.querySelector("table") !== null);
+      await waitUntil(() => el.querySelector("[data-api-key-row]") !== null);
       const revokeBtn = el.querySelector<HTMLButtonElement>(
         'button[aria-label="Revoke"]',
       )!;
       revokeBtn.click();
       await waitUntil(
-        () => el.querySelector(".modal-open") !== null,
+        () => el.querySelector(".pulse-dialog") !== null,
         "confirm dialog opens",
       );
-      const confirm = el.querySelector<HTMLButtonElement>(
-        ".modal-box .btn-error",
-      )!;
+      const confirm = el.querySelector<HTMLButtonElement>("[data-confirm]")!;
       confirm.click();
       await waitUntil(
         () => calls.some((c) => c.method === "DELETE"),
@@ -250,7 +253,7 @@ describe("api-keys-view", () => {
       const del = calls.find((c) => c.method === "DELETE")!;
       expect(del.url).to.contain("/orgs/o1/api-keys/ak_1");
       await waitUntil(
-        () => el.querySelectorAll("tbody tr").length === 1,
+        () => el.querySelectorAll("[data-api-key-row]").length === 1,
         "row removed",
       );
     } finally {
@@ -263,7 +266,7 @@ describe("api-keys-view", () => {
     try {
       await el.updateComplete;
       expect(el.textContent).to.contain("managed by owners and admins");
-      expect(el.querySelector("table")).to.be.null;
+      expect(el.querySelector("[data-api-key-row]")).to.be.null;
       // no list call is made for a member
       expect(calls.length).to.equal(0);
     } finally {

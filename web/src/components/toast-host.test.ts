@@ -28,13 +28,13 @@ describe("toast-host", () => {
     const el = await fixture<ToastHost>(html`<toast-host></toast-host>`);
     toast("hello world", "info", TTL);
     await el.updateComplete;
-    const alert = el.querySelector(".alert");
+    const alert = el.querySelector('[role="status"]');
     expect(alert).to.not.be.null;
     expect(el.textContent).to.contain("hello world");
 
     // clicking a toast dismisses it
     (alert as HTMLElement).click();
     await el.updateComplete;
-    expect(el.querySelector(".alert")).to.be.null;
+    expect(el.querySelector('[role="status"]')).to.be.null;
   });
 });
