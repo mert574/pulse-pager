@@ -35,8 +35,9 @@ Weaknesses:
 - The old Free tier (3 monitors / 15-min / 1-day history) read as broken next to
   UptimeRobot (50 / 5-min / 3-mo) and Better Stack (10 + 10 heartbeats). This was the
   biggest gap and is now partly fixed (see decisions).
-- Missing check types: every rival ships SSL-expiry, DNS, and cron/heartbeat. We have
-  HTTP/TCP only. This is our clearest competitive hole.
+- Missing check types: we ship HTTP and SSL-expiry; DNS and cron/heartbeat are still
+  gaps that every rival covers. (At the time of this snapshot SSL-expiry was also missing;
+  it has since shipped.)
 - Retention was short across all tiers; now lengthened.
 
 ## Pricing decisions applied (pricing page, 2026-06-22)
@@ -59,10 +60,12 @@ retention removes the "broken free" signal.
 
 ## Build priorities (gaps to close)
 
-1. SSL-expiry checks. Cheap to build, universally expected.
-2. Cron / heartbeat monitoring. A whole category (Healthchecks.io, Cronitor) exists for it.
-3. DNS checks. Fast follow.
-4. Browser / synthetic checks. Bigger lift, can wait.
+SSL-expiry was priority 1 in this snapshot and has since shipped, so it drops off the list.
+Remaining:
+
+1. Cron / heartbeat monitoring. A whole category (Healthchecks.io, Cronitor) exists for it.
+2. DNS checks. Fast follow.
+3. Browser / synthetic checks. Bigger lift, can wait.
 
 These are table stakes on every competitor and are the main reason a buyer might pick a
 rival over us at the same price.
@@ -71,8 +74,8 @@ rival over us at the same price.
 
 - Cost-to-serve per monitor at 1-min and 30s across regions. The $7/$19 prices assume
   healthy margins at those frequencies; validate against real infra cost.
-- How fast SSL-expiry and heartbeat can ship. If far out, Hobby/Professional may need to
-  price lower to compensate.
+- How fast heartbeat can ship (SSL-expiry already shipped). If far out, Hobby/Professional
+  may need to price lower to compensate.
 - Whether free self-hosting feeds cloud signups or competes with the paid tiers.
 - Whether Custom should publish a "from $X" anchor (like Pingdom $249, Site24x7 $999) or
   stay fully quote-based.

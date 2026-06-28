@@ -9,7 +9,7 @@ Product source: `docs/prd/PRD-007-multi-region.md` (region selection, `down_poli
 
 House style: RFC3339 UTC timestamps on the wire. No em-dashes. Tables and diagrams over prose.
 
-Note on consumer RFCs: RFC-005 (worker) and RFC-006 (alerting) are not written yet. This RFC designs against the RFC-000 / RFC-002 contracts and PRD-007, and where it needs a model from a consumer (the aggregation window in section 6), it specifies the model that consumer must adopt and flags it.
+Note on consumer RFCs: RFC-005 (worker) and RFC-006 (alerting) both exist now. This RFC designs against the RFC-000 / RFC-002 contracts and PRD-007, and where it needs a model from a consumer (the aggregation window in section 6), it specifies the model those consumers adopt and flags it.
 
 ---
 
@@ -312,7 +312,7 @@ Single-region monitor: all three policies are equivalent; that one region's resu
 
 ### 6.3 The round window: one model, reconciled with RFC-006's aggregation window
 
-This is the question RFC-002 section 7.4 and RFC-000 section 8 flag: a monitor's regions report slightly apart, and alerting needs one window to collect them before reducing. Since RFC-006 is not written yet, this RFC specifies the model it must adopt.
+This is the question RFC-002 section 7.4 and RFC-000 section 8 flag: a monitor's regions report slightly apart, and alerting needs one window to collect them before reducing. This RFC specifies the model, which RFC-006 adopts.
 
 > One model: the round window and RFC-006's aggregation window are the same thing. There is exactly one window, anchored on `scheduled_at`, owned by this RFC, consumed by RFC-006.
 
@@ -373,7 +373,7 @@ Plan-permitting, when a selected region's fleet is unhealthy the platform re-dis
 | Tier | Failover | Reasoning |
 |------|----------|-----------|
 | Free | off | Free is single-region (home only); there is nowhere to fail over to. If home is down, the monitor is coverage-degraded |
-| Paid tiers with > 1 region (Starter / Team / Business) | on | failover keeps coverage during OUR outage; the cost of running on a possibly-pricier region is absorbed to honor the false-positive guarantee |
+| Paid tiers with > 1 region (Professional / Custom) | on | failover keeps coverage during OUR outage; the cost of running on a possibly-pricier region is absorbed to honor the false-positive guarantee |
 
 This is PRD-007 section 13 decision 2. The per-tier on/off is owned jointly with PRD-006; this RFC implements the default above and flags any tuning to PRD-006.
 
@@ -437,7 +437,7 @@ This RFC defines the measurement points; PRD-006 / RFC-009 own turning them into
 | Quantity | Value | Source |
 |----------|-------|--------|
 | Sustained checks/sec, single-region baseline | ~10,000 | PRD-012 / master 12 |
-| Fan-out multiplier | per-monitor region count (Free 1, Business up to 6) | PRD-006, PRD-007 |
+| Fan-out multiplier | per-monitor region count (Free 1, Custom up to 4) | PRD-006, PRD-007 |
 | `check.jobs` produced/sec, all regions | checks/sec x average regions per monitor | one job per (monitor, region) tick |
 | `check.results` into central/sec | same as jobs (one result per job, after mirror) | the firehose, order 10k-60k/sec depending on average region count |
 | Home-region mirror bandwidth | sum over regions of (results/sec for that region x ~few hundred bytes) + heartbeats | single-digit to low-tens MB/sec aggregate (RFC-002 section 9) |

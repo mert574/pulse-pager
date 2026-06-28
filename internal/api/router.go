@@ -84,8 +84,8 @@ func (s *Server) Router() http.Handler {
 	mux.Handle("GET /api/v1/admin/metrics", s.adminAuth(http.HandlerFunc(wrapper.GetAdminMetrics)))
 	// admin: cross-org billing summary (paid orgs, subscription statuses, revenue).
 	mux.Handle("GET /api/v1/admin/billing", s.adminAuth(http.HandlerFunc(wrapper.GetAdminBilling)))
-	// admin: list every org and set an org's plan by hand (operator override until
-	// Stripe lands). Same adminAuth + allowlist as the metrics endpoint.
+	// admin: list every org and set an org's plan by hand (operator override
+	// alongside Paddle self-serve billing). Same adminAuth + allowlist as the metrics endpoint.
 	mux.Handle("GET /api/v1/admin/orgs", s.adminAuth(http.HandlerFunc(wrapper.ListAdminOrgs)))
 	mux.Handle("PUT /api/v1/admin/orgs/{orgId}/plan", s.adminAuth(http.HandlerFunc(wrapper.SetAdminOrgPlan)))
 	// admin billing: cancel a subscription and refund a payment (RFC-018 5.2/5.3). Same

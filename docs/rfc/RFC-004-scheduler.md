@@ -6,7 +6,7 @@ Audience: scheduler service authors, worker authors (RFC-005), api authors (chec
 Parent: `docs/rfc/RFC-000-architecture-overview.md` (section 2.2 scheduler, section 4 topology/multi-region, section 11.2 leader election via k8s Lease / ADR-0004, section 12 entitlement enforcement on dispatch)
 Depends on: RFC-000 (leader election, topology, entitlement contract), RFC-002 (the `check.jobs.<region>` and `monitor.changed` contracts, idempotency), RFC-001 (monitors / entitlements / plans schema), RFC-009 (entitlement lookup library; contract is RFC-000 section 12)
 Out of scope: down-policy / probe-fleet health / verdict reduction (RFC-008 and RFC-006). The scheduler fans out one job per selected region and never reduces a verdict.
-Reuses: the v1 min-heap dispatch loop and per-monitor in-flight rule from `docs/archive/ARCHITECTURE_v1_monolith.md` sections 3.4 and 5.
+Reuses: the v1 min-heap dispatch loop and per-monitor in-flight rule from the v1 single-binary architecture.
 Product source: `docs/prd/PRD-002` (check-now, intervals, no pile-ups), `docs/prd/PRD-006` (interval floor + region entitlement on dispatch), `docs/prd/PRD-007` (per-region fan-out, region selection), `docs/PRD.md` section 12 (scheduling-accuracy SLO, scale).
 
 House style: no em-dashes. Tables and diagrams over prose. Every load-bearing choice states the decision, the reasoning, and the rejected alternatives.
@@ -53,6 +53,8 @@ The scheduler decides which checks are due, fans out one check job per (monitor,
 ## 2. Leader election and singleton
 
 The scheduler must be exactly one active dispatcher at a time. Two active leaders would double-dispatch every tick (the `job_id` dedup downstream would absorb genuine duplicates, but it doubles broker load and risks two leaders racing on the same `scheduled_at`); zero active leaders delays every check past the 5s SLO.
+
+**Current state:** the scheduler runs as a single instance today (`cmd/scheduler/main.go`). Leader election via the k8s Lease and client-go (the design below, ADR-0004) is planned, not built. The single-instance setup gives the singleton guarantee for now; the Lease work is what makes it safe to run more than one replica.
 
 ### 2.1 Decision: k8s Lease via client-go leaderelection (RFC-000 ADR-0004)
 

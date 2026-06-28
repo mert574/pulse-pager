@@ -5,7 +5,7 @@ Author: Principal Architecture
 Audience: every service author who stores or moves customer data, the identity/api owners (RFC-003, PRD-001), the SRE/observability owners (RFC-010), the infra owners (RFC-011), the billing owner (PRD-006), and the legal/compliance counsel who own the steps engineering cannot
 Parent: `docs/rfc/RFC-000-architecture-overview.md`
 Depends on: RFC-001 (PII columns, encryption, retention, partitioning, RLS), RFC-003 (identity, sessions, cookies, key auth), RFC-008 (control-plane vs regional-data-plane split, cross-region flows), RFC-010 (logging hygiene, audit, breach detection, incident response), RFC-011 (KMS, encryption at rest, backups, network), RFC-012 (error envelope and API conventions)
-Product source of truth: PRD master section 13, PRD-001 (deletion/export, the 14-day grace), PRD-006 (Stripe holds card data)
+Product source of truth: PRD master section 13, PRD-001 (deletion/export, the 14-day grace), PRD-006 (Paddle holds card data)
 
 House style: no em-dashes. Tables and concrete cites over prose. Where a control is legal, not technical, this RFC says so and stops there.
 
@@ -32,7 +32,7 @@ Engineering owns the technical controls and the design-for-certification. Engine
 | Retention jobs and partition drop | The SOC 2 Type II audit itself and the auditor's opinion |
 | Breach detection signals and the incident runbook | ISO 27001 certification and the ISMS policy set |
 | The controls matrix and the evidence each control produces | The independent penetration test |
-| The PCI boundary (keeping card data in Stripe) | Standard Contractual Clauses (SCCs) execution, transfer-impact assessment |
+| The PCI boundary (keeping card data in Paddle) | Standard Contractual Clauses (SCCs) execution, transfer-impact assessment |
 
 The rule of this document: a control is "designed" or "built" when engineering can point to it in the design or the code. A control is "external" when a human outside engineering must sign, write, test, or certify it. The matrix in section 12 carries that status per control.
 
@@ -45,7 +45,7 @@ Pulse plays two GDPR roles at once, and the role decides who owns the lawful bas
 | **Controller** | Account and identity data: user email, name, avatar, the org graph, memberships, invitations, billing identity, audit logs, status-page subscriber emails (phased) | Pulse decides why and how this data is processed (running the account, billing, security). The data subject is the Pulse user. |
 | **Processor** | Customer-monitored data: monitor config and target URLs, check results, incidents, latencies, the last-failure snapshot | The customer org decides what to monitor and why. Pulse processes it on the customer's instruction under the DPA. The customer is the controller for this data. |
 
-Consequence: a DPA between Pulse and each paying org is required (legal), and a public subprocessor list is required (legal), because Pulse-as-processor uses subprocessors (cloud, Stripe, email, OAuth, error tooling) to process customer data. Section 5 lists the subprocessor categories.
+Consequence: a DPA between Pulse and each paying org is required (legal), and a public subprocessor list is required (legal), because Pulse-as-processor uses subprocessors (cloud, Paddle, email, OAuth, error tooling) to process customer data. Section 5 lists the subprocessor categories.
 
 A subtlety worth stating: a monitored target URL can itself contain personal data (for example a URL with a customer's own user id in the path). Pulse treats target URLs as customer-controlled operational data (PRD master 13: "what it returns is the customer's responsibility"), processed under the DPA, not as Pulse-controller PII.
 
@@ -71,9 +71,9 @@ Every data category Pulse holds, with its class, store, encryption at rest, rete
 | 12 | Check results / latencies (`check_results`) | Operational | Postgres `check_results` (partitioned by month) | Managed disk/db encryption | Per plan: 7/30/90/180 days (RFC-001 6.2) | Org-scoped by RLS | No | Processor |
 | 13 | Rollups (`check_rollups`) | Operational | Postgres `check_rollups` | Managed disk/db encryption | Longest uptime window per plan | Org-scoped by RLS | No | Processor |
 | 14 | Incidents and the last-failure snapshot (headers + capped body, PRD-002 3.8) | Operational | Postgres `incidents` | Managed disk/db encryption | Life of org (not subject to raw-result cleanup) | Org-scoped by RLS | No (treated as operational) | Processor |
-| 15 | Billing identity (`subscriptions.stripe_customer_id`, `plan`, `status`) | Billing | Postgres `subscriptions` | Managed disk/db encryption | Life of org; cascade on delete | Owner views/manages; admin views | No (no card data) | Controller |
-| 16 | Card data | Billing | **Stripe only, never Pulse** (PRD-006 8.1) | Stripe (PCI) | Stripe's policy | Stripe only | N/A to Pulse | N/A (Stripe is the processor) |
-| 17 | Audit log (`audit_events`: actor, action, target, `ip_address`, `user_agent`) | Audit | Postgres `audit_events` (append-only) | Managed disk/db encryption | Per plan: Team 30d, Business 365d; Free/Starter none (RFC-001 4.2) | Owner/admin only (RFC-003 7.2) | Yes (contains IP/UA and actor) | Controller |
+| 15 | Billing identity (`subscriptions.provider`, `provider_customer_id`, `provider_subscription_id`, `provider_price_id`, `plan`, `status`) | Billing | Postgres `subscriptions` | Managed disk/db encryption | Life of org; cascade on delete | Owner views/manages; admin views | No (no card data) | Controller |
+| 16 | Card data | Billing | **Paddle only, never Pulse** (PRD-006 8.1) | Paddle (PCI) | Paddle's policy | Paddle only | N/A to Pulse | N/A (Paddle is Merchant of Record) |
+| 17 | Audit log (`audit_events`: actor, action, target, `ip_address`, `user_agent`) | Audit | Postgres `audit_events` (append-only) | Managed disk/db encryption | Per plan: Professional 30d, Custom 365d; Free/Hobby none (RFC-001 4.2) | Owner/admin only (RFC-003 7.2) | Yes (contains IP/UA and actor) | Controller |
 | 18 | Operational logs | Telemetry | Loki (RFC-010 3.6) | Managed disk encryption | 30d hot, 90d for error level (RFC-010 3.6) | Access-controlled Grafana/Loki; SRE only | No (PII scrubbed, RFC-010 3.4) | Controller |
 | 19 | Traces | Telemetry | Tempo (RFC-010 4.5) | Managed disk encryption | Tail-sampled; window cost-driven (RFC-010 open Q) | SRE only | No (only `org_id`/`monitor_id` ids on spans) | Controller |
 | 20 | Metrics | Telemetry | Prometheus (RFC-010 2) | Managed disk encryption | Prometheus window (RFC-011) | SRE only | No (no `org_id` at full cardinality, RFC-010 2.2) | Controller |
@@ -114,7 +114,7 @@ What is hard-deleted vs anonymized: v1 hard-deletes. RFC-001 9.4 describes a cas
 The cascade across the other PII carriers:
 - Kafka event data carrying PII: by design the eventing bus carries `org_id`/`monitor_id` integer ids and operational payloads, not user PII (RFC-010 3.4, RFC-002). `check.jobs` carries decrypted secrets but stays in-region and is short-lived (RFC-008 3.4); it is not a durable PII store. So there is no PII to erase from Kafka beyond letting short-retention topics age out.
 - Logs and traces: PII is scrubbed at the source (RFC-010 3.4), so operational logs and traces hold no user PII to erase; they age out on their own windows (30/90 days logs, tail-sampled traces).
-- Stripe: org deletion cancels the Stripe subscription (PRD-006). Stripe is the controller-appointed processor for billing; erasure of the Stripe customer record is requested from Stripe under its own data-deletion process (legal/ops step, executed via the Stripe API/console).
+- Paddle: org deletion cancels the Paddle subscription (PRD-006). Paddle is the controller-appointed processor (Merchant of Record) for billing; erasure of the Paddle customer record is requested from Paddle under its own data-deletion process (legal/ops step, executed via the Paddle API/console).
 
 The backup exception (documented lawful exception with a maximum window):
 - Deleted data persists in encrypted Postgres backups until those backups age out. The maximum window is the backup retention, **30 days** (RFC-011 12.2), with a 7-day PITR window inside it.
@@ -172,7 +172,7 @@ Subprocessor categories and the DPA requirement (a signed DPA with each is a leg
 | Subprocessor category | Example | Processes | DPA required |
 |---|---|---|---|
 | Cloud provider | AWS or GCP (RFC-011) | All hosting, storage, backups | Yes (legal) |
-| Payments | Stripe (PRD-006) | Billing identity and card data | Yes (legal) |
+| Payments | Paddle, Merchant of Record (PRD-006) | Billing identity and card data | Yes (legal) |
 | Transactional email | email provider (invitations, alerts, subscriber notices) | Recipient emails and message bodies | Yes (legal) |
 | OAuth providers | Google, GitHub (RFC-003) | Sign-in, verified email | Yes (legal) |
 | Error / trace tooling | error and trace backend (RFC-010) | Telemetry (PII-scrubbed) | Yes (legal) |
@@ -190,7 +190,7 @@ The immutable audit trail is a product/compliance artifact, deliberately separat
 | Store | Postgres `audit_events`, append-only, not a log aggregator | RFC-001 4.6, RFC-010 3.6 |
 | Fields (who/what/when/where) | `actor_type` (human/api_key/system), `actor_id`, `action`, `target`, `changes` (JSONB), `ip_address` (INET), `user_agent`, `created_at` | RFC-001 4.6 |
 | Covered actions | member invited/joined/removed/role-changed, ownership transfer, invitation lifecycle, API key created/revoked, billing/plan change, channel created/deleted, monitor deleted, status page published, org settings changed, manual incident close, org deletion requested/done, auth login, logout-all, identity link/unlink | PRD master 13, PRD-001 9 |
-| Retention | Per plan: Team 30 days, Business 365 days; Free/Starter none | RFC-001 4.2 |
+| Retention | Per plan: Professional 30 days, Custom 365 days; Free/Hobby none | RFC-001 4.2 |
 | Tamper-evidence | Append-only by convention (no update/delete path in the repository), separated from ops logs so it cannot be edited via log tooling. A stronger hash-chain or WORM is an open hardening item (RFC-001 11.2 flags partitioning; tamper-evidence beyond append-only is not yet specified). | RFC-001 4.6, 11.2 |
 | Who can read | Owner/admin only (and admin-scoped API keys) | RFC-003 7.2 |
 
@@ -268,7 +268,7 @@ Per-category retention and the mechanism that enforces each. Retention is not a 
 |---|---|---|---|
 | Raw check results | 7/30/90/180 days per plan | Monthly RANGE partitions; `DROP TABLE` once a partition is older than the longest tier (180d); per-org early prune in the rollup job pass | RFC-001 6.2, 6.4 |
 | Rollups | Longest uptime window per plan | Produced hourly; raw rows past the org's `retention_days` deleted in the same pass | RFC-001 6.3 |
-| Audit log | Team 30d / Business 365d / none on Free/Starter | Per-plan `audit_log_retention_days`; deletion job (partitioning flagged as the next step if volume dominates) | RFC-001 4.2, 11.2 |
+| Audit log | Professional 30d / Custom 365d / none on Free/Hobby | Per-plan `audit_log_retention_days`; deletion job (partitioning flagged as the next step if volume dominates) | RFC-001 4.2, 11.2 |
 | Operational logs | 30d hot, 90d error level | Loki retention policy | RFC-010 3.6 |
 | Traces | Tail-sampled; window cost-driven | Tempo retention + tail sampling | RFC-010 4.5 |
 | Backups / PITR | 30-day backups, 7-day PITR | Managed Postgres backup config | RFC-011 12.2 |
@@ -280,9 +280,9 @@ The leader-elected runner that owns rollups and partition pre-create/drop (RFC-0
 
 ## 11. PCI scope
 
-Card data is captured, stored, and charged by Stripe; it is never held by Pulse (PRD-006 8.1: "card capture, PCI scope, charging" are Stripe's). Pulse stores only billing identity references (`stripe_customer_id`, `stripe_subscription_id`, `plan`, `status`, `current_period_end`) and a lightweight invoice reference (id, amount, period, status, hosted PDF URL). Pulse does not compute or store card numbers, CVCs, or full PANs.
+Card data is captured, stored, and charged by Paddle; it is never held by Pulse (PRD-006 8.1: "card capture, PCI scope, charging" are the provider's). Pulse stores only billing identity references (`provider_customer_id`, `provider_subscription_id`, `provider_price_id`, `plan`, `status`, `current_period_end`) and a lightweight invoice reference (id, amount, period, status, hosted PDF URL). Pulse does not compute or store card numbers, CVCs, or full PANs.
 
-The boundary: because no cardholder data ever enters Pulse systems, Pulse stays out of PCI-DSS scope for cardholder-data storage and processing. Payment forms use Stripe-hosted elements so card data goes browser-to-Stripe, not through Pulse. Confirming the exact PCI SAQ type (typically SAQ A for a fully Stripe-hosted integration) is a legal/compliance step, but the engineering boundary is clear and must be preserved: never accept, log, or proxy raw card data.
+The boundary: because no cardholder data ever enters Pulse systems, Pulse stays out of PCI-DSS scope for cardholder-data storage and processing. Payment forms use Paddle-hosted checkout so card data goes browser-to-Paddle, not through Pulse. Confirming the exact PCI SAQ type (typically SAQ A for a fully provider-hosted integration) is a legal/compliance step, but the engineering boundary is clear and must be preserved: never accept, log, or proxy raw card data.
 
 ---
 
@@ -298,7 +298,7 @@ Concrete edits/tasks for a later reconciliation. This RFC does NOT edit these do
 | RFC-011 | Confirm KMS key rotation cadence for `PULSE_SECRET_KEY`; confirm disk/db and backup encryption are on for all managed stores; the worker egress deny-list for RFC1918/link-local/metadata is specified, verify it is applied | built (verify) |
 | RFC-007 / PRD-003 | PII minimization in notification bodies and transactional emails (do not embed more PII than needed; subject/body already operational) | designed |
 | PRD-004 | Status-page subscriber email handling (phased): a subscriber table, consent on subscribe, an unsubscribe flow, and inclusion in the erasure cascade | external/phased |
-| PRD-006 | Keep the Stripe/PCI boundary explicit (no raw card data in Pulse); cancel-subscription on org deletion already specified; Stripe customer erasure step on org deletion | built (verify) |
+| PRD-006 | Keep the Paddle/PCI boundary explicit (no raw card data in Pulse); cancel-subscription on org deletion already specified; Paddle customer erasure step on org deletion | built (verify) |
 
 ### 12.1 Compliance controls matrix
 
@@ -321,7 +321,7 @@ Concrete edits/tasks for a later reconciliation. This RFC does NOT edit these do
 | Change management (GitOps + CI gates) | SOC 2 change management | RFC-011 9 | Built |
 | SSRF always-on + egress deny | Security (CC) | RFC-011 7.3; ADR-0016 | Built |
 | Image signing + CVE block | SOC 2 supply chain | RFC-011 9.1/2.4 | Built |
-| PCI boundary (Stripe-only card data) | PCI-DSS scope reduction | PRD-006 8.1 | Built |
+| PCI boundary (Paddle-only card data) | PCI-DSS scope reduction | PRD-006 8.1 | Built |
 | Cookie consent for analytics | ePrivacy, GDPR | RFC-013/legal | External/phased |
 | DPA + subprocessor list + SCCs | GDPR Art 28, transfers | legal | External |
 | Privacy policy + cookie policy text | GDPR transparency | legal | External |
@@ -335,7 +335,7 @@ Concrete edits/tasks for a later reconciliation. This RFC does NOT edit these do
 | Phase | Compliance work |
 |---|---|
 | Now (built into identity/data features, required as soon as there are EU users) | Export, erasure, the 14-day grace cascade, consent capture, encryption (at rest + in transit), audit log, retention enforcement, no-PII-in-logs. These are GDPR-required from the first EU user and must ship with the identity/data features, not later. |
-| Phase 2 (GA) | Stripe/PCI boundary enforced in code; subprocessor inventory kept current as vendors are added; cookie consent if any analytics is introduced. |
+| Phase 2 (GA) | Paddle/PCI boundary enforced in code; subprocessor inventory kept current as vendors are added; cookie consent if any analytics is introduced. |
 | Phase 3 | SOC 2 Type II audit (controls are designed-in now, the audit and observation period are phase 3 alongside enterprise); ISO 27001 if pursued; EU data residency option for account data; status-page subscriber email handling; audit tamper-evidence hardening. |
 
 The stance matches multi-region (RFC-000): the contract and controls are designed in from day one; the certification and the residency variant land later without re-architecture.
@@ -355,7 +355,7 @@ The stance matches multi-region (RFC-000): the contract and controls are designe
 1. Audit tamper-evidence: append-only Postgres vs a hash-chain vs an external WORM sink. v1 is append-only by repository discipline; decide the stronger control before the SOC 2 observation period.
 2. Export delivery: synchronous archive vs an async job with a signed download link, for large org exports. Contract is machine-readable JSON either way.
 3. Consent capture mechanics: where the terms/privacy acceptance is recorded (a `users` column vs an audit event) and whether re-consent is needed on policy changes. Currently undocumented in RFC-003/PRD-001.
-4. Stripe customer erasure on org deletion: automate via the Stripe API at grace end vs a manual ops step. Affects how clean the erasure is for billing identity.
+4. Paddle customer erasure on org deletion: automate via the Paddle API at grace end vs a manual ops step. Affects how clean the erasure is for billing identity.
 
 ---
 

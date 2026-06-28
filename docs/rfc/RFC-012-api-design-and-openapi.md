@@ -30,7 +30,7 @@ There is one HTTP surface served by the api service (RFC-000 section 2.1). The S
 | Secret redaction rules and idempotency-key behavior | Schema/DDL and the BIGINT internal id (RFC-001) |
 | The external id codec (`mon_`, `inc_`, ...) | Webhook delivery, retry, signing mechanics (RFC-007, PRD-005 section 7) |
 | The full resource-by-resource API surface table | The SPA itself, how it stores the cookie (RFC-013) |
-| OpenAPI 3 as source of truth + the CI no-drift check | Stripe webhook handler (PRD-006) |
+| OpenAPI 3 as source of truth + the CI no-drift check | Paddle webhook handler (PRD-006) |
 | Swagger UI at `/api/docs` and the GitHub Pages docs/pricing site | Notifier and the per-monitor channel delivery (RFC-007) |
 | Rate-limit headers and 429 shape | Rate-limit counter storage (Redis, RFC-009) |
 | The org-webhook management endpoints (CRUD only) | |
@@ -118,27 +118,18 @@ Every non-2xx response uses one envelope (master 9, PRD-005 section 3.3, v1 12.3
   "error": {
     "code": "validation_failed",
     "message": "One or more fields are invalid.",
-    "i18n": { "code": "error.validation_failed", "params": {} },
     "fields": {
-      "interval_seconds": {
-        "code": "error.validation.interval_below_floor",
-        "params": { "floor_seconds": 300, "plan": "starter" },
-        "message": "Interval must be at least 300s on the Starter plan."
-      },
-      "regions": {
-        "code": "error.entitlement.region_not_in_plan",
-        "params": { "region": "eu-west", "plan": "starter" },
-        "message": "Region eu-west is not in your plan."
-      }
+      "interval_seconds": "Interval must be at least 300s on the Hobby plan.",
+      "regions": "Region eu-west is not in your plan."
     }
   }
 }
 ```
 
 - `code` is a stable machine-readable string. Clients branch on it, never on `message`.
-- `message` is human-readable and safe to show. It never contains internal detail, SQL, or stack traces. It is the English render of `i18n` (the always-present fallback).
-- `i18n` is an optional `{code, params?}` that localizes the top-level message. Its `code` is an i18n key (the RFC-014 namespace), distinct from `error.code` (the machine enum clients branch on). A client with a catalog renders from `i18n.code` + `params`; a client without one shows `message`.
-- `fields` is present only on validation and entitlement-per-field errors; it maps a field name to a per-field localizable object `{code, params?, message}` (the appendix A / v1 12.4 per-field shape, now i18n-extended). `fields[name].message` is the English fallback; `fields[name].code` localizes the same message. See section 2.10 and RFC-014.
+- `message` is human-readable and safe to show. It never contains internal detail, SQL, or stack traces.
+- `fields` is present only on validation and entitlement-per-field errors; it maps a field name to a human-readable per-field message string (the appendix A / v1 12.4 per-field shape). The implemented `Error` schema is `{code, message, fields}` where `fields` is a map of bare strings (`api/openapi/v1.yaml`).
+- Current state: the RFC-014 i18n extension (a top-level `i18n {code, params?}` and turning each `fields[name]` into a localizable `{code, params?, message}` object) is designed in RFC-014 but not yet applied to this envelope. See section 2.10 and RFC-014.
 
 The full `code` enum (the OpenAPI spec declares this as a closed string enum; new codes are an additive change):
 
@@ -212,7 +203,7 @@ This is what makes "reconcile monitors on every pipeline run without duplicating
 
 ### 2.10 Internationalization (the localizable-string shape)
 
-Every user-facing string the API returns is a localizable object `{code, params?, message}` (RFC-014 owns this contract). `code` is a stable i18n key the client localizes against its own catalog; `params` carries machine values for interpolation (ICU MessageFormat); `message` is the English source string and the always-present fallback for a client with no catalog. This is the API-wide convention; the error envelope (section 2.4) and the channel catalog already follow it.
+The designed convention (RFC-014 owns it) is that every user-facing string the API returns is a localizable object `{code, params?, message}`: `code` is a stable i18n key the client localizes against its own catalog; `params` carries machine values for interpolation (ICU MessageFormat); `message` is the English source string and the always-present fallback for a client with no catalog. Current state: v1 ships only `en`, and this shape is implemented only for the channel catalog (field `label`/`help` and `unavailable_reason`). The error envelope (section 2.4) is still `{code, message, fields}` with bare-string messages; the localizable extension is planned, not applied.
 
 | Rule | Decision |
 |------|----------|
@@ -471,7 +462,7 @@ Per-key, per-plan token bucket (PRD-005 section 2.4, RFC-009 owns the counter st
 | Aspect | Decision |
 |--------|----------|
 | Scope | per key, not per org, so one noisy key does not starve another (PRD-005 section 2.4). |
-| Tier shape | the per-key ceiling scales with the org's plan: Free ~30 req/min reads-only, Starter ~120, Team ~300, Business ~600 (indicative; PRD-006 tunes the numbers). |
+| Tier shape | the per-key ceiling scales with the org's plan: Free ~30 req/min reads-only, Hobby ~120, Professional ~300, Custom ~600 (indicative; PRD-006 tunes the numbers). |
 | Follows entitlement | a downgrade lowers the cap on the next request once the cached entitlement invalidates (master 11). |
 
 Every response carries:
@@ -542,7 +533,7 @@ We pay a small cost: the spec must be edited before the handler, and the codegen
 |------|----------|
 | Source spec | `api/openapi/v1.yaml` in the api repo module, version-controlled, reviewed in PRs |
 | Served spec | `GET /api/v1/openapi.json` (the YAML rendered to JSON at build, embedded in the binary so the served spec always matches the running build) |
-| Generated types/stubs | generated into `internal/apigen` at build, not hand-edited, not committed as the contract (committed only as a build artifact if at all) |
+| Generated types/stubs | generated into `internal/apigen/apigen.gen.go` (Go) and `web/src/api/schema.d.ts` (TS), never hand-edited. Both are committed and `make gen-check` re-runs the generators and fails the build if the committed files differ from a fresh regen |
 | A future v2 | `api/openapi/v2.yaml`, served at `/api/v2/openapi.json`, its own lifecycle |
 
 ### 8.3 Keeping the spec and the routes in sync (the CI check)

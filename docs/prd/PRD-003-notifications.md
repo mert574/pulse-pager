@@ -235,17 +235,17 @@ New channel types slot in behind the **same attach model** (master 7): a new `ty
 
 | Channel type | Phase (master 15) | Plan tiers (master 11, PRD-006) | Config (illustrative) | Notes |
 |--------------|-------------------|---------------------------------|------------------------|-------|
-| Slack | v1 (Phase 1) | all tiers | `webhook_url` (secret) | shipped |
-| Discord | v1 (Phase 1) | all tiers | `webhook_url` (secret) | shipped |
-| Generic webhook | v1 (Phase 1) | all tiers | `url` (secret) + `custom_headers` (secret) | shipped |
-| Email (SMTP) | v1 (Phase 1) | all tiers | host/port/username/password/from/to/tls | shipped |
-| PagerDuty | Phase 3 | Team and above (master 11 "All + PagerDuty/Opsgenie") | integration/routing key (secret) | integration, not on-call rebuild (master 1, 15) |
-| Opsgenie | Phase 3 | Team and above (master 11) | API key (secret) | integration |
-| SMS | Phase 3 | tier-gated, exact tiers GTM-tunable in PRD-006 | phone number(s); provider creds are platform-level, not per channel | has per-message COGS, likely metered/limited by plan |
-| Telegram | Phase 3 | tier-gated per PRD-006 | bot token (secret) + chat id | |
+| Slack | v1 (Phase 1) | Hobby and above (`tier2`) | `webhook_url` (secret) | shipped |
+| Discord | v1 (Phase 1) | all tiers (incl. Free) | `webhook_url` (secret) | shipped |
+| Generic webhook | v1 (Phase 1) | Professional and above (`tier3`) | `url` (secret) + `custom_headers` (secret) | shipped |
+| Email (BYO SMTP) | v1 (Phase 1) | all tiers (incl. Free) | host/port/username/password/from/to/tls | shipped |
+| PagerDuty | Phase 3 | Professional and above (master 11 "All + PagerDuty/Opsgenie") | integration/routing key (secret) | integration, not on-call rebuild (master 1, 15) |
+| Opsgenie | Phase 3 | Professional and above (master 11) | API key (secret) | integration |
+| SMS | Phase 3 | Custom only (per-message COGS) | phone number(s); provider creds are platform-level, not per channel | has per-message COGS, metered/limited by plan |
+| Telegram | v1 (Phase 1) | all tiers (incl. Free) | bot token (secret) + chat id | shipped |
 | Microsoft Teams | Phase 3 | tier-gated per PRD-006 | webhook_url (secret) | webhook-style like Slack/Discord |
 
-Plan-tier gating of channel **types** is enforced by Billing & Entitlements (PRD-006, master 11 "Channel types" row). The notifier and the channel CRUD check the org's entitlement: creating a channel of a type the plan does not include is blocked on write with the standard per-field error and an upsell (same enforcement posture as other entitlements, master 11). Exact tier-to-type mapping for the phased types is GTM-tunable and owned by PRD-006; master 11 anchors PagerDuty/Opsgenie at Team and above.
+Plan-tier gating of channel **types** is enforced by Billing & Entitlements (PRD-006, master 11 "Channel types" row). The notifier and the channel CRUD check the org's entitlement: creating a channel of a type the plan does not include is blocked on write with the standard per-field error and an upsell (same enforcement posture as other entitlements, master 11). Exact tier-to-type mapping for the phased types is GTM-tunable and owned by PRD-006; master 11 anchors PagerDuty/Opsgenie at Professional and above.
 
 ---
 

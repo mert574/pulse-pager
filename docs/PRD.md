@@ -3,7 +3,7 @@
 Status: Draft for architecture and go-to-market
 Owner: Product (Principal PM)
 Audience: Distributed-systems architecture team and go-to-market team
-Supersedes: `docs/archive/PRD_v1_monolith.md` (single-binary, single-admin scope is OBSOLETE)
+Supersedes: the v1 single-binary monolith PRD (single-admin scope is OBSOLETE)
 
 Note on reuse: the monitoring mechanics in this document are lifted forward, restated, from the proven v1 PRD. Specifically: check execution and failure reasons and assertion priority (v1 4.2), monitor status values (v1 12.1), per-field validation rules (v1 12.4), the alerting state-machine acceptance table (v1 12.5), and the exact notification payloads (v1 12.7). These are proven and stay consistent. The single-tenant, single-admin, SQLite, env-var-credential assumptions are dropped.
 
@@ -194,8 +194,9 @@ This section reuses the proven v1 mechanics. Where it says "reused from v1," the
 
 ### 6.1 Monitor types and phasing
 
-- **v1 (GA): HTTP / HTTPS monitors.** This is the core and covers the large majority of "is my service up."
-- **Phased later** (section 15), in roughly this order: TCP port, TLS certificate expiry, DNS record, keyword/browser (real-page render + keyword), ICMP ping. The monitor data model carries a `type` field from day one so adding types is additive, never a migration of meaning.
+- **GA: HTTP / HTTPS monitors.** This is the core and covers the large majority of "is my service up."
+- **GA: TLS / SSL certificate expiry monitors.** Shipped (warns before a cert expires; `cert_expires_at` in the API).
+- **Phased later** (section 15), in roughly this order: TCP port, DNS record, keyword/browser (real-page render + keyword), ICMP ping, cron/heartbeat. The monitor data model carries a `type` field from day one so adding types is additive, never a migration of meaning.
 
 ### 6.2 Monitor configuration (reused from v1 4.1, scoped to an org)
 
@@ -276,13 +277,13 @@ A single failing check before `T` is reached does NOT make status `down`; status
 
 The single-process scheduler of v1 is replaced by a distributed loop. Product promise: **checks run on their schedule, accurately, at SaaS scale, with no single point that stalls everyone.**
 
-- **scheduler service**: owns the schedule for all orgs' monitors. Decides which checks are due and enqueues check jobs (via Kafka) keyed so a given monitor's checks are ordered and not duplicated. Rebuilds schedule from PostgreSQL on start; in-flight incident state is derived from stored data, never held only in memory.
-- **worker fleet**: horizontally scaled stateless workers consume check jobs from Kafka, execute the HTTP request with timeout, apply SSRF policy, and emit a check-result event; the platform persists the result. Workers scale out with monitor count and check frequency. Per-monitor exclusion (for "check now" vs scheduled) is enforced with a short Redis lock.
+- **scheduler service**: owns the schedule for all orgs' monitors. Decides which checks are due and enqueues check jobs (onto the event bus, Kafka or Redis Streams via `PULSE_BUS`) keyed so a given monitor's checks are ordered and not duplicated. Rebuilds schedule from PostgreSQL on start; in-flight incident state is derived from stored data, never held only in memory.
+- **worker fleet**: horizontally scaled stateless workers consume check jobs from the bus, execute the HTTP request with timeout, apply SSRF policy, and emit a check-result event; the platform persists the result. Workers scale out with monitor count and check frequency. Per-monitor exclusion (for "check now" vs scheduled) is enforced with a short Redis lock.
 - **alerting service**: consumes check-result events, runs the per-monitor state machine (counts, threshold, incident open/close, dedup of one-down/one-up), persists incidents, and emits notification events. Dedup and ordering per monitor are the correctness-critical part and must be exactly-once in effect even if a check event is redelivered.
 - **notifier service**: consumes notification events and delivers to channels (Slack/Discord/webhook/SMTP) with retry/backoff. A failed delivery after retries is recorded visibly (incident timeline + audit/log). Outbound delivery is at-least-once; payloads carry an idempotency-friendly identity so a duplicate delivery is recognizable downstream.
 - **api service**: the SPA backend and public REST API. Authn (OAuth/JWT/API key), authz (org + role), CRUD, reads of status/history/incidents.
 
-**Control plane vs regional data plane.** The topology splits in two. The **control plane** holds api, scheduler, alerting, notifier, PostgreSQL, and the central Kafka, in one home region. The **regional data planes** are the worker fleets that actually reach customer endpoints, one fleet per region we operate (6.7). The scheduler enqueues a check job tagged with its target region; the worker fleet in that region executes it and writes the result, tagged with the region, back to the central store. All cross-region aggregation (down policy, uptime, status pages) happens against that central store, so there is one source of truth for a monitor's state even though checks fan out across regions.
+**Control plane vs regional data plane.** The topology splits in two. The **control plane** holds api, scheduler, alerting, notifier, PostgreSQL, and the central event bus (Kafka or Redis Streams via `PULSE_BUS`), in one home region. The **regional data planes** are the worker fleets that actually reach customer endpoints, one fleet per region we operate (6.7). The scheduler enqueues a check job tagged with its target region; the worker fleet in that region executes it and writes the result, tagged with the region, back to the central store. All cross-region aggregation (down policy, uptime, status pages) happens against that central store, so there is one source of truth for a monitor's state even though checks fan out across regions.
 
 Scheduling accuracy, throughput, and delivery-latency targets are committed in section 12.
 
@@ -331,7 +332,7 @@ A public, shareable status page per org is a real adoption driver (it gets Pulse
 
 ### v1 of status pages
 
-- An org can create one or more **status pages**. Each has a name, a public slug (`status.pulse.app/{org-slug}/{page-slug}` or a single page at `{org-slug}.pulse.app`, decision in section 16), and a list of selected monitors to display.
+- An org can create one or more **status pages**. Each has a name, a public slug (`status.pulsepager.com/{org-slug}/{page-slug}` or a single page at `{org-slug}.pulsepager.com`, decision in section 16), and a list of selected monitors to display.
 - For each displayed monitor the public page shows: a **friendly display name** (not the raw URL, so internal URLs are not leaked), current status (up/down/degraded mapping from monitor status), and an **uptime summary** over a window (e.g. last 24h / 7d / 90d) plus a recent history bar. The raw URL, headers, body, assertions, and check internals are never exposed publicly.
 - Overall page status banner: "All systems operational" / "Partial outage" / "Major outage" derived from the displayed monitors.
 - Open incidents on displayed monitors appear as public incidents with start time and (on recovery) duration. Owner/admin/member can post a short human update on an incident that shows on the page (incident annotations).
@@ -405,7 +406,7 @@ UX principles carried from v1: clean, fast, opinionated layout. No dashboard bui
 
 ## 11. Billing and plans
 
-Even though Stripe integration is phased (Phase 2), the plan/seat/usage model is defined now because it shapes the data model, limits enforcement, and the upgrade prompts throughout the UI.
+Billing shipped on Paddle (Paddle is the Merchant of Record, so it handles payment, plan management, taxes, and invoices). The plan/seat/usage model shapes the data model, limits enforcement, and the upgrade prompts throughout the UI.
 
 ### Billing axes and metering dimensions
 
@@ -453,8 +454,8 @@ Plan limits are an entitlement set per org, and enforcement is cross-cutting: it
 - **At the scheduler, independently.** The scheduler respects the org's interval floor and region entitlement when it dispatches, so an existing monitor created under a higher plan cannot keep running at a faster interval or in a richer region set after a downgrade. The api enforces on write; the scheduler enforces on every dispatch. Neither trusts the other, so there is no single place to bypass.
 - **Cached for the hot path.** Org entitlements are cached so the scheduler and api do not pay a database read per check or per request; cache invalidation follows plan changes.
 - Downgrades that would exceed the lower plan's limits prompt the owner to bring usage under the limit first (disable monitors, remove members, drop extra regions) rather than silently deleting data.
-- Stripe is the likely integration for payment, plan management, and invoices (Phase 2). Until then, plans are set internally and limits are still enforced.
-- Trials: a 14-day no-card trial of the Team tier is offered, dropping safely to Free on expiry (full model and trial mechanics live in PRD-006).
+- Payment, plan management, and invoices run through Paddle (Merchant of Record), which is shipped. Limits are enforced regardless of payment state.
+- Trials: a no-card trial is offered (3 days monthly, 7 days annual), dropping safely to Free on expiry, with a 35-day re-trial deny window anchored on the subscription's `ended_at` (full model and trial mechanics live in PRD-006).
 
 (This section states the product behavior; the architecture team owns how the cache, the write checks, and the scheduler checks are built.)
 
@@ -472,7 +473,7 @@ These numbers are commitments that drive the architecture. They are defensible f
 | Active monitors | Hundreds of thousands (design for 500k) | 50k orgs averaging ~10 active monitors, with headroom for large orgs |
 | Sustained check throughput | ~10,000 checks/sec sustained, 2x burst | 500k monitors, blended avg interval ~60s -> ~8.3k/s steady; round up and keep burst headroom |
 | Scheduling accuracy | Check dispatched within 5 s of its scheduled time at p99 under normal load | "On schedule" is the product promise; 5 s is invisible at 30s+ intervals and achievable with a distributed scheduler + queue |
-| Check-result to decision latency | Alerting state updated within 5 s of the check result at p99 | Keeps detection fast; the queue path (worker -> Kafka -> alerting) must stay short |
+| Check-result to decision latency | Alerting state updated within 5 s of the check result at p99 | Keeps detection fast; the queue path (worker -> bus -> alerting) must stay short |
 | Notification delivery latency | Down/recovery notification sent within 30 s of the triggering check at p99 (excluding the third-party channel's own latency) | "Know before your customers" needs sub-minute end-to-end; our controllable budget is 30 s |
 | API latency | p99 < 300 ms for reads, p99 < 500 ms for writes (excluding "check now" which does network I/O) | Snappy SPA + good API DX; standard SaaS API expectation |
 
@@ -577,25 +578,25 @@ Each phase states explicit in/out scope.
 
 The smallest thing that proves the distributed register -> check -> detect -> notify loop across the real services.
 
-- In: a single org (internal), HTTP GET monitors via API/seed, the five services wired (api, scheduler, worker, alerting, notifier) on Kubernetes with PostgreSQL + Redis + Kafka; scheduler enqueues, worker fleet executes with timeout + SSRF block, alerting runs the state machine with one-down/one-up dedup, notifier delivers to Slack; check results in PostgreSQL; a bare monitors-list behind Google login. The check-job and check-result schema carry the `region` field from this phase (single home region for now), so multi-region is additive later.
+- In: a single org (internal), HTTP GET monitors via API/seed, the five services wired (api, scheduler, worker, alerting, notifier) on Kubernetes with PostgreSQL + Redis + the event bus (Kafka or Redis Streams via `PULSE_BUS`); scheduler enqueues, worker fleet executes with timeout + SSRF block, alerting runs the state machine with one-down/one-up dedup, notifier delivers to Slack; check results in PostgreSQL; a bare monitors-list behind Google login. The check-job and check-result schema carry the `region` field from this phase (single home region for now), so multi-region is additive later.
 - Out: multi-org UI, roles, other channels, status pages, billing, public API, the non-GET fields, multi-region check execution (the field exists, the fan-out does not yet).
 - Done when: a monitor goes down and recovers and exactly one down + one recovery Slack message arrive, with correct incident timing, through the distributed pipeline, and it survives a worker restart.
 
 ### Phase 1 - Private beta (core monitoring + orgs + social login + channels)
 
 - In: full multi-tenancy (users, orgs, memberships, seats, invitations, org switcher); Google + GitHub login + account linking; full RBAC (owner/admin/member/viewer) and the permission matrix; full HTTP monitor fields and validation (reused v1); the complete alerting machine and status derivation (reused v1); all four channels with test-send and the reused payloads; full UI screens 1-8, 10, 13, 14; retention cleanup; secret encryption + redaction; SSRF on-by-default; audit log.
-- Out: status pages, public API, billing/Stripe, non-HTTP check types, SSO/SCIM, multi-region check execution (still single home region; the `region` field is carried), rollups (raw queries are fine at beta scale).
+- Out: status pages, public API, billing, non-HTTP check types, SSO/SCIM, multi-region check execution (still single home region; the `region` field is carried), rollups (raw queries are fine at beta scale).
 - Done when: external beta orgs can sign in, invite teammates with roles, create monitors, get correct alerts, all isolated per org.
 
 ### Phase 2 - GA (status pages, public API, billing)
 
-- In: status pages v1 (section 8, Pulse subdomain, no custom domain); public REST API v1 with API keys, rate limits, pagination, OpenAPI spec as the single source of truth served as interactive Swagger UI at `/api/docs`, plus the public documentation site and pricing page on GitHub Pages with the CI job that regenerates the API reference from the spec on each release; outbound org-level webhooks; billing with Stripe (plans, seats, per-monitor and per-region metering, usage limits enforced, invoices); cross-cutting entitlement enforcement (api on write and scheduler on dispatch, with cached entitlements, section 11); plan-tier interval floors and limits including region entitlement; **multi-region check execution** (region selection, per-region checks, `down_policy` aggregation, probe-fleet health, coverage-degraded state, plan-permitting regional fail-over, section 6.7), launching with a small set of regions; rollups for fast history/uptime at retention scale; usage/billing UI (screens 9, 11, 12).
+- In: status pages v1 (section 8, Pulse subdomain, no custom domain); public REST API v1 with API keys, rate limits, pagination, OpenAPI spec as the single source of truth served as interactive Swagger UI at `/api/docs`, plus the public documentation site and pricing page on GitHub Pages with the CI job that regenerates the API reference from the spec on each release; outbound org-level webhooks; billing with Paddle (plans, seats, per-monitor and per-region metering, usage limits enforced, invoices); cross-cutting entitlement enforcement (api on write and scheduler on dispatch, with cached entitlements, section 11); plan-tier interval floors and limits including region entitlement; **multi-region check execution** (region selection, per-region checks, `down_policy` aggregation, probe-fleet health, coverage-degraded state, plan-permitting regional fail-over, section 6.7), launching with a small set of regions; rollups for fast history/uptime at retention scale; usage/billing UI (screens 9, 11, 12).
 - Out: custom-domain status pages, subscriber notifications, non-HTTP types, SSO/SCIM, regional data residency, an expanded region set (GA ships a small set), PagerDuty/Opsgenie/SMS/Teams/Telegram.
 - Done when: a customer can self-serve sign up, pay, manage monitors via API, and publish a status page, with limits enforced per plan.
 
 ### Phase 3 - Scale and enterprise
 
-- In: SSO (SAML/OIDC) and SCIM provisioning; custom roles; more check types (TCP, TLS-cert-expiry, DNS, keyword/browser, ICMP); custom-domain status pages + subscriber notifications + maintenance windows; PagerDuty, Opsgenie, SMS, Telegram, Microsoft Teams channels; re-notify-while-down and basic escalation; **expanded region set and regional data residency** for compliance-sensitive customers (multi-region check execution itself shipped at GA, section 6.7); private-location agent (monitor internal endpoints safely); SOC 2 Type II; advanced alerting (latency/SLO percentile alerts); 99.95% control-plane SLA tier.
+- In: SSO (SAML/OIDC) and SCIM provisioning; custom roles; more check types (TCP, DNS, keyword/browser, ICMP, cron/heartbeat; TLS/SSL-cert-expiry already shipped at GA, section 6.1); custom-domain status pages + subscriber notifications + maintenance windows; PagerDuty, Opsgenie, SMS, Telegram, Microsoft Teams channels; re-notify-while-down and basic escalation; **expanded region set and regional data residency** for compliance-sensitive customers (multi-region check execution itself shipped at GA, section 6.7); private-location agent (monitor internal endpoints safely); SOC 2 Type II; advanced alerting (latency/SLO percentile alerts); 99.95% control-plane SLA tier.
 - Out: APM/tracing/logs, full on-call scheduling product, general dashboard builder (still non-goals).
 
 ---
@@ -608,7 +609,7 @@ Core behavior is decided in the body above. These are genuinely open, each with 
 
 2. **Must the invited email match the signed-in provider email on accept?** Recommended: **yes, must match.** Stops invitation links from being forwarded and accepted by the wrong person. Trade-off: someone whose GitHub email differs from the invited address must use the matching identity or ask for a re-invite; acceptable for security.
 
-3. **Status-page URL shape.** Recommended: **`{org-slug}.pulse.app` subdomain per org, with multiple pages as paths** (`{org-slug}.pulse.app/{page-slug}`), single page served at the root. Cleaner and more brandable than a shared `status.pulse.app/{org}/{page}` path, and it sets up custom domains naturally. Trade-off: subdomain management and wildcard TLS to handle; worth it. (Used in section 8.)
+3. **Status-page URL shape.** Recommended: **`{org-slug}.pulsepager.com` subdomain per org, with multiple pages as paths** (`{org-slug}.pulsepager.com/{page-slug}`), single page served at the root. Cleaner and more brandable than a shared `status.pulsepager.com/{org}/{page}` path, and it sets up custom domains naturally. Trade-off: subdomain management and wildcard TLS to handle; worth it. (Used in section 8.)
 
 4. **Personal org vs forced team org at signup.** Recommended: **always create a personal org** (section 3). Trade-off: some users end up with an unused personal org after joining a company org; harmless, and it guarantees no empty-state dead end.
 

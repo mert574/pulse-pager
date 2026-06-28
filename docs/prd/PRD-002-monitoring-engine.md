@@ -355,9 +355,9 @@ Raw check results are retained per the org's plan tier (master section 12, PRD-0
 | Plan | Raw check-result retention |
 |------|----------------------------|
 | Free | 7 days |
-| Starter | 30 days |
-| Team | 90 days |
-| Business | 180 days |
+| Hobby | 30 days |
+| Professional | 90 days |
+| Custom | 180 days |
 
 After the tier window, raw results are deleted by a background cleanup job (section 8.4). Incidents and monitor config are retained for the life of the org and are not subject to raw-result cleanup (master section 12).
 
@@ -424,7 +424,7 @@ No pile-ups and no single stall point (master 6.6):
 Validation (section 2.3):
 
 - A1: Creating a monitor with `interval_seconds = 20` is rejected on `interval_seconds` (below the 30 s hard floor).
-- A2: On Free, creating a monitor with `interval_seconds = 60` is rejected on `interval_seconds` with an upsell (below the 120-min plan floor) (PRD-006).
+- A2: On Free, creating a monitor with `interval_seconds = 60` is rejected on `interval_seconds` with an upsell (below the 15-min Free plan floor of 900 s) (PRD-006).
 - A3: Creating a GET monitor with a `body` is rejected on `body`.
 - A4: Creating a monitor with `interval_seconds = 5, timeout_seconds = 10` is rejected on `interval_seconds` (interval < timeout).
 - A5: Creating a monitor with a `region` not in the org's plan is rejected on `regions` (PRD-007).

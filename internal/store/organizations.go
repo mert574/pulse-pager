@@ -234,8 +234,8 @@ func (p *Pool) AdminListOrganizations(ctx context.Context) ([]*domain.Organizati
 	return out, rows.Err()
 }
 
-// SetOrganizationPlan writes the org's billing tier (operator-set until Stripe
-// lands, RFC-001 4.2). Returns pgx.ErrNoRows if no active org has that id, so the
+// SetOrganizationPlan writes the org's billing tier (operator override; self-serve
+// changes go through Paddle, RFC-001 4.2). Returns pgx.ErrNoRows if no active org has that id, so the
 // caller can map it to a 404.
 func (p *Pool) SetOrganizationPlan(ctx context.Context, orgID int64, plan string) error {
 	tag, err := p.Exec(ctx,

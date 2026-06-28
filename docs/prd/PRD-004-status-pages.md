@@ -18,7 +18,7 @@ A status page is a public, shareable web page, scoped to one org, that shows whe
 Status pages serve two business jobs that the master calls out (master 8, section 14):
 
 - **Adoption driver.** A public page puts Pulse in front of the customer's own customers. Master section 14 tracks "% of orgs with a published status page" as an engagement metric.
-- **Conversion lever.** Custom domain is a paid feature (master 8 phased, master 11 plan table), and page count is plan-gated (Free 1, Starter 1, Team 3, Business 10). Hitting the page cap or wanting a branded domain is a stated upgrade trigger (master 14 conversion row).
+- **Conversion lever.** Custom domain is a paid feature (master 8 phased, master 11 plan table), and page count is plan-gated (Free 1, Hobby 3, Professional 10, Custom unlimited). Hitting the page cap or wanting a branded domain is a stated upgrade trigger (master 14 conversion row).
 
 ### 1.2 Goals
 
@@ -58,10 +58,10 @@ Every status page belongs to exactly one org (master 3 isolation invariant). Fie
 
 Per master 16 decision 3 (locked recommended default), the shape is the per-org subdomain with pages as paths:
 
-- Single page served at the org subdomain root: `{org-slug}.pulse.app`.
-- Additional pages served as paths under it: `{org-slug}.pulse.app/{page-slug}`.
+- Single page served at the org subdomain root: `{org-slug}.pulsepager.com`.
+- Additional pages served as paths under it: `{org-slug}.pulsepager.com/{page-slug}`.
 
-The `{org-slug}` comes from the org (master 10 org settings has an org slug). The `{page-slug}` is the StatusPage `slug`. This shape is cleaner and more brandable than a shared `status.pulse.app/{org}/{page}` path and sets up custom domains naturally (master 16.3 rationale). The org slug renaming case is handled in section 12.5.
+The `{org-slug}` comes from the org (master 10 org settings has an org slug). The `{page-slug}` is the StatusPage `slug`. This shape is cleaner and more brandable than a shared `status.pulsepager.com/{org}/{page}` path and sets up custom domains naturally (master 16.3 rationale). The org slug renaming case is handled in section 12.5.
 
 ### 2.2 Branding (v1 scope)
 
@@ -74,7 +74,7 @@ No fonts, no custom CSS, no layout control in v1 (master 8 "No full theming").
 
 ### 2.3 Page count limit
 
-The number of status pages an org can create is plan-gated and enforced on write at the api, per master 11 entitlement enforcement (Free 1, Starter 1, Team 3, Business 10). Creating a page past the plan cap is rejected with the standard per-field error envelope and an upsell (master 11). See PRD-006 for the gating source of truth.
+The number of status pages an org can create is plan-gated and enforced on write at the api, per master 11 entitlement enforcement (Free 1, Hobby 3, Professional 10, Custom unlimited). Creating a page past the plan cap is rejected with the standard per-field error envelope and an upsell (master 11). See PRD-006 for the gating source of truth.
 
 ---
 
@@ -234,7 +234,7 @@ All three are out of v1 (master 8 phased, master 15 Phase 3). Stated here so the
 ### 9.1 Custom domain (paid)
 
 - `status.customer.com` via CNAME plus managed TLS (master 8). The per-org subdomain URL shape (section 2.1) sets this up naturally (master 16.3).
-- Paid feature and a conversion lever; available on Team and Business plans (master 11 plan table "Custom domain status page" Y for Team/Business).
+- Paid feature and a conversion lever; available on Professional and Custom plans (master 11 plan table "Custom domain status page" Y for Professional/Custom).
 - Owner/admin only (master 4 matrix "Configure custom domain for status page" Y for owner/admin, N for member/viewer).
 - Entitlement and TLS provisioning details belong to PRD-006 (billing/entitlement) and the architecture team. This PRD only fixes the product behavior and RBAC.
 
@@ -300,7 +300,7 @@ The public page itself needs no Pulse account to view; it is public by design on
 - **Monitor deleted while on a page.** The displayed-monitor entry referencing it must be dropped from the page automatically; the public page must not error or show a dangling "unknown service". The banner recomputes over the remaining visible monitors. The editor shows that an entry was removed because its monitor was deleted.
 - **Page with zero monitors.** A published page with no visible monitors shows an empty-state ("No services configured") and the banner reads "All systems operational" rather than implying an outage (section 4, `N = 0`). It is a valid published state, not an error.
 - **All monitors on the page are disabled.** Same as zero monitors for public purposes, since disabled monitors are hidden (3.5): empty-state and "All systems operational".
-- **Org renamed / slug change.** Changing the org slug changes the page's URL host (`{old-slug}.pulse.app` to `{new-slug}.pulse.app`). The old URL must not silently 404 in a way that breaks customers' existing links without warning; recommended default is to redirect the old org subdomain to the new one for a grace window and warn the owner in the editor before the slug change takes effect. (Custom-domain pages, phased, are unaffected by org-slug changes since they use the customer's own domain.)
+- **Org renamed / slug change.** Changing the org slug changes the page's URL host (`{old-slug}.pulsepager.com` to `{new-slug}.pulsepager.com`). The old URL must not silently 404 in a way that breaks customers' existing links without warning; recommended default is to redirect the old org subdomain to the new one for a grace window and warn the owner in the editor before the slug change takes effect. (Custom-domain pages, phased, are unaffected by org-slug changes since they use the customer's own domain.)
 - **Pending monitor on a fresh page.** Renders Operational, not an error (3.5).
 - **Plan downgrade below page count.** If a downgrade would leave more pages than the lower plan allows, the owner is prompted to unpublish/remove pages first rather than Pulse silently deleting them (master 11 downgrade behavior). See PRD-006.
 - **Retention shorter than 90d.** The 90d uptime window is clamped to the retention tier and labeled (3.3).
@@ -309,7 +309,7 @@ The public page itself needs no Pulse account to view; it is public by design on
 
 ## 13. Open decisions (with recommended defaults)
 
-1. **URL shape confirmation.** Recommended default: confirm master 16.3, the `{org-slug}.pulse.app` per-org subdomain with pages as paths and the single page at root. This sub-PRD is written against it. Trade-off: wildcard TLS and subdomain management (master 16.3); worth it for branding and the custom-domain path. Ship the default unless overridden.
+1. **URL shape confirmation.** Recommended default: confirm master 16.3, the `{org-slug}.pulsepager.com` per-org subdomain with pages as paths and the single page at root. This sub-PRD is written against it. Trade-off: wildcard TLS and subdomain management (master 16.3); worth it for branding and the custom-domain path. Ship the default unless overridden.
 
 2. **Per-region public detail.** Recommended default: **hidden in v1** (section 7). Show one verdict per monitor, no region breakdown, no coverage-degraded text. Trade-off: a multi-region power user cannot show "down only in eu-west" publicly; acceptable for v1 and revisitable if customers ask. Coverage-degraded must stay internal regardless (master 6.7).
 

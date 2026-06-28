@@ -31,7 +31,7 @@ export async function fetchPublicStatusPage(slug: string): Promise<PublicStatusP
   return (await res.json()) as PublicStatusPage;
 }
 
-// Resolve which status page to show. The subdomain wins ({slug}.pulse.app), so a
+// Resolve which status page to show. The subdomain wins ({slug}.pulsepager.com), so a
 // custom-branded host resolves on its own; otherwise a ?slug= query param or the
 // last path segment is used, which is handy for local dev and path-based hosting.
 // Returns null when no slug can be determined (the page then shows its 404 state).

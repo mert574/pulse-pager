@@ -3,14 +3,14 @@
 Status: DRAFT for review
 Author: Principal Architecture
 Audience: every engineer who will write a sub-RFC or a service
-Supersedes for runtime concerns: `docs/archive/ARCHITECTURE_v1_monolith.md` (the single-binary topology is obsolete; the package contracts it defined are reused, see section 14)
+Supersedes for runtime concerns: the v1 single-binary architecture (the single-binary topology is obsolete; the package contracts it defined are reused, see section 14)
 Product source of truth: `docs/PRD.md` and `docs/prd/PRD-001..007`. Where this RFC finds a product gap it is flagged in an "Open questions for product" box rather than decided here.
 
 ## 0. Purpose and how to read this
 
 This is the single technical source of truth for Pulse. It is decision-complete on the cross-cutting concerns so the thirteen sub-RFCs (section 13) can be written in parallel against stable seams without contradicting each other. It does not duplicate the deep design of any one system; each section ends by naming the sub-RFC that owns the detail.
 
-Every load-bearing choice below states the decision, the reasoning, and the rejected alternatives. The locked platform constraints (Go microservices in one module, PostgreSQL + Redis + Kafka, Prometheus/Grafana/OpenTelemetry, Docker/Kubernetes, Lit SPA behind nginx, Google/GitHub OIDC + RS256 JWT + per-org API keys, multi-tenant orgs with RBAC, multi-region probe fleet, tiered entitlements, reuse of the built Go packages) are taken as given and are not re-litigated.
+Every load-bearing choice below states the decision, the reasoning, and the rejected alternatives. The locked platform constraints (Go microservices in one module, PostgreSQL + Redis + a pluggable event bus (Kafka by default, or Redis Streams via `PULSE_BUS`), Prometheus/Grafana/OpenTelemetry, Docker/Kubernetes, Lit SPA behind nginx, Google/GitHub OIDC + RS256 JWT + per-org API keys, multi-tenant orgs with RBAC, multi-region probe fleet, tiered entitlements, reuse of the built Go packages) are taken as given and are not re-litigated.
 
 Conventions used throughout: "control plane" = the home-region services and stores; "data plane" = the regional worker fleets that reach customer endpoints. "Org" is the tenant. All timestamps are RFC3339 UTC on the wire. Banned in this doc by house style: em-dashes.
 
@@ -37,7 +37,7 @@ Pulse splits into a single control plane in one home region and N regional data 
    |   |  nginx    |  TLS   |               api service (HPA)          |    |
    |   | ingress + |------->|  SPA backend + public REST /api/v1       |    |
    |   | SPA static|        |  OAuth callback + JWKS (/.well-known)    |    |
-   |   +-----------+        |  Stripe webhooks  +  Swagger UI /api/docs|    |
+   |   +-----------+        |  Paddle webhooks  +  Swagger UI /api/docs|    |
    |        ^               |  authn (JWT/keys) + authz (RBAC+entitle) |    |
    |        | static page   +----+--------+--------------+-------------+    |
    |        | serving (cached)   |reads/   |produce       |reads          |
@@ -96,7 +96,7 @@ Pulse splits into a single control plane in one home region and N regional data 
 | API client (key) | nginx -> api `/api/v1` | per-org API key, rate-limited per key |
 | Status page viewer | nginx -> status-page read path | public, unauthenticated, cache-first, must stay up during customer incidents |
 | Google / GitHub | api OAuth callback + JWKS | api is the only service that talks to OIDC providers |
-| Stripe | api webhook endpoint | signature-verified; api is the only Stripe integration point |
+| Paddle | api webhook endpoint | signature-verified; api is the only Paddle integration point |
 | Customer endpoints / Slack / Discord / SMTP | outbound only, from workers (checks) and notifier (alerts) | never inbound |
 
 The hard split: nothing in a regional data plane holds durable state or makes a product decision. A region runs HTTP checks and emits results. If a whole region disappears, the control plane keeps all state and simply sees missing results, which probe-fleet health turns into coverage-degraded rather than a customer incident (PRD 6.7).
@@ -111,14 +111,14 @@ Five services, one shared module. Each is a separate `cmd/<service>` binary buil
 
 | Aspect | Decision |
 |--------|----------|
-| Responsibility | SPA backend + public REST `/api/v1`; authn (OAuth/OIDC login, JWT issue+verify, API key verify); authz (RBAC + entitlement checks on write); CRUD for all org resources; read paths for status/history/incidents; Swagger UI at `/api/docs`; OAuth callback + JWKS at `/.well-known/jwks.json`; Stripe webhooks; status-page read serving |
+| Responsibility | SPA backend + public REST `/api/v1`; authn (OAuth/OIDC login, JWT issue+verify, API key verify); authz (RBAC + entitlement checks on write); CRUD for all org resources; read paths for status/history/incidents; Swagger UI at `/api/docs`; OAuth callback + JWKS at `/.well-known/jwks.json`; Paddle webhooks; status-page read serving |
 | Statefulness | Stateless. All state in Postgres/Redis. Holds the RS256 signing private key in memory (from a mounted secret/KMS) and publishes the public key via JWKS |
 | Scaling | HPA on CPU and on request concurrency (in-flight requests / p95 latency via a custom metric). Read replicas absorb read-heavy traffic |
 | Reads | Postgres (primary for writes, replicas for reads), Redis (entitlement cache, rate-limit counters, JWKS/session revocation, status-page cache) |
 | Writes | Postgres (all org resources, incidents-via-read-only here, audit events); Kafka (`monitor.changed`, `audit.events`, `billing.events`); Redis (cache fills, rate-limit increments) |
 | Failure behavior | Stateless, so a pod loss is invisible behind the HPA + load balancer. If Postgres primary is down, writes fail closed with 5xx and reads fall to replicas (stale-tolerant). If Redis is down, entitlement and rate-limit checks fail safe per section 12 (fail-closed on entitlement writes, fail-open with a conservative default on rate limit) |
 
-OAuth callback, JWKS, and Stripe webhooks all live in api on purpose. They are request/response HTTP surfaces that need the same TLS, routing, and secret access api already has, and splitting them into a separate identity or billing service would add a network hop and a second JWT-signing key holder for no isolation benefit at this scale. RFC-003 owns auth detail, PRD-006/RFC-009 own billing.
+OAuth callback, JWKS, and Paddle webhooks all live in api on purpose. They are request/response HTTP surfaces that need the same TLS, routing, and secret access api already has, and splitting them into a separate identity or billing service would add a network hop and a second JWT-signing key holder for no isolation benefit at this scale. RFC-003 owns auth detail, PRD-006/RFC-009 own billing.
 
 ### 2.2 scheduler
 
@@ -139,7 +139,7 @@ OAuth callback, JWKS, and Stripe webhooks all live in api on purpose. They are r
 | Statefulness | Fully stateless. Reuses `internal/checker` unchanged |
 | Scaling | HPA on Kafka consumer lag for the region's `check.jobs` topic (primary signal) plus CPU. Lag is the right signal because it directly tracks "checks waiting to run" |
 | Reads | Kafka (`check.jobs.<region>`). Monitor config travels inside the job payload so workers do not read Postgres at all (see section 5) |
-| Writes | Kafka (`check.results`, region heartbeats), Redis (per-monitor "check now" lock acquire/release). No Postgres write; the control-plane consumer does the durable `check_results` upsert |
+| Writes | Bus (`check.results`, region heartbeats), Redis (per-monitor "check now" lock acquire/release, live check-state). Postgres: the worker upserts the `monitor_last_failure` and `monitor_cert` side tables, but it does not write the durable `check_results` row; the alerting consumer owns that upsert |
 | Failure behavior | A worker crash mid-check leaves the job unacked; Kafka redelivers it to another worker. The idempotent upsert by the control-plane consumer (section 5) makes redelivery safe. If a whole region's workers are down, no results flow for that region; the control plane sees missing results and the alerting aggregation excludes that region (coverage-degraded), never pages |
 
 Decision: workers emit `check.results` to their regional Kafka only and do not write Postgres. A single control-plane consumer does the idempotent `check_results` upsert (keyed `(org_id, monitor_id, region, checked_at)`) and applies the verdict in the same transaction (RFC-006 section 5.4). This means the durable row and the alerting trigger share one write path and cannot diverge under partial failure, and the worker stays fully off the Postgres path. Alternative considered: have the worker write the row directly and emit the event after. Rejected because two write paths give the durable result and the alerting trigger two different failure modes. RFC-005 owns the worker, RFC-006 the control-plane consumer, RFC-008 the regional aspect.
@@ -266,9 +266,9 @@ Cost and egress trade-off (stated, owned by RFC-008): mirroring `check.results` 
 
 ---
 
-## 5. Eventing model (Kafka)
+## 5. Eventing model (pluggable bus)
 
-This sets the contract RFC-002 details. The rules here are binding on every producer and consumer.
+This sets the contract RFC-002 details. The rules here are binding on every producer and consumer. The bus is pluggable behind a backend interface, selected by `PULSE_BUS`: Kafka is the default backend and Redis Streams is the alternate, both with the same at-least-once contract. The topic names and partition-key rules below apply whichever backend is in use.
 
 ### 5.1 Canonical topics
 
@@ -279,7 +279,7 @@ This sets the contract RFC-002 details. The rules here are binding on every prod
 | `check.results` | worker | alerting | monitor_id | the outcome of one check, region-tagged |
 | `notify.events` | alerting | notifier | monitor_id (or incident_id) | a down/recovery event to deliver |
 | `audit.events` | api (and any service taking an auditable action) | audit sink / api read path | org_id | append-only audit trail (PRD 13) |
-| `billing.events` | api (Stripe webhook handler) | api billing consumer / entitlement invalidator | org_id | plan changes, payment events; drive entitlement cache invalidation |
+| `billing.events` | api (Paddle webhook handler) | api billing consumer / entitlement invalidator | org_id | plan changes, payment events; drive entitlement cache invalidation |
 | `region.health` | worker (heartbeats), region controller | alerting, scheduler | region | probe-fleet liveness feeding coverage-degraded and failover (RFC-008) |
 
 ### 5.2 Partition-key strategy
@@ -360,7 +360,7 @@ check_results is the firehose (PRD scale: ~10k inserts/sec sustained, 500k monit
 
 ### 6.3 Migrations
 
-Decision: a forward-only versioned SQL migration set applied by an init job before rolling out new service versions, with a `schema_migrations` table tracking applied versions. This carries forward the v1 hand-rolled approach in spirit but runs as a Kubernetes pre-deploy job rather than at service start, so five services do not race to migrate. RFC-001 picks the exact tool (the choice is between the same minimal embedded runner and a standard library such as golang-migrate; the deciding factor is partition management and RLS policy DDL, which RFC-001 owns).
+Decision: a forward-only versioned SQL migration set applied by an init job before rolling out new service versions, with goose's `goose_db_version` table tracking applied versions. This carries forward the v1 hand-rolled approach in spirit but runs as a Kubernetes pre-deploy job rather than at service start, so five services do not race to migrate. RFC-001 picks the exact tool (it chose goose; the deciding factor is partition management and RLS policy DDL, which RFC-001 owns).
 
 RFC-001 owns the full schema, partition mechanics, RLS policies, backup/restore, and the cross-tenant test suite.
 
@@ -476,7 +476,7 @@ Decisions here; RFC-011 owns the full design (DR, capacity, CI/CD detail).
 ### 11.1 Kubernetes layout
 
 - Namespaces: `pulse-system` (shared infra clients, observability), `pulse-control` (api, scheduler, alerting, notifier in the home region), and one `pulse-region-<code>` per data-plane region (workers only). Environments are separate clusters or at least separate namespaces per env (dev/staging/prod), decided in RFC-011 toward separate clusters for prod isolation.
-- Ingress/TLS: nginx ingress terminates TLS, serves SPA static assets, proxies `/api`, and serves status pages (cache-first). Wildcard TLS for `{org-slug}.pulse.app` status-page subdomains (PRD 8 decision); custom-domain status pages (phased) bring managed per-domain certs.
+- Ingress/TLS: nginx ingress terminates TLS, serves SPA static assets, proxies `/api`, and serves status pages (cache-first). Wildcard TLS for `{org-slug}.pulsepager.com` status-page subdomains (PRD 8 decision); custom-domain status pages (phased) bring managed per-domain certs.
 - HPA targets: api on CPU + in-flight/p95; worker/alerting/notifier on their respective Kafka consumer lag; scheduler not horizontally scaled (singleton).
 
 ### 11.2 Scheduler leader election (decision)
@@ -513,7 +513,7 @@ The metered limits and their rejection codes (from PRD-006, binding on api so th
 
 The cache contract:
 - Entitlements are read through `internal/entitlements`, which serves from Redis with Postgres as source of truth. The hot paths (api write, scheduler dispatch) never pay a Postgres read per request or per check.
-- Invalidation is event-driven: a plan change (Stripe webhook -> `billing.events`, or an internal admin change) invalidates the org's cached entitlement so the next read repopulates from Postgres. The cache key is per org.
+- Invalidation is event-driven: a plan change (Paddle webhook -> `billing.events`, or an internal admin change) invalidates the org's cached entitlement so the next read repopulates from Postgres. The cache key is per org.
 - Fail-closed on entitlement writes: if entitlements cannot be determined (cache miss and Postgres unavailable), the api write is rejected rather than allowed, so a downgrade can never be bypassed by knocking over the cache. The scheduler, if it cannot read entitlements, holds the last known snapshot (it rebuilt from Postgres on boot) rather than dispatching wide-open.
 
 ---
@@ -640,4 +640,4 @@ These are product gaps or conflicts surfaced while writing the architecture. The
 
 3. Create-organization capability is not in the master RBAC matrix. PRD-001 marks "create a new organization" as open to any role but the master matrix (PRD 4) has no row for it and no endpoint is defined. The architecture treats org creation as a per-user action (any authenticated user can create an org and becomes its owner, matching the personal-org-at-signup model), but product should add the row so RFC-012 can define the endpoint without guessing.
 
-The following were genuinely open in the sub-PRDs but are now locked by the consistency review and are treated as settled by this RFC: 14-day Team trial (PRD-006 canonical), 14-day org-deletion grace, incident-duration-based uptime (PRD-002 canonical), quorum denominator = healthy-reporting regions `R`. A minor terminology nit (define "check" vs "probe" in one glossary place) is non-blocking doc polish. Everything else needed for the architecture is decided in the PRDs.
+The following were genuinely open in the sub-PRDs but are now locked by the consistency review and are treated as settled by this RFC: 3-day trial (7 on annual) (PRD-006 canonical), 14-day org-deletion grace, incident-duration-based uptime (PRD-002 canonical), quorum denominator = healthy-reporting regions `R`. A minor terminology nit (define "check" vs "probe" in one glossary place) is non-blocking doc polish. Everything else needed for the architecture is decided in the PRDs.

@@ -20,27 +20,27 @@ The flagship screen. `GET /orgs/{orgId}/monitors` returns `MonitorListItem`
 last_check_at, next_check_at, interval_seconds, last_latency_ms, incident_open,
 cert_expires_at. What the design wants on top of that:
 
-- **OPEN — per-monitor uptime %.** The mockup row shows an uptime figure per monitor
+- **OPEN: per-monitor uptime %.** The mockup row shows an uptime figure per monitor
   (e.g. 99.98%). `MonitorListItem` has no uptime field. The status page already has
   `PublicUptime` (uptime_24h / uptime_7d / uptime_90d) for the public projection; the
   org-side list needs an equivalent. Proposal: add `uptime_24h` (number, nullable) to
   `MonitorListItem`, computed from check results over the last 24h. The row currently
   omits the uptime column.
-- **OPEN — per-monitor latency sparkline.** The mockup draws a small recent-latency
+- **OPEN: per-monitor latency sparkline.** The mockup draws a small recent-latency
   trend per row. No latency history is in the list payload. Proposal: a compact series
   (say the last N latency samples) either inlined on `MonitorListItem` as
   `latency_spark: number[]` or via a separate lightweight endpoint
   `GET /orgs/{orgId}/monitors/{id}/latency?window=24h`. The row currently omits the
   sparkline.
-- **OPEN — fleet uptime over 30 days.** The hero's headline number in the mockup. No
+- **OPEN: fleet uptime over 30 days.** The hero's headline number in the mockup. No
   org-level aggregate endpoint exists. Proposal: `GET /orgs/{orgId}/summary` returning
   fleet uptime windows (24h/7d/30d), counts by status, and checks/min. The hero
   currently shows honest live counts (total, up/down/degraded, open incidents,
   ssl<=14d) derived client-side from the list, not a 30-day uptime.
-- **OPEN — fleet latency series (last 24h).** The hero's line chart in the mockup.
+- **OPEN: fleet latency series (last 24h).** The hero's line chart in the mockup.
   Needs the same `summary` endpoint (or a dedicated metrics one) to return a fleet
   latency series. Currently not rendered.
-- **OPEN — checks per minute.** A mockup mini-stat. Derivable server-side from the
+- **OPEN: checks per minute.** A mockup mini-stat. Derivable server-side from the
   effective intervals; belongs on the proposed `summary` endpoint. Currently not shown.
 
 ### Folio (shell marquee, `app-root`)

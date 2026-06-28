@@ -25,8 +25,8 @@ import (
 // and floors come from the entitlements resolvers (the same ones the write gates
 // use), so the meter and the gate can never disagree.
 //
-// Plan changes are NOT here: they are Phase 2 (Stripe), set internally by an operator
-// until then (PRD-006 6/8.3). This slice is the usage data + catalog only.
+// Plan changes are NOT here: self-serve plan changes go through Paddle billing, plus
+// an operator override (PRD-006 6/8.3). This slice is the usage data + catalog only.
 
 // GetEntitlements returns the active org's plan with usage vs caps and the plan
 // floors/flags (PRD-006 7.1). Owner/admin only; member/viewer is 403.
@@ -114,8 +114,8 @@ func (s *Server) ListPlans(_ context.Context, _ apigen.ListPlansRequestObject) (
 	return apigen.ListPlans200JSONResponse(out), nil
 }
 
-// orgPlan reads the org's current billing tier from its stored plan (operator-set
-// until Stripe lands, PRD-006 6/8.3). The resolvers take the plan, so this is the one
+// orgPlan reads the org's current billing tier from its stored plan (set by Paddle
+// billing or an operator override, PRD-006 6/8.3). The resolvers take the plan, so this is the one
 // place that resolves it. A load error or unknown value falls back to Free, so a
 // missing/garbled row can never grant more than the free tier.
 func (s *Server) orgPlan(ctx context.Context, orgID int64) entitlements.Plan {

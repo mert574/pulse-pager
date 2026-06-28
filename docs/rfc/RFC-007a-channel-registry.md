@@ -57,7 +57,8 @@ The v1 payloads (slack/discord/webhook/smtp) are unchanged and stay byte-for-byt
 | `slack` | chat webhook | POST incoming-webhook, `{"text":...}` | `webhook_url` | (locked, PRD-003 4.3.2) |
 | `discord` | chat webhook | POST incoming-webhook, `{"content":...}` | `webhook_url` | (locked, PRD-003 4.3.3) |
 | `webhook` | generic | POST locked JSON envelope + custom headers | `url`, `custom_headers` | (locked, PRD-003 4.3.1) |
-| `smtp` | email | net/smtp, starttls/implicit/none | `password` | (locked, PRD-003 4.3.4) |
+| `smtp` | bring-your-own email | net/smtp, starttls/implicit/none | `password` | (locked, PRD-003 4.3.4) |
+| `email` | platform mailer | sends to org members via the platform SMTP (`platformemail.go`); config is a member list, addresses looked up at send time | none (config is non-secret) | capability `channel.email` |
 | `pagerduty` | Events API v2 Enqueue | `POST https://events.pagerduty.com/v2/enqueue`, `routing_key` in body, `event_action` trigger/resolve, `dedup_key` = incident id, severity critical on down | `routing_key` | https://developer.pagerduty.com/docs/events-api-v2/trigger-events/ |
 | `opsgenie` | Alert API | create `POST {host}/v2/alerts` with `alias` = incident id; close `POST {host}/v2/alerts/{alias}/close?identifierType=alias`; auth `Authorization: GenieKey <key>`; host us/eu by region | `api_key` | https://docs.opsgenie.com/docs/alert-api |
 | `telegram` | Bot API sendMessage | `POST https://api.telegram.org/bot<token>/sendMessage`, JSON `{chat_id,text}`, plain text | `bot_token` | https://core.telegram.org/bots/api#sendmessage |

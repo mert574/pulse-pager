@@ -456,9 +456,9 @@ type UserIdentity struct {
 type Organization struct {
 	ID              int64
 	Name            string
-	Slug            string // unique globally, shapes {slug}.pulse.app
-	PlanID          *int64 // nil until plans/subscriptions exist (RFC-001 4.2)
-	Plan            string // billing tier (free/starter/team/business); operator-set until Stripe lands
+	Slug            string // unique globally, shapes {slug}.pulsepager.com
+	PlanID          *int64 // nil for orgs without an assigned plan row (RFC-001 4.2)
+	Plan            string // billing tier (tier1/tier2/tier3/tierCustom); set by Paddle billing or an operator override
 	DefaultLocale   string
 	DefaultTimezone string
 	CreatedAt       time.Time

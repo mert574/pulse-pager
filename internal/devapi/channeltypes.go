@@ -10,8 +10,8 @@ import (
 )
 
 // planRank orders the plan tiers low to high so we can ask "does this plan reach
-// the tier a channel type needs". It mirrors PRD-006 section 3 (free < starter <
-// team < business).
+// the tier a channel type needs". It mirrors PRD-006 section 3 (tier1 < tier2 <
+// tier3 < tierCustom).
 var planRank = map[apigen.Plan]int{
 	apigen.Tier1:      0,
 	apigen.Tier2:      1,

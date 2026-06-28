@@ -5,7 +5,7 @@ Short, standalone records of the load-bearing decisions behind Pulse. Each captu
 | ADR | Title | Status |
 |-----|-------|--------|
 | [ADR-0001](ADR-0001-shared-db-rls-tenancy.md) | Shared-database row-level multi-tenancy with Postgres RLS | Accepted |
-| [ADR-0002](ADR-0002-postgres-pgx-golang-migrate.md) | PostgreSQL via pgx + golang-migrate | Accepted |
+| [ADR-0002](ADR-0002-postgres-pgx-golang-migrate.md) | PostgreSQL via pgx + goose | Accepted |
 | [ADR-0003](ADR-0003-kafka-client-franz-go.md) | Kafka client is franz-go | Accepted |
 | [ADR-0004](ADR-0004-scheduler-leader-election-k8s-lease.md) | Scheduler singleton via Kubernetes Lease | Accepted |
 | [ADR-0005](ADR-0005-rs256-jwt-jwks.md) | RS256 JWT access tokens with JWKS, identity-only token | Accepted |
@@ -20,7 +20,7 @@ Short, standalone records of the load-bearing decisions behind Pulse. Each captu
 | [ADR-0014](ADR-0014-single-leader-scheduler-heap.md) | Single leader-elected in-memory scheduler heap for v1 | Accepted |
 | [ADR-0015](ADR-0015-event-serialization-json-envelope.md) | JSON event serialization with a versioned envelope | Accepted |
 | [ADR-0016](ADR-0016-ssrf-always-on.md) | SSRF protection always-on, not customer-disableable | Accepted |
-| [ADR-0017](ADR-0017-frontend-stack-lit-tailwind.md) | Frontend stack (Lit light DOM, Tailwind, daisyUI, uPlot, TanStack Table) | Accepted |
+| [ADR-0017](ADR-0017-frontend-stack-lit-tailwind.md) | Frontend stack (Lit light DOM, Tailwind, owned Swiss tokens, uPlot, TanStack Table) | Accepted |
 | [ADR-0018](ADR-0018-icu-messageformat-localizable-string.md) | ICU MessageFormat and the localizable-string API convention | Accepted |
 | [ADR-0019](ADR-0019-server-i18n-go-i18n-v2.md) | Server-side i18n library for Go (go-i18n v2) | Accepted |
 | [ADR-0020](ADR-0020-frontend-i18n-lit-localize.md) | Frontend i18n library (@lit/localize) | Accepted |

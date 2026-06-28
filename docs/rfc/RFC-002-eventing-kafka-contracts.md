@@ -9,6 +9,8 @@ Product source: `docs/prd/PRD-002` (check/alert flow), `PRD-003` (notify payload
 
 House style: all timestamps are RFC3339 UTC on the wire. No em-dashes. Tables and code blocks over prose.
 
+Current state: the bus is pluggable behind a backend interface, selected by `PULSE_BUS`. Kafka is the default backend (franz-go, `internal/bus/kafka.go`) and Redis Streams is the alternate (`internal/bus/redis.go`), both with the same at-least-once contract. The topic names and partition-key rules below apply whichever backend is in use. This file keeps the "kafka" name and the Kafka contract details since Kafka is the default; the Redis Streams backend reuses the same wrapper API and the same topics.
+
 ---
 
 ## 1. Overview and scope
@@ -43,8 +45,8 @@ This RFC turns the binding eventing rules in RFC-000 section 5 into exact, copy-
 | IDs | int64 numeric on the wire (the domain `int64` ids); rendered without quotes |
 | Money / counters | integers |
 | Optional/nullable | the JSON key is always present; absent value is JSON `null`, never an omitted key |
-| Envelope | every event has `schema`, `version`, `event_id`, `occurred_at`, `org_id` (section 4.1) |
-| Headers | Kafka record headers carry trace context and the dedup key (section 2.4, 6) |
+| Envelope | not implemented; event bodies are bare payload structs with no common envelope (section 4.1) |
+| Headers | the bus stamps the `pulse-correlation-id` record header for trace correlation; there is no dedup-key header (section 2.4) |
 
 Note on ids: the domain structs in `internal/domain/domain.go` use `int64` ids today. PRD payloads that surface externally show prefixed string ids like `mon_123` / `inc_456` (PRD-003 section 4.3.1). Those prefixed strings are an api-layer rendering for the public webhook and REST surfaces (RFC-005/RFC-012). On the internal Kafka bus we carry the raw `int64` so producers and consumers do not parse a prefix on the hot path. The rendering boundary is api, not the bus. This is a deliberate deviation from the PRD's externally-shown id shape and is flagged here so RFC-005/RFC-012 own the int64 -> `mon_`/`inc_` rendering.
 
@@ -54,7 +56,7 @@ Note on ids: the domain structs in `internal/domain/domain.go` use `int64` ids t
 
 ### 2.1 Decision
 
-Use **franz-go** (`github.com/twmb/franz-go`) as the single Go Kafka client for `internal/bus`.
+Use **franz-go** (`github.com/twmb/franz-go`) as the Go Kafka client for `internal/bus`. It is the client for the Kafka backend, which is the default. The Redis Streams backend (`PULSE_BUS=redis`) does not use franz-go; it talks to Redis directly and keeps the same wrapper API and at-least-once contract.
 
 ### 2.2 Reasoning
 
@@ -78,85 +80,56 @@ This is the content for ADR-0003.
 
 ### 2.4 The `internal/bus` wrapper API
 
-`internal/bus` wraps franz-go so services never touch raw franz-go types and so the envelope, headers, keying, trace propagation, and commit-after-process discipline are uniform. Sketch:
+`internal/bus` wraps the chosen backend so services never touch raw franz-go (or raw Redis) types and so the keying, trace propagation, and commit-after-process discipline are uniform. The real API in `internal/bus/bus.go` is small and untyped at the payload level: topics are plain strings, keys are strings, and values are raw `[]byte`. Each service marshals its own payload struct from `internal/events`.
 
 ```go
 package bus
 
-// Topic is a typed topic name. Region-scoped topics are built with For().
-type Topic string
-
+// Topic constants are plain strings.
 const (
-	TopicMonitorChanged Topic = "monitor.changed"
-	TopicCheckResults   Topic = "check.results"
-	TopicNotifyEvents   Topic = "notify.events"
-	TopicAuditEvents    Topic = "audit.events"
-	TopicBillingEvents  Topic = "billing.events"
-	TopicRegionHealth   Topic = "region.health"
-	TopicWebhookDeliver Topic = "webhook.delivery"
+	TopicMonitorChanged = "monitor.changed"
+	TopicCheckResults   = "check.results"
+	TopicNotifyEvents   = "notify.events"
+	TopicAuditEvents    = "audit.events"
+	TopicBillingEvents  = "billing.events"
+	TopicRegionHealth   = "region.health"
+	TopicEmailEvents    = "email.events"
 )
 
-// CheckJobs returns the region-scoped jobs topic, e.g. "check.jobs.eu-west".
-func CheckJobs(region string) Topic { return Topic("check.jobs." + region) }
+// CheckJobsTopic returns the region-scoped jobs topic, e.g. "check.jobs.eu-west".
+func CheckJobsTopic(region string) string { return "check.jobs." + region }
 
-// Envelope is stamped on every message body by Produce; see section 4.1.
-type Envelope struct {
-	Schema     string    `json:"schema"`      // e.g. "check.results"
-	Version    int       `json:"version"`     // schema version, section 5
-	EventID    string    `json:"event_id"`    // ULID, producer-generated, for tracing/logging
-	OccurredAt time.Time `json:"occurred_at"` // when the source fact happened
-	OrgID      int64     `json:"org_id"`
-}
-
-// ProduceOpts carries the partition key and the idempotency token header.
-type ProduceOpts struct {
-	Key         []byte // partition key bytes, section 3.2 helpers
-	DedupKey    string // section 6; stamped into the "pulse-dedup-key" header
-	TraceCtx    context.Context // trace + correlation id propagated via headers
-}
-
-// Producer publishes typed payloads. It JSON-marshals body, stamps the
-// envelope fields the caller did not set, sets headers, and produces with the
-// franz-go idempotent producer.
+// Producer publishes a raw value under a topic and partition key.
 type Producer interface {
-	Produce(ctx context.Context, t Topic, body any, opts ProduceOpts) error
+	Produce(ctx context.Context, topic, key string, value []byte) error
 	Close() error
 }
 
-// Handler processes one message. Returning nil commits the offset; returning a
-// non-nil error does NOT commit, so the message is redelivered (at-least-once).
-// A poison error (section 8) is signalled by wrapping with bus.Poison so the
-// consumer routes it to the DLQ instead of looping.
-type Handler func(ctx context.Context, m Message) error
-
-// Message is the decoded record handed to a Handler.
-type Message struct {
-	Envelope Envelope
-	Body     []byte // raw JSON; caller unmarshals into the typed payload
-	Key      []byte
-	DedupKey string
-	Headers  map[string]string
+// Record is the message handed to a Poll handler.
+type Record struct {
+	Topic string
+	Key   string
+	Value []byte
 }
 
-// Consumer joins a consumer group and runs Handler per message with
-// at-least-once, commit-after-process semantics.
+// Consumer polls and dispatches to the handler. Returning nil acks the record;
+// returning a non-nil error leaves it unacked so it is redelivered (at-least-once).
 type Consumer interface {
-	// Run blocks, polling and dispatching to handler until ctx is done.
-	Run(ctx context.Context, group string, topics []Topic, handler Handler) error
+	Poll(ctx context.Context, handler func(ctx context.Context, r Record) error) error
 	Close() error
 }
 ```
+
+There is no typed `Topic`, no `Envelope`, no `ProduceOpts`, no `Message`, and no `Consumer.Run`; the value bytes carry the whole payload and the partition key is passed alongside as a string.
 
 Key behaviors the wrapper guarantees:
 
 | Concern | Behavior |
 |---------|----------|
-| Trace propagation | On produce, the OTel span context and the correlation id are injected into Kafka record headers (`traceparent`, `pulse-correlation-id`). On consume, the wrapper restores them into the handler's `ctx` and the slog logger, per RFC-000 section 9.2/9.3. One check is traceable scheduler -> worker -> alerting -> notifier across regions |
-| Commit-after-process | Offsets commit only after the handler returns nil. A crash mid-handle leaves the offset uncommitted, so the message redelivers. This is the at-least-once spine of ADR-0009. We do NOT use auto-commit |
-| Keying | The caller passes a partition key via `ProduceOpts.Key`; `bus` exposes typed helpers (`KeyMonitor(id)`, `KeyOrg(id)`, `KeyRegion(code)`) so a producer cannot accidentally key by the wrong field |
-| Dedup header | `ProduceOpts.DedupKey` is stamped into the `pulse-dedup-key` header so a consumer can read the idempotency token without parsing the body. The token is ALSO in the body (section 6) so it survives mirroring and is auditable |
-| Idempotent producer | enabled at client construction; a produce retry after a transient broker error does not double-append |
-| Poison routing | a handler that returns `bus.Poison(err)` causes the wrapper to publish the raw record to the topic's DLQ and commit the original offset, so one bad message cannot block a partition (section 8) |
+| Trace propagation | On produce, the correlation id is injected into the record header `pulse-correlation-id`. On consume, the wrapper restores it into the handler's `ctx` and the slog logger, per RFC-000 section 9.2/9.3. One check is traceable scheduler -> worker -> alerting -> notifier across regions. (No `pulse-dedup-key` header is stamped) |
+| Commit-after-process | A record is acked only after the handler returns nil. A crash mid-handle leaves it unacked, so the record redelivers. This is the at-least-once spine of ADR-0009 |
+| Keying | The caller passes the partition key as the `key` string argument to `Produce`; callers pass the monitor id, org id, or region code per the catalog below |
+| Idempotent producer | the Kafka backend uses the franz-go idempotent producer so a produce retry after a transient broker error does not double-append |
 
 ---
 
@@ -171,15 +144,15 @@ Key behaviors the wrapper guarantees:
 | `check.results` | global (control); fed by mirror | worker | `alerting` | `monitor_id` | delete | 24 hours |
 | `notify.events` | global (control) | alerting | `notifier` | `monitor_id` | delete | 24 hours |
 | `audit.events` | global (control) | api (+ any service taking an auditable action) | `audit-sink` | `org_id` | delete (long) | 90 days (see note) |
-| `billing.events` | global (control) | api (Stripe webhook handler) | `entitlement-invalidator`, `billing-sink` | `org_id` | delete | 30 days |
+| `billing.events` | global (control) | api (Paddle webhook handler) | `entitlement-invalidator`, `billing-sink` | `org_id` | delete | 30 days |
 | `region.health` | per-region produced, mirrored home | worker (heartbeats), region controller | `alerting`, `scheduler` | `region` | compact + delete | compact, plus 1 day delete |
-| `webhook.delivery` | global (control) | api / alerting (org webhook fan-out) | `notifier` (webhook deliverer) | `org_id` | delete | 24 hours |
+| `email.events` | global (control) | notifier (email delivery) | email sink | `org_id` | delete | 24 hours |
 
 Notes on scope and placement:
 
 - `check.jobs.<region>` lives on the **regional** Kafka cluster (RFC-000 ADR-0006). Workers consume locally and low-latency. There is one topic per operated region; the `<region>` suffix is the region code (`us-east`, `eu-west`, `ap-southeast`, per PRD-007 section 2).
 - `check.results` and `region.health` are produced into the **regional** cluster and **mirrored** to the central control-plane cluster, where `alerting` and `scheduler` consume them (section 7). Their consumers run in the control plane.
-- Everything else (`monitor.changed`, `notify.events`, `audit.events`, `billing.events`, `webhook.delivery`) is **control-plane only**; producer and consumer are both home-region services and never cross a region boundary.
+- Everything else (`monitor.changed`, `notify.events`, `audit.events`, `billing.events`, `email.events`) is **control-plane only**; producer and consumer are both home-region services and never cross a region boundary.
 - At Phase 0/1 there is one region (home) so there is no mirror and no egress; the topic-per-region naming and the mirror consumer group exist from day one so multi-region rollout is additive (RFC-000 section 4.2).
 
 ### 3.2 Partition-key strategy and justification
@@ -187,7 +160,7 @@ Notes on scope and placement:
 | Key | Topics | Why this key |
 |-----|--------|--------------|
 | `monitor_id` | `check.jobs`, `check.results`, `notify.events` | Per-monitor ordering is the load-bearing requirement. All results for one monitor land on one partition in arrival order, so `alerting` processes a monitor's checks in sequence and the reused pure state machine (`internal/alerting.Apply`) sees a coherent run. Cross-monitor parallelism is unbounded because the key space is the whole monitor set; per-monitor work is serialized, which is exactly what the state machine and the one-down/one-up contract need (RFC-000 section 5.2, PRD-002 section 4.7) |
-| `org_id` | `monitor.changed`, `audit.events`, `billing.events`, `webhook.delivery` | Org-scoped streams must stay ordered per org. A create-then-edit on `monitor.changed` cannot reorder; two `billing.events` for one org (e.g. upgrade then immediate downgrade) apply to the entitlement cache in the order they happened. Cross-org parallelism is unbounded |
+| `org_id` | `monitor.changed`, `audit.events`, `billing.events`, `email.events` | Org-scoped streams must stay ordered per org. A create-then-edit on `monitor.changed` cannot reorder; two `billing.events` for one org (e.g. upgrade then immediate downgrade) apply to the entitlement cache in the order they happened. Cross-org parallelism is unbounded |
 | `region` | `region.health` | Heartbeats for one region must be observed in order so the latest liveness wins; keying by region also lets the compacted topic keep one current value per region (section 4.7) |
 
 Why not key `notify.events` by `incident_id`: an incident belongs to exactly one monitor, so keying by `monitor_id` keeps the down event and its recovery event on the same partition and in order, and it keeps `notify.events` co-partitioned with `check.results` for the same monitor. `incident_id` would also work for ordering a single incident's two events but loses the monitor-level locality and adds nothing, so we key by `monitor_id` (RFC-000 section 5.1 lists `monitor_id (or incident_id)`; we pick `monitor_id`).
@@ -217,7 +190,7 @@ Partition counts can only grow, and growing repartitions the key space (breaking
 | `check.results` | delete, 24h | the durable history is the Postgres `check_results` table written by the control-plane consumer (RFC-000 section 2.3, RFC-005 section 5.3); the Kafka topic is the alerting trigger and a short replay buffer, not the archive. 24h covers an `alerting` outage + catch-up |
 | `notify.events` | delete, 24h | only needed until the notifier delivers; 24h covers a notifier backlog |
 | `monitor.changed` | delete, 7d | scheduler rebuilds its whole schedule from Postgres on boot, so it does not need long history; 7d is a generous replay window for debugging |
-| `audit.events` | delete, 90d | audit is consumed into Postgres for the durable trail (RFC-000 section 10). The topic retention is a replay buffer, not the system of record; it is intentionally independent of (and may be shorter than) the per-tier Postgres audit retention (Business keeps 365 days, RFC-001 / PRD-006), because Postgres (`audit_events`) is the durable record, not Kafka. See open question in section 10 on per-stream retention (login-event volume vs people-changes, RFC-000 open question 2) |
+| `audit.events` | delete, 90d | audit is consumed into Postgres for the durable trail (RFC-000 section 10). The topic retention is a replay buffer, not the system of record; it is intentionally independent of (and may be shorter than) the per-tier Postgres audit retention (Custom keeps 365 days, RFC-001 / PRD-006), because Postgres (`audit_events`) is the durable record, not Kafka. See open question in section 10 on per-stream retention (login-event volume vs people-changes, RFC-000 open question 2) |
 | `billing.events` | delete, 30d | low volume; 30d gives a long invalidation-replay window for debugging entitlement drift |
 | `region.health` | compact + delete | compaction keeps the latest heartbeat per region key so a fresh `alerting`/`scheduler` consumer can read current liveness immediately on join, while the 1d delete bound stops compacted-but-old tombstones lingering forever |
 | `webhook.delivery` | delete, 24h | delivery attempts are transient; the durable record is the delivery-outcome row in Postgres (PRD-005 section 7.4 last-delivery status) |
@@ -227,7 +200,7 @@ Partition counts can only grow, and growing repartitions the key space (breaking
 | Guarantee | Topics | Mechanism |
 |-----------|--------|-----------|
 | Per-monitor total order | `check.results`, `check.jobs`, `notify.events` | single partition per `monitor_id`, single consumer per partition |
-| Per-org total order | `monitor.changed`, `billing.events`, `audit.events`, `webhook.delivery` | single partition per `org_id` |
+| Per-org total order | `monitor.changed`, `billing.events`, `audit.events`, `email.events` | single partition per `org_id` |
 | Latest-wins per region | `region.health` | compaction by `region` key |
 | No cross-key ordering | all | Kafka gives no order across partitions; consumers must not assume it (PRD-005 section 7.2 already tells webhook receivers the same) |
 
@@ -237,7 +210,9 @@ Partition counts can only grow, and growing repartitions the key space (breaking
 
 ### 4.1 The common envelope
 
-Every event body starts with the same envelope fields, then a topic-specific payload. The envelope is what makes evolution and dedup uniform.
+Current state: not implemented. The payload structs in `internal/events/events.go` are bare. There is no common envelope, so no `schema`, `version`, `event_id`, or `occurred_at` field is carried on the wire. Each event body is just its topic-specific payload. The only header the bus stamps for correlation is `pulse-correlation-id`; there is no `pulse-dedup-key` header.
+
+The design below describes the envelope as originally planned. It is kept here as a not-yet-built target, not a description of the running code.
 
 | Field | Type | Req | Meaning |
 |-------|------|-----|---------|
@@ -247,7 +222,7 @@ Every event body starts with the same envelope fields, then a topic-specific pay
 | `occurred_at` | string (RFC3339 UTC) | yes | when the underlying fact happened (e.g. the check ran), not when produced |
 | `org_id` | int64 | yes | tenant scope, carried as data per RFC-000 section 7.1 |
 
-The **dedup key** (the idempotency token) is topic-specific and lives in the payload AND in the `pulse-dedup-key` header (section 6). `event_id` is deliberately not the dedup key: `event_id` is unique per record (so a redelivery has the same `event_id` but a re-produce after a crash may differ), while the dedup key is a stable function of the underlying fact (so two independent produces of the same fact still collapse).
+As planned, the **dedup key** (the idempotency token) would be topic-specific and live in the payload. `event_id` is deliberately not the dedup key: `event_id` is unique per record (so a redelivery has the same `event_id` but a re-produce after a crash may differ), while the dedup key is a stable function of the underlying fact (so two independent produces of the same fact still collapse).
 
 ### 4.2 `monitor.changed`
 
@@ -455,7 +430,7 @@ Liveness is recency-based: alerting/scheduler treat a region as effectively `unh
 
 ### 4.7 `billing.events`
 
-Producer api (Stripe webhook handler and internal admin changes), consumers `entitlement-invalidator` (invalidates the per-org Redis entitlement cache) and `billing-sink` (durable billing audit). Keyed by org so two changes for one org stay ordered (PRD-006 section 5.3, RFC-000 section 12).
+Producer api (Paddle webhook handler and internal admin changes), consumers `entitlement-invalidator` (invalidates the per-org Redis entitlement cache) and `billing-sink` (durable billing audit). Keyed by org so two changes for one org stay ordered (PRD-006 section 5.3, RFC-000 section 12).
 
 ```json
 {
@@ -465,11 +440,11 @@ Producer api (Stripe webhook handler and internal admin changes), consumers `ent
   "occurred_at": "2026-06-21T14:05:00Z",
   "org_id": 42,
   "event_type": "subscription_updated",
-  "plan": "team",
+  "plan": "tier3",
   "subscription_status": "active",
   "seats_purchased": 5,
-  "source": "stripe",
-  "stripe_event_id": "evt_1Px..."
+  "source": "paddle",
+  "provider_event_id": "evt_1Px..."
 }
 ```
 
@@ -479,10 +454,10 @@ Producer api (Stripe webhook handler and internal admin changes), consumers `ent
 | `plan` | enum `tier1`/`tier2`/`tier3`/`tierCustom` | yes | the new plan tier after the change (PRD-006 section 3) |
 | `subscription_status` | enum `active`/`past_due`/`canceled`/`trialing` | yes | drives the banner and the drop-to-free path (PRD-006 section 2.3, 10.3) |
 | `seats_purchased` | int | yes | paid add-on seat count |
-| `source` | enum `stripe`/`admin` | yes | so an internal override is distinguishable from a Stripe-driven change |
-| `stripe_event_id` | string or null | yes | the Stripe event id when `source=stripe`, for dedup against Stripe's own at-least-once webhooks; null for `admin` |
+| `source` | enum `paddle`/`admin` | yes | so an internal override is distinguishable from a provider-driven change |
+| `provider_event_id` | string or null | yes | the provider event id when `source=paddle`, for dedup against the provider's own at-least-once webhooks; null for `admin` |
 
-The `entitlement-invalidator` consumer invalidates the org's Redis entitlement key on every `billing.events` record so the next entitlement read repopulates from Postgres (RFC-000 section 12). Invalidation is idempotent by nature (deleting an already-deleted cache key is a no-op), so redelivery is safe with no extra token; `stripe_event_id` additionally lets api drop a Stripe webhook it already processed before producing.
+The `entitlement-invalidator` consumer invalidates the org's Redis entitlement key on every `billing.events` record so the next entitlement read repopulates from Postgres (RFC-000 section 12). Invalidation is idempotent by nature (deleting an already-deleted cache key is a no-op), so redelivery is safe with no extra token; `provider_event_id` additionally lets api drop a Paddle webhook it already processed before producing.
 
 ### 4.8 `audit.events`
 
@@ -606,7 +581,7 @@ Per ADR-0009, delivery is at-least-once and we get exactly-once-in-effect throug
 | `check.results` | `(org_id, monitor_id, region, checked_at)` | the control-plane consumer upserts the durable row on this key, then alerting applies the result against stored state with conditional writes (section 6.4) |
 | `notify.events` | `hex(sha256(incident_id, event_type))` | notifier records delivered dedup ids in Redis with a Postgres backstop; a duplicate is suppressed (section 6.5) |
 | `monitor.changed` | `event_id` | scheduler applies the snapshot idempotently (last-writer-wins per monitor within the org-ordered partition); re-applying the same snapshot is a no-op |
-| `billing.events` | `stripe_event_id` (or `event_id` for admin) | invalidating an already-invalidated cache key is a no-op; api drops a Stripe webhook it already saw by `stripe_event_id` |
+| `billing.events` | `provider_event_id` (or `event_id` for admin) | invalidating an already-invalidated cache key is a no-op; api drops a Paddle webhook it already saw by `provider_event_id` |
 | `audit.events` | `event_id` | append is an upsert on the unique `event_id`; a duplicate append is a no-op |
 | `region.health` | latest-wins by `region` (compaction) | consumers keep only the newest per region; an old or duplicate heartbeat is ignored by `occurred_at` |
 | `webhook.delivery` | `outbound_event_id` + `webhook_id` | notifier records delivered (outbound_event_id, webhook_id) and the receiver also dedups on `event_id` (PRD-005 section 7.2) |
@@ -786,7 +761,7 @@ Sized against PRD-012: ~10k checks/sec sustained, 500k monitors, multiplied by r
 | Quantity | Value | Source |
 |----------|-------|--------|
 | Sustained checks/sec (single-region baseline) | ~10,000 | PRD-012 |
-| Region fan-out multiplier | up to the per-monitor region count (Free 1, Business up to 6) | PRD-006 section 3, PRD-007 |
+| Region fan-out multiplier | up to the per-monitor region count (Free 1, Custom up to 4) | PRD-006 section 3, PRD-007 |
 | `check.jobs` produced/sec (all regions) | checks/sec x average regions per monitor | each (monitor, region) tick is one job |
 | `check.results` into central/sec | same as jobs produced (one result per job, after mirror) | one result per executed check |
 | `notify.events`/sec | tiny: only incident open/close, far below result rate | PRD-002 (no re-notify while down) |

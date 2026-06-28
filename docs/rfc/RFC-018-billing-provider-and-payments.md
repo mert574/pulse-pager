@@ -2,7 +2,7 @@
 
 Parent: `PRD-006-billing-and-entitlements.md` (this is its Phase 2). Master: `PRD.md` section 11.
 
-Status: draft / planning. No code yet.
+Status: Phase 1 built. The Paddle provider (`internal/billing`, `internal/billing/paddle`), the self-serve checkout and trial gate (`internal/api/billing_selfserve.go`), and the `subscriptions` / `payments` / `plan_prices` migrations are in. Trial is 3 days (7 annual) via `plan_prices.trial_days`, with a 35-day re-trial deny window anchored on `subscriptions.ended_at`. Later phases stay future.
 
 ## 1. Summary
 

@@ -41,7 +41,7 @@ The notifier never makes a product decision. The incident is already opened or c
 | Contract | Decision in this RFC |
 |----------|----------------------|
 | Notify dedup id | `hex(sha256(incident_id, event_type))`, carried in the `notify.events` body and the `pulse-dedup-key` header (RFC-002 section 6.5), checked in Redis with a Postgres backstop (`notify_dedup`) (section 4) |
-| Reuse of `internal/notify` | the service wraps `Manager.Dispatch` and the four notifiers + `render.go` unchanged; payloads stay byte-for-byte appendix B (section 2) |
+| Reuse of `internal/notify` | the service wraps `Manager.Dispatch` and the registered notifiers + `render.go` unchanged; payloads stay byte-for-byte appendix B (section 2) |
 | Outbound-webhook signing | `X-Pulse-Signature: t=<ts>,v1=<hmac>`, HMAC-SHA256 over `<ts>.<raw body>` with the per-webhook secret, 5-minute receiver skew window (section 7) |
 | Delivery-outcome record | a delivery row keyed to the incident + channel (or webhook), surfaced on the incident timeline and audited; `outbound_webhooks.last_delivery_*` updated for org webhooks (section 6) |
 | Test-send | api calls the shared `internal/notify` library directly and synchronously; it does not route through the notifier service (section 9) |
@@ -79,7 +79,7 @@ The library is a single-process dispatcher with no Kafka, no dedup, no persisten
 
 One deviation flagged: the library `Manager.Dispatch` does not return per-channel results (it logs the give-up). The service needs per-channel outcomes to record them (section 6). Rather than fork `Dispatch` and risk drift, the service uses a thin outcome collector around the same notifiers (section 6.2). The Manager's retry/backoff and concurrency stay the authority; the collector only observes.
 
-Naming nit flagged for RFC-001/RFC-012 alignment: the domain and the library call the email channel type `smtp` (`domain.ChannelSMTP`), PRD-003 section 2.1 calls it `email`. The notifier follows the code (`smtp`); the api CRUD layer maps the product-facing `email` to the stored `smtp` type. Behavior is identical; only the literal enum string differs.
+`smtp` and `email` are two distinct channel types now, not aliases. `domain.ChannelSMTP` (`smtp`) is bring-your-own SMTP with free-typed recipients (`smtp.go`); `domain.ChannelEmail` (`email`) is the platform mailer that delivers to org members via the platform's own SMTP (`platformemail.go`). They carry different config and different secret fields, so the api CRUD layer keeps them separate rather than mapping one onto the other.
 
 ---
 
@@ -184,7 +184,7 @@ So at most one consumer dispatches per dedup id. The window where the dedup key 
 | webhook | HTTPS POST appendix-B envelope + `custom_headers` | 2xx | the per-monitor generic-webhook channel, distinct from org webhooks (section 7) |
 | smtp | SMTP per channel config | server accepts the message | implicit TLS (`tls`) wraps from connect; otherwise STARTTLS is used when the server offers it; auth via `PlainAuth` when a username is set |
 
-These are exactly `slack.go`, `discord.go`, `webhook.go`, `smtp.go` as they stand. The notifier adds nothing to the wire format.
+These four are the locked v1 payloads (`slack.go`, `discord.go`, `webhook.go`, `smtp.go`). More provider types now ship in the registry (platform email, pagerduty, opsgenie, telegram, teams, twilio); RFC-007a lists them with the API each uses. The notifier adds nothing to the wire format.
 
 ### 5.2 Retry, backoff, give-up
 
@@ -377,7 +377,7 @@ A wide outage can open many incidents whose channels point at the same Slack wor
 | Q3 | The org-webhook delayed-retry mechanism for the 24h budget (a `webhook.delivery.retry` topic with visibility delay vs an external scheduler) | RFC-011 provisions; budget rule (recompute from `created_at`) fixed here |
 | Q4 | Outbound per-destination rate-limit bucket size (section 10.3) | RFC-011 sizes; posture fixed here |
 | Q5 | Region line wording in chat/email bodies (PRD-003 open decision 11.1) and whether a structured envelope field ever lands | product / PRD-003 |
-| Q6 | `email` (PRD-003) vs `smtp` (domain/code) channel-type string | RFC-001 / RFC-012 align; notifier follows the code |
+| Q6 | RESOLVED: `email` and `smtp` are now two distinct channel types, not one renamed. `smtp` is bring-your-own SMTP; `email` is the platform mailer to org members (`platformemail.go`) | resolved in code |
 
 ### 12.2 Dependencies
 

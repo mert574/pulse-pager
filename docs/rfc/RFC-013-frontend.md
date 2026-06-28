@@ -46,9 +46,9 @@ Out of scope (owned elsewhere): the auth protocol itself (RFC-003), the REST con
 | `components/app-root.ts` (shell, session bootstrap, outlet) | reused, extended: bootstrap calls `/me`, org switcher mounts in the nav, role/entitlement context provided here (section 6) |
 | `components/app-nav.ts` | reused, extended with the org switcher and the full SaaS nav (section 4, 7) |
 | `components/login-view.ts` | replaced: username/password form becomes "Sign in with Google / GitHub" redirect buttons (section 3.1) |
-| `components/status-badge.ts`, `components/confirm-dialog.ts` | reused; status badge gains a `coverage-degraded` variant; both move to light DOM and restyle with daisyUI classes (section 2.5) |
+| `components/status-badge.ts`, `components/confirm-dialog.ts` | reused; status badge gains a `coverage-degraded` variant; both move to light DOM and restyle with the owned `pulse-` primitives and tokens (section 2.5) |
 | `components/view-placeholder.ts` | removed once feature views land |
-| `styles/tokens.css`, `styles/global.css` | replaced by one Tailwind + daisyUI stylesheet; the palette and dark theme come from daisyUI themes, not hand-rolled tokens (section 2.5, 9.3) |
+| `styles/tokens.css`, `styles/global.css` | folded into one owned stylesheet (`styles/app.css`): Tailwind v4 plus our own design tokens and `pulse-` primitives; the palette and themes are hand-owned `--color-*` tokens, no daisyUI (section 2.5, 9.3) |
 | login = username/password, `Me.username`, 401 -> login | replaced by RFC-003 social login + cookie JWT + refresh-retry |
 
 Net: the plumbing (router, client, session, shell, two shared components, the token CSS) is proven and stays. The auth model, the org dimension, the feature views, and the public status page are the new work.
@@ -64,16 +64,16 @@ Net: the plumbing (router, client, session, shell, two shared components, the to
 | Framework | Lit 3 (`lit ^3`) | already in `package.json`; web components, no virtual DOM, tiny runtime |
 | Language | TypeScript (strict) | already configured; wire types mirror the API |
 | Bundler | Vite 6 | already configured; ES modules, fast HMR, Rollup production build |
-| Styling | Tailwind CSS v4 + daisyUI v5 | utility classes + a small component/theme layer, applied in light DOM (section 2.5) |
-| Charts | uPlot | tiny time-series charts; colors read from the daisyUI theme vars so they track light/dark (decision D12) |
-| Tables | daisyUI `.table` + TanStack Table (`@tanstack/table-core`) | daisyUI styles the markup; TanStack (headless, framework-agnostic) adds sort/filter/paginate (decision D13) |
-| Typography | Inter (self-hosted, `@fontsource-variable/inter`) | a real product typeface, not the system stack; no CDN |
+| Styling | Tailwind CSS v4 + an owned Swiss design system | Tailwind utilities plus our own design tokens and a small set of `pulse-` primitives, applied in light DOM; no daisyUI (section 2.5) |
+| Charts | uPlot | tiny time-series charts; colors read from the owned `--color-*` theme tokens so they track the active theme (decision D12) |
+| Tables | TanStack Table (`@tanstack/table-core`) | headless, framework-agnostic sort/filter/paginate; styled with the owned `pulse-` table classes (decision D13) |
+| Typography | Inter + Archivo + JetBrains Mono (self-hosted `@fontsource-variable/*`) | Inter body, Archivo display/headings, JetBrains Mono for numeric/data strings; no CDN |
 | Icons | lucide (inline, authored set in `src/icons.ts`) | consistent icon set; inlined so it works the same in Vite and the esbuild test runner |
 | Status codes | `http-status-codes` | reason phrases for the results table (e.g. "503 Service Unavailable") |
 
-UX patterns that come with this stack: a small toast service (`toast()` + `<toast-host>`) for action feedback instead of inline alerts, daisyUI `skeleton` loaders instead of spinners, the signature uptime bar strip (`<uptime-bar>`, section 7.1), and crafted empty states (icon + CTA).
-| Rendering | Lit in light DOM (`createRenderRoot` returns `this`) | so the global Tailwind/daisyUI classes reach component markup (section 2.5) |
-| Runtime deps | `lit` plus `@lit/context` (section 6); Tailwind + daisyUI are build-time CSS, not runtime JS | no Redux, no router lib, no JS component library; daisyUI ships CSS only, our components stay our own |
+UX patterns that come with this stack: a small toast service (`toast()` + `<toast-host>`) for action feedback instead of inline alerts, owned `pulse-` skeleton loaders instead of spinners, the signature uptime bar strip (`<uptime-bar>`, section 7.1), and crafted empty states (icon + CTA).
+| Rendering | Lit in light DOM (`createRenderRoot` returns `this`) | so the global Tailwind utilities and owned tokens/primitives reach component markup (section 2.5) |
+| Runtime deps | `lit` plus `@lit/context` (section 6); Tailwind plus the owned design system are build-time CSS, not runtime JS | no Redux, no router lib, no JS component library; the styling is one owned stylesheet, our components stay our own |
 
 ### 2.2 Build output and code-splitting
 
@@ -92,10 +92,10 @@ Bundle budget (gzipped, enforced in CI as a size check on the build output):
 | `app` initial entry (shell + first route), JS | <= 60 KB |
 | any lazy route chunk, JS | <= 40 KB |
 | `status` public entry (whole page), JS | <= 30 KB |
-| app CSS (Tailwind utilities used + the two daisyUI themes) | <= 40 KB |
+| app CSS (Tailwind utilities used + the owned tokens/primitives, two themes) | <= 40 KB |
 | `status` CSS | <= 25 KB |
 
-These are starting budgets; CI fails the build if a chunk grows past its budget so bloat is caught at the PR, not in production. Lit + the shared shell sit comfortably under 60 KB, so the budget leaves room for the first route. Tailwind emits only the utility classes actually used and daisyUI is pinned to two themes (section 9.3), so the CSS stays small; the budget catches a regression (for example pulling in all daisyUI themes).
+These are starting budgets; CI fails the build if a chunk grows past its budget so bloat is caught at the PR, not in production. Lit + the shared shell sit comfortably under 60 KB, so the budget leaves room for the first route. Tailwind emits only the utility classes actually used and the owned stylesheet ships two themes (section 9.3), so the CSS stays small; the budget catches a regression.
 
 ### 2.3 nginx serving model (decision)
 
@@ -103,7 +103,7 @@ Decision: nginx serves the SPA static assets and reverse-proxies `/api` and `/au
 
 ```
 browser
-  | https://app.pulse.app/...
+  | https://app.pulsepager.com/...
   v
 +-------------------- nginx (RFC-000 1.1, 11.1) --------------------+
 |  location /api/   -> proxy_pass api service                       |
@@ -112,13 +112,13 @@ browser
 |  location /       -> try_files $uri /index.html  (SPA fallback)   |
 +------------------------------------------------------------------+
   status pages: status-page read path (RFC-000 1.1), served from
-  {org-slug}.pulse.app, cache-first, the separate `status` build (section 8)
+  {org-slug}.pulsepager.com, cache-first, the separate `status` build (section 8)
 ```
 
 | Option | Verdict | Reasoning |
 |--------|---------|-----------|
 | nginx serves static + reverse-proxies `/api` same-origin (chosen) | chosen | Same-origin is what makes RFC-003's cookie auth work cleanly: the httpOnly `pulse_at`/`pulse_rt` cookies are first-party, `SameSite=Lax` is effective, and there is no CORS preflight on every call. RFC-003 section 4.4 explicitly assumes "the SPA is served same-origin behind the same nginx that proxies `/api`." It also lets nginx cache and own the resilient status-page path (RFC-000 section 3) |
-| SPA calls the api origin directly (`api.pulse.app`) from `app.pulse.app` | rejected | Cross-origin cookies need `SameSite=None; Secure` plus CORS with credentials on every endpoint, widening CSRF surface and adding a preflight round trip to each call. It directly contradicts RFC-003's same-origin cookie decision. No upside for our single-frontend topology |
+| SPA calls the api origin directly (`api.pulsepager.com`) from `app.pulsepager.com` | rejected | Cross-origin cookies need `SameSite=None; Secure` plus CORS with credentials on every endpoint, widening CSRF surface and adding a preflight round trip to each call. It directly contradicts RFC-003's same-origin cookie decision. No upside for our single-frontend topology |
 | nginx serves static only, SPA uses bearer tokens in JS to a separate api | rejected | Putting the token in JS is exactly the XSS exposure RFC-003 section 4.4 rejected. The cookie model requires same-origin |
 
 This is consistent with RFC-000 section 3 ("nginx serves the built SPA static assets and proxies `/api` to the api service") and RFC-003's same-origin cookie premise. The base-path support already in `router.ts` and `index.html` (the `<base href>` rewrite) is kept for self-host sub-path deployments; in the hosted SaaS the base is `/`.
@@ -127,37 +127,37 @@ This is consistent with RFC-000 section 3 ("nginx serves the built SPA static as
 
 Dev keeps the existing Vite proxy (`vite.config.ts` proxies `/api` and adds `/auth`) so HMR works against a local api. Prod is the nginx model above. The api client's path handling is identical in both because both serve `/api` at the origin root.
 
-### 2.5 Styling and theming: Tailwind + daisyUI in light DOM (decision)
+### 2.5 Styling and theming: Tailwind + an owned design system in light DOM (decision)
 
-Decision: style the SPA with Tailwind CSS v4 plus daisyUI v5 (daisyUI's `data-theme` themes provide the palette and a small component layer). Lit components render in light DOM (`createRenderRoot()` returns `this`) so the global Tailwind/daisyUI classes apply to their markup. This replaces the hand-rolled `tokens.css` palette and the per-component shadow-DOM CSS.
+Decision: style the SPA with Tailwind CSS v4 plus an owned Swiss / International Typographic design system: our own `--color-*` design tokens and a small set of `pulse-` primitive classes, all in one stylesheet (`styles/app.css`, "owned, daisyUI-free"). Two themes via the `data-theme` attribute, `caramellatte` (light, default) and `coffee` (warm dark). Lit components render in light DOM (`createRenderRoot()` returns `this`) so the global Tailwind utilities and the owned classes/tokens apply to their markup. This replaces the older `tokens.css` palette and the per-component shadow-DOM CSS.
 
-This reverses the foundation's earlier "no component library, hand-rolled tokens, encapsulated shadow DOM" choice. The reason: hand-rolling and maintaining a palette, spacing scale, dark theme, and every control's CSS by hand is slow and drifts; daisyUI gives a consistent themed component layer and Tailwind gives utilities, both small and well understood, and the team prefers it.
+An earlier draft of this RFC reached for daisyUI for a ready-made component layer. That was dropped: we own the tokens and the small primitive set instead, which keeps the look on-brand (the Swiss/broadsheet direction), keeps the CSS small, and avoids a third-party theme layer. Tailwind v4 stays for utilities.
 
-Why daisyUI/Tailwind need light DOM:
+Why Tailwind plus the owned classes need light DOM:
 
 | Fact | Consequence |
 |------|-------------|
-| Tailwind utilities and daisyUI component classes (`.btn`, `.card`, `bg-base-100`) live in one global stylesheet | global classes do not cross a shadow boundary, so a shadow-DOM component cannot see them |
-| daisyUI theme tokens are CSS custom properties on `[data-theme]` | custom properties DO inherit across shadow boundaries, so theme colors would reach shadow DOM, but the classes that consume them would not |
+| Tailwind utilities and the `pulse-` primitive classes live in one global stylesheet | global classes do not cross a shadow boundary, so a shadow-DOM component cannot see them |
+| The theme tokens are CSS custom properties on `[data-theme]` | custom properties DO inherit across shadow boundaries, so theme colors would reach shadow DOM, but the classes that consume them would not |
 | The app is one first-party SPA, not a distributed component library | style encapsulation buys little here; the cost of bridging it is not worth paying |
 
 The shadow-DOM bridge options considered:
 
 | Option | Verdict | Reasoning |
 |--------|---------|-----------|
-| Light DOM: `createRenderRoot()` returns `this` (chosen) | chosen | The idiomatic daisyUI setup and the simplest: global classes and `data-theme` just work, no per-component plumbing, the build is one CSS file. The app is not a reusable widget library, so losing encapsulation is acceptable. Costs: `form-field` stops using `<slot>` (it renders its control directly), and `confirm-dialog`'s focus trap queries `this` instead of `this.shadowRoot`; both are small, localized changes |
-| Shadow DOM + a shared compiled Tailwind/daisyUI stylesheet adopted by a base class | rejected | Preserves encapsulation and slots, but adds a base class and a build step to compile and adopt the sheet in every component, and daisyUI is designed global-first. More plumbing for encapsulation we do not need |
-| Keep the hand-rolled `tokens.css`, no Tailwind/daisyUI | rejected | The status quo we are moving away from; slow to extend and drifts |
+| Light DOM: `createRenderRoot()` returns `this` (chosen) | chosen | The simplest setup: global utilities, the owned classes, and `data-theme` just work, no per-component plumbing, the build is one CSS file. The app is not a reusable widget library, so losing encapsulation is acceptable. Costs: `form-field` stops using `<slot>` (it renders its control directly), and `confirm-dialog`'s focus trap queries `this` instead of `this.shadowRoot`; both are small, localized changes |
+| Shadow DOM + a shared compiled stylesheet adopted by a base class | rejected | Preserves encapsulation and slots, but adds a base class and a build step to compile and adopt the sheet in every component. More plumbing for encapsulation we do not need |
+| Keep the older `tokens.css`, no Tailwind | rejected | The status quo we are moving away from; slow to extend and drifts |
 
 Implications across the codebase:
 
 | Area | Change |
 |------|--------|
 | Render root | a small base element sets `createRenderRoot()` to return `this`; components extend it instead of `LitElement` directly |
-| Component CSS | the per-component `static styles` blocks are removed; styling moves to Tailwind/daisyUI classes in the templates |
+| Component CSS | the per-component `static styles` blocks are removed; styling moves to Tailwind utilities and the `pulse-` primitives in the templates |
 | `form-field` | renders its control directly (children passed in markup), not via `<slot>`; it still renders the per-field error from the envelope |
 | `confirm-dialog` | unchanged behavior; the focus trap and active-element queries use `this` (light DOM) instead of `this.shadowRoot` |
-| Global CSS | one app stylesheet imports Tailwind and the daisyUI plugin; `tokens.css`/`global.css` are folded into it or removed |
+| Global CSS | one app stylesheet imports Tailwind and declares the owned tokens/primitives; `tokens.css`/`global.css` are folded into it or removed |
 | Public status page | same stack; its own entry imports the same CSS pipeline, restricted to what it uses (still under the status CSS budget) |
 
 ---
@@ -200,7 +200,7 @@ export interface OrgMembership {
   name: string;
   slug: string;
   role: "owner" | "admin" | "member" | "viewer";
-  plan: "free" | "starter" | "team" | "business";
+  plan: "tier1" | "tier2" | "tier3" | "tierCustom";
 }
 ```
 
@@ -383,15 +383,15 @@ The active org's entitlements (plan caps + current usage) come from a billing/us
 | UI surface | Behavior |
 |------------|----------|
 | At a cap | the create action is disabled with an inline "you have reached your plan limit" and an upgrade link, instead of letting the user fill a form that will 4xx. Example: monitors used == `monitors_cap` disables "New monitor" |
-| Plan-floor interval | the monitor form clamps the interval input's minimum to the plan's `min_interval_seconds` and shows the floor (for example "1 min on Team"); going lower shows the upsell |
+| Plan-floor interval | the monitor form clamps the interval input's minimum to the plan's `min_interval_seconds` and shows the floor (for example "1 min on Professional"); going lower shows the upsell |
 | Region picker | only `regions_allowed` are selectable; premium regions on a non-premium plan are shown locked with an upsell; the count is capped at `regions_per_monitor_cap` |
-| Custom domain | the status-page editor hides/locks custom domain off Team/Business |
+| Custom domain | the status-page editor hides/locks custom domain off Professional/Custom |
 | Read-only API (Free) | the api-keys view notes Free keys are read-only |
 | Server still authoritative | even with all this, the server returns the entitlement error codes (`monitor_limit_reached`, `interval_below_plan_floor`, `interval_below_hard_floor`, `region_not_in_plan`, `region_count_exceeded`, `seat_limit_reached`, `status_page_limit_reached`, `custom_domain_not_in_plan`, `api_write_not_in_plan`) inside the standard envelope, and the UI renders that error with an upsell if a write slips through |
 
 Plan tier anchors the UI renders against (from PRD-006):
 
-Display names Free / Hobby / Professional / Custom; internal codes free / starter / team / business (pricing.html is the source of truth).
+Display names Free / Hobby / Professional / Custom; internal codes tier1 / tier2 / tier3 / tierCustom (pricing.html is the source of truth).
 
 | Dimension | Free | Hobby | Professional | Custom |
 |-----------|------|---------|------|----------|
@@ -408,7 +408,7 @@ Display names Free / Hobby / Professional / Custom; internal codes free / starte
 
 ## 7. Feature views
 
-Each surface is one or more Lit components. Shared building blocks: `status-badge` (reused, plus a `coverage-degraded` variant), `confirm-dialog` (reused for every destructive action), a `<latency-chart>` (uPlot, decision D12) and an uptime sparkline, a `<data-table>` (TanStack Table + daisyUI styling, decision D13) for sortable/paginated lists, a `<form-field>` wrapper that renders the per-field error from the envelope, and an `<upsell-banner>`.
+Each surface is one or more Lit components. Shared building blocks: `status-badge` (reused, plus a `coverage-degraded` variant), `confirm-dialog` (reused for every destructive action), a `<latency-chart>` (uPlot, decision D12) and an uptime sparkline, a `<data-table>` (TanStack Table + the owned `pulse-` table styling, decision D13) for sortable/paginated lists, a `<form-field>` wrapper that renders the per-field error from the envelope, and an `<upsell-banner>`.
 
 ### 7.1 Monitors (PRD-002, PRD-007)
 
@@ -431,7 +431,7 @@ Each surface is one or more Lit components. Shared building blocks: `status-badg
 
 ### 7.4 Status pages (editor) (PRD-004)
 
-`<status-pages-list-view>` (count vs cap, "New page" disabled at cap with upsell) and `<status-page-editor-view>`: name (internal), slug (unique in org), `display_monitors` (pick monitors, set mandatory `display_name`, reorder, remove), branding (org name, logo, light/dark theme, accent color), draft/published toggle, custom domain (Team+ only), and a public-link preview that renders the exact public projection (section 8). The editor never exposes internal URLs in the public preview.
+`<status-pages-list-view>` (count vs cap, "New page" disabled at cap with upsell) and `<status-page-editor-view>`: name (internal), slug (unique in org), `display_monitors` (pick monitors, set mandatory `display_name`, reorder, remove), branding (org name, logo, light/dark theme, accent color), draft/published toggle, custom domain (Professional+ only), and a public-link preview that renders the exact public projection (section 8). The editor never exposes internal URLs in the public preview.
 
 ### 7.5 Members (PRD-001)
 
@@ -443,7 +443,7 @@ Each surface is one or more Lit components. Shared building blocks: `status-badg
 
 ### 7.7 Billing and usage (PRD-006)
 
-`<billing-view>`: current plan, usage meters (monitors, seats, status pages as used/cap with at-limit visual), interval floor, retention, region availability. Upgrade/manage launches Stripe checkout/portal by redirecting to a server-provided URL (owner manages, admin reads). Downgrade shows a checklist of blocking conditions (over-cap monitors/seats/pages/regions/custom-domain) that the owner must clear first; clampable conditions (interval, region set) need no UI action. The downgrade button stays disabled until usage is under the target plan; nothing is auto-deleted.
+`<billing-view>`: current plan, usage meters (monitors, seats, status pages as used/cap with at-limit visual), interval floor, retention, region availability. Upgrade/manage launches Paddle checkout/portal by redirecting to a server-provided URL (owner manages, admin reads). Downgrade shows a checklist of blocking conditions (over-cap monitors/seats/pages/regions/custom-domain) that the owner must clear first; clampable conditions (interval, region set) need no UI action. The downgrade button stays disabled until usage is under the target plan; nothing is auto-deleted.
 
 ### 7.8 Settings and account (PRD-001)
 
@@ -459,7 +459,7 @@ A new org lands in a guided first-monitor flow (create monitor -> optional chann
 
 ### 8.1 Decision: a separate lightweight build
 
-Decision: the public status page is a separate Vite entry (`status.html` + its own bundle) that never imports the authed app, served unauthenticated and cache-first by the status-page read path (RFC-000 section 1.1, 2.1) at `{org-slug}.pulse.app[/{page-slug}]`.
+Decision: the public status page is a separate Vite entry (`status.html` + its own bundle) that never imports the authed app, served unauthenticated and cache-first by the status-page read path (RFC-000 section 1.1, 2.1) at `{org-slug}.pulsepager.com[/{page-slug}]`.
 
 | Option | Verdict | Reasoning |
 |--------|---------|-----------|
@@ -500,14 +500,14 @@ v1 ships English only, but copy is not hardcoded inline as a habit: user-facing 
 
 ### 9.3 Theming
 
-Theming is daisyUI's `data-theme`, not a hand-rolled palette (section 2.5). The app pins two themes, `light` and `dark`, and sets `data-theme` on `<html>`; dark follows `prefers-color-scheme` by default and a toggle can override it. daisyUI's semantic tokens (`base-100`, `base-content`, `primary`, `error`, and so on) are used everywhere instead of raw hex, so both themes stay consistent and a control never has to be styled twice.
+Theming is the owned `data-theme` attribute over hand-owned `--color-*` tokens, not a third-party theme layer (section 2.5). The app ships two themes, `caramellatte` (light, default) and `coffee` (warm dark), and sets `data-theme` on `<html>` before first paint; a toggle flips it. The owned semantic tokens (`--color-bg`, `--color-ink`, the status colors, and so on) are used everywhere instead of raw hex, so both themes stay consistent and a control never has to be styled twice.
 
 | Surface | Theming |
 |---------|---------|
-| Product app | the two daisyUI themes (`light`, `dark`); no per-org product theming. Status colors (up/down/disabled/pending/coverage-degraded) map to daisyUI semantic colors (`success`/`error`/`neutral`/`warning` plus one accent), always paired with a text label (section 9.1) |
-| Public status page | org branding only: logo, single accent color, light/dark theme. Implemented by setting the daisyUI theme and overriding a small set of brand custom properties (the accent color, the logo) from the page's published branding. No custom fonts, CSS, or layout (PRD-004) |
+| Product app | the two owned themes (`caramellatte`, `coffee`); no per-org product theming. Status colors (up/down/disabled/pending/coverage-degraded) map to the owned status tokens (red reserved for DOWN), always paired with a text label (section 9.1) |
+| Public status page | org branding only: logo, single accent color, light/dark theme. Implemented by setting the theme and overriding a small set of brand custom properties (the accent color, the logo) from the page's published branding. No custom fonts, CSS, or layout (PRD-004) |
 
-Only the two themes are emitted, which keeps the CSS within the budget in section 2.2. Overlay/backdrop colors come from the daisyUI theme (for example the `modal` backdrop), so there are no hardcoded `rgba(...)` literals to keep in sync across themes.
+Only the two themes are emitted, which keeps the CSS within the budget in section 2.2. Overlay/backdrop colors come from the theme tokens, so there are no hardcoded `rgba(...)` literals to keep in sync across themes.
 
 ---
 
@@ -573,7 +573,7 @@ The split: the frontend tests behavior it owns (rendering, the interceptor, rout
 | RFC-012 (API) | this RFC depends on it | the REST contract, the id codec (string ids), the error envelope codes, cursor pagination, the entitlement error codes, the exact `/me` and per-endpoint paths, the status-page read endpoint shape |
 | RFC-009 (entitlements) | this RFC mirrors it | the plan caps/usage the billing view and the at-cap/upsell logic render against |
 | RFC-000 (architecture) | this RFC conforms to it | same-origin nginx serving, the status-page read path, the reuse map |
-| RFC-011 (deploy) | this RFC depends on it | the nginx config (static + `/api` proxy + SPA fallback), the wildcard `{org-slug}.pulse.app` TLS and the status-page serving, the CI bundle-budget check |
+| RFC-011 (deploy) | this RFC depends on it | the nginx config (static + `/api` proxy + SPA fallback), the wildcard `{org-slug}.pulsepager.com` TLS and the status-page serving, the CI bundle-budget check |
 
 ### 12.3 Deviations flagged
 
@@ -600,7 +600,7 @@ The split: the frontend tests behavior it owns (rendering, the interceptor, rout
 | D7 | Per-view `@state` + one `@lit/context` for session/org/entitlements | Redux/global store (heavy); bare singleton + prop-drilling |
 | D8 | Public status page = separate lightweight build, cache-first, no auth code | a route inside the authed SPA (resilience/SEO coupling) |
 | D9 | Route-level code-splitting with enforced bundle budgets (JS and CSS) | one monolithic bundle for the now-larger app |
-| D10 | Style with Tailwind v4 + daisyUI v5; theming via daisyUI `data-theme` (light/dark) | hand-rolled `tokens.css` palette + per-component CSS (slow, drifts) |
-| D11 | Lit components render in light DOM so global Tailwind/daisyUI classes apply | shadow DOM + a shared adopted stylesheet (more plumbing for encapsulation we do not need) |
-| D12 | Charts via uPlot (~12 KB gz), colors read from daisyUI theme vars | hand-rolled SVG (no axes/tooltips); ApexCharts (daisyUI's own pack, but ~120 KB, over budget); Chart.js (~60 KB, over the route-chunk budget) |
-| D13 | Interactive tables via TanStack Table (`@tanstack/table-core`, headless) styled with the daisyUI `.table` | daisyUI `.table` alone (CSS only, no sort/filter/paginate); a React-only table lib (we are on Lit) |
+| D10 | Style with Tailwind v4 + an owned Swiss design system (tokens + `pulse-` primitives); theming via the owned `data-theme` (caramellatte/coffee) | older `tokens.css` palette + per-component CSS (slow, drifts); daisyUI (a third-party theme layer, dropped to stay on-brand) |
+| D11 | Lit components render in light DOM so global Tailwind utilities and the owned classes apply | shadow DOM + a shared adopted stylesheet (more plumbing for encapsulation we do not need) |
+| D12 | Charts via uPlot (~12 KB gz), colors read from the owned `--color-*` theme tokens | hand-rolled SVG (no axes/tooltips); ApexCharts (~120 KB, over budget); Chart.js (~60 KB, over the route-chunk budget) |
+| D13 | Interactive tables via TanStack Table (`@tanstack/table-core`, headless) styled with the owned `pulse-` table classes | a CSS-only table (no sort/filter/paginate); a React-only table lib (we are on Lit) |

@@ -25,7 +25,7 @@ import type {
 // set big with a current badge), a usage block of thin used/cap token bars (a near-
 // cap bar turns warning-colored) plus read-only plan facts, a plan-comparison grid
 // where each plan reads as a newspaper column with a huge display price and the
-// current plan wears an inked top band, then the invoices ledger. Stripe checkout is
+// current plan wears an inked top band, then the invoices ledger. Paddle checkout is
 // phased: the per-tier Upgrade button opens a "coming soon / contact us" modal for
 // Custom; tier2/tier3 start a real hosted checkout.
 
@@ -693,11 +693,11 @@ export class BillingView extends AppElement {
   private upgradeModal() {
     const plan = this.upgradeTo;
     if (!plan) return nothing;
-    // Stripe checkout is roadmap-phased, so this is the whole "upgrade" affordance
-    // for now: a clear coming-soon note plus a mailto contact, never a fake
-    // checkout flow.
+    // Custom has no self-serve price, so its "upgrade" affordance is a contact
+    // note plus a mailto, never a fake checkout flow (tier2/tier3 use the real
+    // Paddle hosted checkout instead).
     const subject = encodeURIComponent(`Upgrade to ${this.planLabel(plan)}`);
-    const mailto = `mailto:sales@pulse.example?subject=${subject}`;
+    const mailto = `mailto:hi@pulsepager.com?subject=${subject}`;
     return html`<div
       class="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"

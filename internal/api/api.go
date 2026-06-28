@@ -498,7 +498,7 @@ func (s *Server) orgMemberships(ctx context.Context, userID int64) ([]apigen.Org
 }
 
 // orgMembershipDTO maps an org + role to the API shape. The plan is the org's stored
-// tier (operator-set until Stripe lands), normalized to a known plan.
+// tier (set by Paddle billing or an operator override), normalized to a known plan.
 func orgMembershipDTO(org *domain.Organization, role domain.Role) apigen.OrgMembership {
 	return apigen.OrgMembership{
 		OrgId: strconv.FormatInt(org.ID, 10),

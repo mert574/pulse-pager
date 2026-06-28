@@ -44,7 +44,7 @@ Out of scope (named, owned elsewhere):
 | The standard error envelope shape (`code` / `message` / `fields`) and HTTP status mapping | RFC-012 |
 | The role gate (`authz.Can`) that runs alongside the entitlement gate | RFC-003 section 7.4 |
 | The scheduler's schedule rebuild and per-(monitor, region) fan-out that this RFC clamps | RFC-004 |
-| Stripe webhook handling that produces `billing.events` | api billing handler (PRD-006 section 8) |
+| Paddle webhook handling that produces `billing.events` | api billing handler (PRD-006 section 8) |
 | The billing/usage UI, upgrade prompts, the downgrade checklist | RFC-013, PRD-006 section 7 |
 
 ### 1.3 Contracts this RFC owns
@@ -114,13 +114,13 @@ type APIAccess string // "none" | "read" | "full"
 func (e Entitlements) SeatsTotal() int { return e.SeatsIncluded + e.SeatsPurchased }
 ```
 
-`ChannelTypesAllowed` is not a column in RFC-001 section 4.2, and v1 does not add one. RFC-001 stores the metered numeric and boolean limits; the channel-type set is a small tier-derived list. Decision (final): the resolver derives `ChannelTypesAllowed` from the plan tier (the matrix in PRD-006 section 3: all v1 channels on every tier, PagerDuty/Opsgenie phased onto Team). There is no `entitlements` column and no per-org channel-type override in v1, so a reader should not look for a missing column. It is carried in the cached struct so the notification write path reads it the same way as every other limit. A `channel_types_allowed TEXT[]` column is only worth adding later if phased channels ever need a per-org grant.
+`ChannelTypesAllowed` is not a column in RFC-001 section 4.2, and v1 does not add one. RFC-001 stores the metered numeric and boolean limits; the channel-type set is a small tier-derived list. Decision (final): the resolver derives `ChannelTypesAllowed` from the plan tier (the matrix in PRD-006 section 3: all v1 channels on every tier, PagerDuty/Opsgenie phased onto Professional). There is no `entitlements` column and no per-org channel-type override in v1, so a reader should not look for a missing column. It is carried in the cached struct so the notification write path reads it the same way as every other limit. A `channel_types_allowed TEXT[]` column is only worth adding later if phased channels ever need a per-org grant.
 
 ### 2.3 The four tiers, resolved
 
 These are the seeded plan defaults (RFC-001 section 4.2 seed table, which is PRD-006 section 3). An org with no override carries exactly these.
 
-Codes free / starter / team / business map to the public names Free / Hobby /
+Codes tier1 / tier2 / tier3 / tierCustom map to the public names Free / Hobby /
 Professional / Custom (pricing.html is the source of truth). Custom carries large
 defaults a contract overrides.
 
@@ -224,7 +224,7 @@ The TTL is deliberately not the primary correctness mechanism. Invalidation is. 
 Invalidation is event-driven and already wired by RFC-002. The `entitlement-invalidator` consumer reads `billing.events` (keyed by `org_id`, so two changes for one org stay ordered) and deletes `ent:v1:{org_id}` on every record (RFC-002 section 4.7). The next `Get` for that org misses and repopulates from the freshly-written `entitlements` row.
 
 ```
-plan change (Stripe webhook OR internal admin)
+plan change (Paddle webhook OR internal admin)
    -> api writes the new subscription + resolves the new entitlements row (Postgres)
    -> api produces billing.events (org_id key)                        [RFC-002 4.7]
    -> entitlement-invalidator consumes -> DEL ent:v1:{org_id}          [RFC-002 4.7]
@@ -316,7 +316,7 @@ dispatch_regions   = FilterRegions(ent, monitor.regions)
 ```
 
 - Interval: a monitor stored at 60s on an org now on Free (floor 900s) is dispatched no faster than every 15 minutes. The stored value is not mutated, so a future upgrade restores the fast cadence with no re-edit (PRD-006 section 5.2, 6.1).
-- Regions: a monitor configured for 6 regions on an org now on a 1-region plan is dispatched only to the home region; the other 5 region jobs are not enqueued. Premium regions stop dispatching the moment the org leaves a premium tier.
+- Regions: a monitor configured for 4 regions on an org now on a 1-region plan is dispatched only to the home region; the other 3 region jobs are not enqueued. Premium regions stop dispatching the moment the org leaves a premium tier.
 
 The scheduler enqueues one check job per dispatched region (RFC-004 fan-out), so filtering the region set here is the same as not producing those jobs.
 
@@ -325,8 +325,8 @@ The scheduler enqueues one check job per dispatched region (RFC-004 fan-out), so
 | Threat | Caught by api write gate? | Caught by scheduler dispatch clamp? |
 |--------|---------------------------|-------------------------------------|
 | Create a monitor below the floor right now | yes (`CheckInterval` rejects) | n/a (never created) |
-| Monitor created at 60s under Business, then org downgrades to Free | no (it already exists; no write happens on downgrade) | yes (clamped to 900s every tick) |
-| Monitor created in 6 regions under Business, then downgrade | no (already exists) | yes (filtered to home region every tick) |
+| Monitor created at 60s under Professional, then org downgrades to Free | no (it already exists; no write happens on downgrade) | yes (clamped to 900s every tick) |
+| Monitor created in 4 regions under Custom, then downgrade | no (already exists) | yes (filtered to home region every tick) |
 
 The write gate alone is not enough: it only sees writes, and a downgrade is not a write to the monitor. After a downgrade the pre-existing monitor still has a sub-floor interval and extra regions stored. Only the dispatch clamp, applied on every tick against the live entitlement, stops it from running richer than the new plan allows. The two points enforce the same floor from two directions so neither can be the single bypass. This is the master's locked enforcement model (master section 11, RFC-000 section 12: "neither trusting the other").
 
@@ -351,7 +351,7 @@ Clampable limits need no owner action: the scheduler enforces them automatically
 
 ### 7.2 The over-limit (held downgrade) state and what runs meanwhile
 
-The billing UI presents a checklist ("to switch to Starter, bring usage under these limits") and the downgrade button stays disabled until usage fits (PRD-006 section 6.2, 7). Until the downgrade is actually applied, the org is still on the old plan, so:
+The billing UI presents a checklist ("to switch to Hobby, bring usage under these limits") and the downgrade button stays disabled until usage fits (PRD-006 section 6.2, 7). Until the downgrade is actually applied, the org is still on the old plan, so:
 
 - api still enforces the old (higher) plan on writes. The plan has not changed yet; only the request to change it is pending.
 - scheduler still clamps to the old plan. Nothing changes at dispatch until the new `entitlements` row is written.
@@ -366,18 +366,18 @@ The exception path is a forced drop-to-Free (trial expiry, or dunning fail-out o
 
 ### 8.1 One path, two sources
 
-A plan change comes from one of two sources and both land identically (PRD-006 section 8.3: limits are enforced the same way before and after Stripe):
+A plan change comes from one of two sources and both land identically (PRD-006 section 8.3: limits are enforced the same way before and after Paddle):
 
 | Source | Phase | Trigger |
 |--------|-------|---------|
 | internal admin | Phase 1 (and ongoing for overrides) | operator sets the plan / writes an override |
-| Stripe webhook | Phase 2 | `subscription_created/updated/canceled/renewed`, `payment_failed` |
+| Paddle webhook | Phase 2 | `subscription_created/updated/canceled/renewed`, `payment_failed` |
 
 Both flow through the same steps:
 
 ```
 1. api records the change: write subscriptions, re-resolve and write the entitlements row (Postgres)
-2. api produces billing.events keyed by org_id, source = admin | stripe   (RFC-002 4.7)
+2. api produces billing.events keyed by org_id, source = admin | paddle   (RFC-002 4.7)
 3. entitlement-invalidator: DEL ent:v1:{org_id}                            (RFC-002 4.7)
 4. next Get(org) on either caller repopulates from the new Postgres row    (section 4.2)
 5. api write gate and scheduler dispatch clamp use the new limits          (sections 5, 6)
@@ -428,8 +428,8 @@ Every helper in section 3.2 is a pure function, so it is tested directly against
 | AC2 | Interval below plan floor rejected | Free org, `interval_seconds` < 900 -> per-field `interval_below_plan_floor`; any tier < 30 -> `interval_below_hard_floor` |
 | AC3 | Invite over seats blocked | Free org (1 seat, owner holds it), any invite -> `seat_limit_reached`; second pending invite on a 1-extra-seat plan also blocked |
 | AC4 | Scheduler refuses a sub-floor interval after downgrade | monitor stored at 60s, org downgraded to Free; assert dispatch interval = 7200s, stored value unchanged |
-| AC5 | Scheduler refuses a de-entitled region after downgrade | monitor in 6 regions, org downgraded to 1-region plan; assert only the home region job is enqueued |
-| AC6 | Downgrade blocks until under the limit | org with 10 enabled monitors cannot complete a downgrade to Free (cap 2); downgrade stays held, no monitor auto-deleted; succeeds once enabled <= 2 |
+| AC5 | Scheduler refuses a de-entitled region after downgrade | monitor in 4 regions, org downgraded to 1-region plan; assert only the home region job is enqueued |
+| AC6 | Downgrade blocks until under the limit | org with 20 enabled monitors cannot complete a downgrade to Free (cap 10); downgrade stays held, no monitor auto-deleted; succeeds once enabled <= 10 |
 | AC7 | Entitlement change takes effect promptly | after a plan change, assert `ent:v1:{org}` is deleted and the next write check + next dispatch see the new limits |
 | AC8 | Free needs no card; Free API is read-only | Free API key read succeeds, write -> 403 `api_write_not_in_plan` |
 

@@ -15,20 +15,21 @@ House style: no em-dashes. Tables and diagrams over prose. Every load-bearing ch
 
 ### 1.1 What this RFC is
 
-api is the single place that authenticates external principals and decides what they may do (RFC-000 section 7.1). This RFC fixes how that works: how a human signs in with Google or GitHub, how a session is carried and revoked, how an API key authenticates a script, how every request resolves to an `(org, role)` pair, and how a role check composes with the entitlement check before any write lands.
+api is the single place that authenticates external principals and decides what they may do (RFC-000 section 7.1). This RFC fixes how that works: how a human signs in with Google, GitHub, or a passwordless magic link, how a session is carried and revoked, how an API key authenticates a script, how every request resolves to an `(org, role)` pair, and how a role check composes with the entitlement check before any write lands. The admin surface authenticates separately via Cloudflare Access.
 
-Two principal types exist and they converge on the same authorization model:
+These principal types converge on the same authorization model:
 
 | Principal | Authenticates with | Carries org how | Role source |
 |-----------|--------------------|-----------------|-------------|
-| Human (SPA or any browser) | RS256 access JWT (in a cookie) backed by an opaque refresh token | active org is request-supplied (path or header), then checked against memberships | membership role in the active org |
+| Human (SPA or any browser) | RS256 access JWT (in a cookie) backed by an opaque refresh token, obtained via Google/GitHub OAuth or an emailed magic link (`internal/authn/magiclink.go`) | active org is request-supplied (path or header), then checked against memberships | membership role in the active org |
 | Script (public API client) | per-org API key `pulse_sk_<...>` | org is fixed by the key, not request-supplied | role stamped on the key (member or admin only) |
+| Admin operator | Cloudflare Access (`internal/authn/cfaccess.go`, `CFAccessVerifier` checks the Access JWT) | the admin surface is not org-scoped | admin |
 
 Both resolve to the same internal request context `(org_id, actor_id, actor_kind, role)` that authz reads. From the handler's point of view there is one authorization seam regardless of how the caller authenticated.
 
 ### 1.2 Scope
 
-In scope: OIDC/OAuth2 login (Google, GitHub), account linking, RS256 JWT issue and verify, JWKS, refresh tokens with rotation and revocation, browser token delivery and CSRF stance, API key format and hashing and caching, the request -> (org, role) resolution middleware, the RBAC matrix as code and the `Can(...)` seam, how role gate composes with the entitlement gate, the self-host bootstrap admin, and the threat model.
+In scope: OIDC/OAuth2 login (Google, GitHub), passwordless magic-link login, Cloudflare Access for the admin surface, account linking, RS256 JWT issue and verify, JWKS, refresh tokens with rotation and revocation, browser token delivery and CSRF stance, API key format and hashing and caching, the request -> (org, role) resolution middleware, the RBAC matrix as code and the `Can(...)` seam, how role gate composes with the entitlement gate, the self-host bootstrap admin, and the threat model.
 
 Out of scope (named, owned elsewhere): the user/org/membership/api_key/invitation schema (RFC-001), the entitlement data model and its cache (RFC-009 and RFC-000 section 12), the public REST surface and error envelope (RFC-012), the SPA token handling specifics and org switcher UI (RFC-013), outbound webhook signing (RFC-007), NetworkPolicy and TLS-to-infra runtime (RFC-011). The invitation product flow is PRD-001; this RFC owns only the auth-relevant parts (email match on accept, the login-then-accept path).
 
@@ -55,13 +56,13 @@ The v1 package (`internal/auth/auth.go`) is a single-admin password+cookie-sessi
 | `newToken()` (32 random bytes, base64url) | carried forward as the opaque-token generator for refresh tokens and API key secrets |
 | The cookie attribute discipline (httpOnly, Secure, SameSite, expiry/MaxAge) and the inline 401 error-envelope writer | carried forward into the new cookie helpers and middleware |
 
-The v1 single-admin / password-login / store-backed-session-by-cookie model itself does not carry forward to the SaaS path; it is social-login + JWT + refresh. The bootstrap admin (section 9) is the one place a password+bcrypt path survives, self-host only.
+The v1 single-admin / password-login / store-backed-session-by-cookie model itself does not carry forward to the SaaS path; it is social login plus passwordless magic-link, both landing on JWT + refresh, with Cloudflare Access for the admin surface. The bootstrap admin (section 9) is the one place a password+bcrypt path survives, self-host only.
 
 ---
 
 ## 2. Social login (OIDC / OAuth2)
 
-Pulse is social-only: Google and GitHub, no passwords anywhere in the SaaS (PRD-001 section 3.1, master 5). api is the only service that talks to the providers (RFC-000 section 1.2). Both flows use authorization-code with PKCE.
+User-facing sign-in has no passwords. Besides the two social providers below (Google and GitHub), users can sign in with a passwordless magic link emailed to them (`internal/authn/magiclink.go`, the `EmailMagicLink` intent), which lands on the same JWT + refresh session. The admin surface uses Cloudflare Access instead (`internal/authn/cfaccess.go`). This section covers the social providers; api is the only service that talks to them (RFC-000 section 1.2). Both social flows use authorization-code with PKCE.
 
 ### 2.1 Provider mechanics
 
@@ -192,7 +193,7 @@ Decision: access tokens are RS256-signed JWTs with a ~15 minute lifetime. The to
 
 | Claim | Value | Why |
 |-------|-------|-----|
-| `iss` | `https://api.pulse.app` | issuer, checked on verify |
+| `iss` | `https://api.pulsepager.com` | issuer, checked on verify |
 | `aud` | `pulse-api` | audience, checked on verify |
 | `sub` | user id (uuid) | the principal |
 | `email` | user's verified primary email | convenience for the SPA and logs; authoritative source is still the DB |
@@ -607,7 +608,7 @@ nginx -> api router
     if !entitlements.Check(org, limit): entitlement_exceeded   [RFC-009]
     perform; emit audit.events with the actor (RFC-000 5.1)
   public routes (no authn): OAuth login/callback, /.well-known/jwks.json,
-    status-page read path, Stripe webhook (its own signature check)
+    status-page read path, Paddle webhook (its own signature check)
 ```
 
 ### 8.5 Service-to-service: no re-verification

@@ -165,7 +165,7 @@ Expands (master 3) on org creation, kinds, switching, settings, deletion, and ow
 | First sign-in | Personal org auto-created (kind=personal), creator is owner, Free plan (section 3.2) |
 | User clicks "Create organization" | Team org created (kind=team), creator is owner, seat 1, Free plan to start; user is dropped into onboarding inside the new org |
 
-Org name and slug are set at creation. Slug is unique across Pulse and shapes the status-page URL `{org-slug}.pulse.app` (master 16.3). Slug edits are allowed but warned (they change public status-page URLs).
+Org name and slug are set at creation. Slug is unique across Pulse and shapes the status-page URL `{org-slug}.pulsepager.com` (master 16.3). Slug edits are allowed but warned (they change public status-page URLs).
 
 ### 4.2 Personal vs team orgs
 
@@ -240,7 +240,7 @@ An accepted membership occupies exactly one seat (master 3, I1-style 1:1). A pen
 
 ### 5.2 Seat limits tie to plan (reference PRD-006)
 
-Seat capacity per org is set by the plan tier (master 11 table: Free 1, Starter 3, Team 10, Business 25 then per-seat add-on). The exact numbers, add-on seats, and proration are owned by PRD-006. This domain only consumes the entitlement: it asks "is a seat available?" on invite and accept, and it reports occupancy. Enforcement is cross-cutting (master 11): the api blocks an over-seat invite on write; PRD-006 owns the meter and the upsell copy.
+Seat capacity per org is set by the plan tier (master 11 table: Free 1, Hobby 3, Professional 10, Custom unlimited, with per-seat add-ons on the paid tiers). The exact numbers, add-on seats, and proration are owned by PRD-006. This domain only consumes the entitlement: it asks "is a seat available?" on invite and accept, and it reports occupancy. Enforcement is cross-cutting (master 11): the api blocks an over-seat invite on write; PRD-006 owns the meter and the upsell copy.
 
 ### 5.3 Join and leave
 
@@ -562,7 +562,7 @@ Core behavior is locked by the master. These are the deeper choices this sub-PRD
 | PRD-005 Public API | This domain provides to it | Roles and the permission matrix that key auth enforces; the rule that keys are role-scoped and max out at admin (master 5, master 16.5). PRD-005 owns key creation, hashing, last-used, and per-endpoint behavior; this domain owns what each role may do |
 | PRD (master) sections 3, 4, 5, 13 | Parent | All locked decisions: org as isolation unit, four roles, social-only auth, JWT session contract, tenant isolation, GDPR, audit logging |
 | Audit log (master 13.5) | Shared surface | This domain emits the identity/org/member events (section 9); the audit subsystem owns storage, retention by plan, and the owner/admin view |
-| Status pages (master 8) | Downstream of org slug | Org slug shapes `{org-slug}.pulse.app`; slug changes here affect public URLs there (section 4.1) |
+| Status pages (master 8) | Downstream of org slug | Org slug shapes `{org-slug}.pulsepager.com`; slug changes here affect public URLs there (section 4.1) |
 
 ---
 

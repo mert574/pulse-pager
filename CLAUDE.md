@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Pulse is multi-tenant SaaS uptime monitoring, built as five distributed Go services on Postgres + Redis + a pluggable event bus (Kafka/Redpanda by default, or Redis Streams via `PULSE_BUS`). The repo is at the foundation stage: the services boot, connect, and report healthy; much business logic is still skeletons marked `TODO(RFC-xxx)`. The web app is a Lit SPA in `web/`.
 
-Authoritative design lives in `docs/` (PRDs and RFCs). `docs/CODE-VS-RFC-GAP.md` tracks what is built vs. planned. Code comments reference these by id (e.g. `RFC-003`, `PRD-006`); follow the cited doc when changing that area.
+Authoritative design lives in `docs/` (PRDs and RFCs). Code comments reference these by id (e.g. `RFC-003`, `PRD-006`); follow the cited doc when changing that area.
 
 ## Commands
 

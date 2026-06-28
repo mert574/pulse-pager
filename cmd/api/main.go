@@ -1,5 +1,5 @@
 // Command api is the control-plane HTTP edge: SPA backend, public REST, auth,
-// Stripe webhooks (RFC-000 section 2.1). It boots, connects to Postgres + Redis +
+// Paddle webhooks (RFC-000 section 2.1). It boots, connects to Postgres + Redis +
 // a Kafka producer, serves health/metrics on the health addr, and serves the real
 // identity HTTP API (auth flow, session, me/account, orgs) on the api addr.
 //

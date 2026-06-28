@@ -13,16 +13,16 @@ Notes to consider when this is planned:
 - The toggle source: config/env at first (simplest), or a runtime admin setting later so it flips without a restart.
 - Captured 2026-06-22 at the operator's request.
 
-## More check types: SSL-expiry and cron/heartbeat
+## More check types: cron/heartbeat
 
-Add two check types beyond the current HTTP/TCP: SSL/TLS certificate expiry (warn some days before a cert expires) and cron/heartbeat monitoring (a scheduled job pings a URL; alert if the ping is late or missing). Motivation: these are table stakes in the uptime market. Every major competitor ships them (UptimeRobot and Better Stack include SSL even on free tiers; Healthchecks.io and Cronitor are whole products built around heartbeats), and their absence is our clearest competitive gap. See `competitive-pricing-analysis.md`.
+Add cron/heartbeat monitoring (a scheduled job pings a URL; alert if the ping is late or missing). The shipped types are HTTP and SSL/TLS certificate expiry; heartbeat is the remaining gap here. Motivation: these are table stakes in the uptime market (Healthchecks.io and Cronitor are whole products built around heartbeats), and their absence is our clearest remaining check-type gap. See `private/competitive-pricing-analysis.md`.
 
 Notes to consider when this is planned:
-- SSL-expiry is cheap relative to browser/synthetic and should come first; DNS checks are a sensible fast follow.
+- DNS checks are a sensible fast follow alongside heartbeat.
 - Heartbeat is a different shape from active checks: the monitor waits for an inbound ping instead of dialing out, so it needs its own ingest endpoint, an expected-period plus grace window, and "late" vs "missing" states.
-- Both should fit the existing checker/alerting/incident pipeline (RFC-005, RFC-006) rather than being bolted on.
+- It should fit the existing checker/alerting/incident pipeline (RFC-005, RFC-006) rather than being bolted on.
 - The cloud plan prices were set partly on the promise of closing this gap, so it has real revenue weight, not just parity.
-- Captured 2026-06-22 from the competitor pricing analysis.
+- Captured 2026-06-22 from the competitor pricing analysis. (SSL-expiry, originally part of this item, has since shipped.)
 
 ## Channels documentation (per-integration setup how-tos)
 
@@ -44,9 +44,9 @@ Notes to consider when this is planned:
 - This is a platform-superadmin surface, separate from the per-org RBAC (owner/admin/member/viewer). It needs its own superadmin identity, because it crosses tenant boundaries on purpose, which the normal `WithOrg` RLS scoping forbids.
 - It is the single highest-risk surface in the product (it reads across all tenants). So: strong, separate auth (consider its own host like `admin.pulsepager.com` and/or IP allowlist), and every operator action written to the existing `audit.events` so there is a trail.
 - Likely contents: org/tenant list with plan, usage (monitors, seats, status pages) and last activity; drill into one org; system health (services up, bus depth / consumer lag, check throughput, error rate, recent incidents across all orgs); operator actions (set or change a plan, suspend or disable an org, expire or resend invites, a read-only support view of an org).
-- Plan management belongs here. After the entitlements work, plans are operator-set but only via direct SQL (PRD-006 says operator-set until Stripe). The panel turns that into a UI action.
+- Plan management belongs here. Self-serve plan changes run through Paddle billing now, but operator-side plan overrides still happen via direct SQL. The panel turns that into a UI action.
 - Cross-tenant reads need a deliberate, audited superadmin data path (a controlled RLS bypass), not a loosening of the normal org-scoped queries.
-- Distinguish from infra observability: per-service Prometheus `/metrics` already exists, and Grafana/SLO dashboards are a separate (unbuilt) infra concern. This panel is tenant and business operations, not raw infra graphs; decide where the overlap sits.
+- Distinguish from infra observability: the observability stack already shipped (per-service Prometheus `/metrics`, Loki/Tempo, Grafana with SLO dashboards, SLO recording/alerting rules, Alertmanager) under `observability/`. This panel is tenant and business operations, not raw infra graphs; decide where the overlap sits.
 - Captured 2026-06-22 from the operator's request while running the single-node prod (no operator visibility today).
 
 ## Per-org link previews / SEO for public status pages

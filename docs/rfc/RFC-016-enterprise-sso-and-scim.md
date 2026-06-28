@@ -89,7 +89,7 @@ The whole rest of this RFC is written so it holds for **either** path. The abstr
 |-----------|------------|
 | A provider sees auth metadata | The provider sees the SAML assertion / OIDC token and the user's email, name, and IdP groups at login, and the SCIM payloads. It does not see monitor data, incidents, or anything in Pulse's tenant tables; it only ever sees identity metadata. We treat the provider as a sub-processor: it goes in the sub-processor list, under a DPA, and is named in the SOC 2 vendor-management process (section 12, RFC-015). For a customer with strict data-flow requirements that cannot accept a sub-processor in the auth path, the in-house path (2.4) is the escape hatch, sold as a custom Enterprise option. |
 | Lock-in | The provider's normalized shape is wrapped behind a Pulse-internal `ssoidentity` interface (the section 1.1 abstraction), so the provider SDK is one adapter behind that interface. Swapping providers, or moving to the in-house path, is reimplementing that adapter, not rewriting the mapping, session, or authz code. We do not let the provider's data model leak past the adapter. |
-| Cost | Per-connection or per-active-user pricing. Acceptable because SSO is Enterprise-tier only (section 11) where the contract value dwarfs the per-seat SSO cost. We do not pay for SSO on Free/Starter/Team because it is entitlement-gated off there. |
+| Cost | Per-connection or per-active-user pricing. Acceptable because SSO is Enterprise-tier only (section 11) where the contract value dwarfs the per-seat SSO cost. We do not pay for SSO on Free/Hobby/Professional because it is entitlement-gated off there. |
 | Compliance posture | A reputable provider is itself SOC 2 / ISO 27001 certified, which is usually a net positive for our own SOC 2 story (a vetted sub-processor) rather than a negative. |
 
 ### 2.4 The rejected alternative: build SAML + multi-IdP + SCIM in-house
@@ -115,7 +115,7 @@ Each enterprise org configures one or more **SSO connections**. A connection is 
 | `org_id` | the owning org; a connection authenticates only into this org (section 9) | same |
 | `protocol` | `saml` | `oidc` |
 | IdP identity | `idp_entity_id` (IdP entityID), `idp_sso_url` (the IdP SSO/redirect endpoint), `idp_x509_cert` (the IdP signing certificate(s), 1..2 for rotation) | `oidc_issuer`, `oidc_client_id`, `oidc_client_secret` (encrypted), discovery via `{issuer}/.well-known/openid-configuration` |
-| SP / RP identity Pulse exposes | SP entityID `https://api.pulse.app/sso/saml/{connection_id}`, ACS URL `https://api.pulse.app/sso/saml/{connection_id}/acs` | redirect URI `https://api.pulse.app/sso/oidc/{connection_id}/callback` |
+| SP / RP identity Pulse exposes | SP entityID `https://api.pulsepager.com/sso/saml/{connection_id}`, ACS URL `https://api.pulsepager.com/sso/saml/{connection_id}/acs` | redirect URI `https://api.pulsepager.com/sso/oidc/{connection_id}/callback` |
 | `status` | `draft` (configured, not yet live) -> `active` (login routing on) | same |
 | `attribute_mapping` | which SAML attributes map to email / name / groups (defaults to common Okta/Entra names, overridable) | which OIDC claims map to email / name / groups |
 | `enforced` | whether members of this org must use SSO (section 4.3) | same |

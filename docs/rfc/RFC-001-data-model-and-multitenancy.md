@@ -4,7 +4,7 @@ Status: DRAFT for review
 Author: Principal Architecture (data/backend)
 Parent: `docs/rfc/RFC-000-architecture-overview.md` (sections 6, 5, 14; ADR-0001/0002/0007)
 Product source of truth: `docs/prd/PRD-001..007`
-Supersedes for the storage layer: `docs/archive/ARCHITECTURE_v1_monolith.md` section 4 (the SQLite DDL is carried forward in spirit; the runtime is replaced)
+Supersedes for the storage layer: the v1 single-binary architecture's storage section (the SQLite DDL is carried forward in spirit; the runtime is replaced)
 
 House style note: no em-dashes anywhere in this document.
 
@@ -38,7 +38,7 @@ This RFC is the schema and tenancy foundation. Almost every other RFC reads or w
 ### 1.3 Conventions
 
 - All timestamps are `TIMESTAMPTZ`, stored UTC. The v1 "TEXT RFC3339" choice does not carry forward; Postgres has a real timestamp type and we use it. RFC3339 stays the wire format (RFC-000 section 0), produced at serialization, not storage.
-- Every org-owned table has `org_id BIGINT NOT NULL` as its first real column after the PK, an index that leads with `org_id`, and an RLS policy. The one exception is `users` (global) and the global catalog tables (`plans`, `regions`, `schema_migrations`).
+- Every org-owned table has `org_id BIGINT NOT NULL` as its first real column after the PK, an index that leads with `org_id`, and an RLS policy. The one exception is `users` (global) and the global catalog tables (`plans`, `regions`, `goose_db_version`).
 - Encrypted columns are flagged in the DDL with a comment `-- ENCRYPTED (crypto AES-256-GCM)`. They store `base64(nonce||ciphertext||tag)` exactly as `internal/crypto` produces today (RFC-000 section 10, `internal/crypto` reused unchanged).
 - Hashed columns are flagged `-- HASHED`. A hash is one-way and is never decrypted.
 
@@ -76,7 +76,7 @@ The entities, their owner, and their tenancy class. Global rows are not org-scop
 | `outbound_webhooks` | org | PRD-005 | `wh_` |
 | `idempotency_keys` | org | PRD-005 | none |
 | `notify_dedup` | org | RFC-000 5.3 backstop | none |
-| `schema_migrations` | global | RFC-001 | none |
+| `goose_db_version` | global | goose (RFC-001) | none |
 
 ---
 
@@ -172,7 +172,7 @@ CREATE INDEX idx_refresh_expires ON refresh_tokens (expires_at);
 CREATE TABLE organizations (
   id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   name                TEXT   NOT NULL,
-  slug                TEXT   NOT NULL,                 -- unique globally, shapes {slug}.pulse.app
+  slug                TEXT   NOT NULL,                 -- unique globally, shapes {slug}.pulsepager.com
   kind                TEXT   NOT NULL CHECK (kind IN ('personal','team')),
   plan_id             BIGINT NOT NULL REFERENCES plans(id),
   status              TEXT   NOT NULL DEFAULT 'active'
@@ -246,7 +246,7 @@ CREATE INDEX idx_invite_expiry ON invitations (expires_at) WHERE state = 'pendin
 CREATE TABLE plans (
   id                       BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   code                     TEXT NOT NULL UNIQUE
-                            CHECK (code IN ('free','starter','team','business')),
+                            CHECK (code IN ('tier1','tier2','tier3','tierCustom')),
   display_name             TEXT NOT NULL,
   monitors_cap             INT  NOT NULL,             -- 10 / 25 / 50 / 1000
   min_interval_seconds     INT  NOT NULL,             -- 900 / 300 / 60 / 30
@@ -276,16 +276,16 @@ CREATE TABLE subscriptions (
                           CHECK (status IN ('active','trialing','past_due','canceled')),
   seats_purchased        INT    NOT NULL DEFAULT 0,   -- paid seats beyond plan-included
   billing_cycle          TEXT   CHECK (billing_cycle IN ('monthly','annual')), -- Phase 2
-  stripe_customer_id     TEXT,                          -- Phase 2
-  stripe_subscription_id TEXT,                          -- Phase 2
-  trial_end              TIMESTAMPTZ,                    -- 14-day Team trial
+  provider_customer_id   TEXT,                          -- (provider-agnostic, see RFC-018)
+  provider_subscription_id TEXT,                        -- (provider-agnostic, see RFC-018)
+  trial_end              TIMESTAMPTZ,                    -- trial end; length is provider-driven, plan_prices.trial_days
   current_period_end     TIMESTAMPTZ,                    -- Phase 2
   created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX uniq_subscription_org ON subscriptions (org_id);  -- one active sub per org
-CREATE INDEX idx_subscription_stripe ON subscriptions (stripe_subscription_id)
-  WHERE stripe_subscription_id IS NOT NULL;
+CREATE INDEX idx_subscription_provider ON subscriptions (provider_subscription_id)
+  WHERE provider_subscription_id IS NOT NULL;
 
 -- Concrete per-org allowances. Normally derived from plan, but stored so an
 -- override (a custom enterprise deal, a comped limit) does not need a fake plan.
@@ -412,7 +412,7 @@ CREATE INDEX idx_mc_channel ON monitor_channels (channel_id);
 CREATE INDEX idx_mc_org ON monitor_channels (org_id);
 ```
 
-`check_results` is partitioned; its DDL is in section 6.1 to keep the partition mechanics together.
+`check_results` DDL is in section 6.1. Current state: it is a plain unpartitioned table, not partitioned.
 
 ```sql
 CREATE TABLE incidents (
@@ -424,7 +424,7 @@ CREATE TABLE incidents (
   cause_reason    TEXT    NOT NULL,                     -- the failure_reason that opened it
   close_reason    TEXT    CHECK (close_reason IN ('recovered','disabled','manual')), -- NULL while open
   closed_by       BIGINT  REFERENCES users(id) ON DELETE SET NULL, -- set when close_reason='manual'
-  first_result_id BIGINT,                               -- link to the failing check_result (no FK: partitioned)
+  first_result_id BIGINT REFERENCES check_results(id) ON DELETE SET NULL, -- link to the failing check_result
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_incidents_monitor_time ON incidents (org_id, monitor_id, started_at DESC);
@@ -435,7 +435,7 @@ CREATE UNIQUE INDEX uniq_open_incident
 CREATE INDEX idx_incidents_open ON incidents (org_id, ended_at, started_at DESC);
 ```
 
-Note on `incidents.first_result_id`: it is a soft reference, not a foreign key. `check_results` is partitioned and a row in it ages out by partition drop (section 6), so a hard FK from `incidents` (which is retained for the life of the org, PRD-002 section 6.1) would either block the partition drop or cascade-null on retention. We keep it as a plain bigint and tolerate that the linked raw result may have aged out; the incident itself holds `started_at` and `cause_reason` so nothing user-visible is lost.
+Note on `incidents.first_result_id`: it is a real foreign key, `REFERENCES check_results(id) ON DELETE SET NULL`. If the linked raw result is ever removed, the column goes to NULL rather than blocking the delete. The incident itself holds `started_at` and `cause_reason` so nothing user-visible is lost. (The original plan kept this as a soft reference because `check_results` was meant to be partitioned and aged out by partition drop; that partitioning is not built yet, see section 6, so the FK is in place.)
 
 ### 4.4 Status pages (PRD-004)
 
@@ -569,11 +569,13 @@ CREATE TABLE notify_dedup (
 );
 CREATE INDEX idx_notify_dedup_age ON notify_dedup (created_at);
 
--- Migration tracking (section 8).
-CREATE TABLE schema_migrations (
-  version    BIGINT  PRIMARY KEY,
-  dirty      BOOLEAN NOT NULL DEFAULT false,
-  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+-- Migration tracking (section 8). goose owns this table and its shape; it is
+-- created and maintained by goose, not by our baseline.
+CREATE TABLE goose_db_version (
+  id         SERIAL  PRIMARY KEY,
+  version_id BIGINT  NOT NULL,
+  is_applied BOOLEAN NOT NULL,
+  tstamp     TIMESTAMP DEFAULT now()
 );
 ```
 
@@ -604,34 +606,34 @@ ALTER TABLE monitors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE monitors FORCE ROW LEVEL SECURITY;   -- applies even to the table owner role
 
 CREATE POLICY org_isolation ON monitors
-  USING      (org_id = current_setting('app.current_org')::BIGINT)   -- read/update/delete visibility
-  WITH CHECK (org_id = current_setting('app.current_org')::BIGINT);  -- insert/update target rows
+  USING      (org_id = current_setting('app.current_org', true)::BIGINT)   -- read/update/delete visibility
+  WITH CHECK (org_id = current_setting('app.current_org', true)::BIGINT);  -- insert/update target rows
 
 -- organizations keys off its own id (it has no org_id column):
 ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizations FORCE ROW LEVEL SECURITY;
 CREATE POLICY org_self_isolation ON organizations
-  USING      (id = current_setting('app.current_org')::BIGINT)
-  WITH CHECK (id = current_setting('app.current_org')::BIGINT);
+  USING      (id = current_setting('app.current_org', true)::BIGINT)
+  WITH CHECK (id = current_setting('app.current_org', true)::BIGINT);
 ```
 
 Notes that make this safe:
 
-- `current_setting('app.current_org')` with no second argument raises an error if the variable is unset. That is deliberate: a tenant query that runs without an org set fails loudly rather than returning all rows. The repository always sets it (5.3) before any tenant query.
+- `current_setting('app.current_org', true)` uses the two-argument `missing_ok` form, so when the variable is unset it returns NULL instead of raising. `org_id = NULL` is never true, so a tenant query that runs without an org set matches no rows rather than returning all rows. The fail-closed behavior comes from the no-match, not from a raised error. The repository always sets the org (5.3) before any tenant query.
 - The application role that the services connect as is a non-superuser, non-`BYPASSRLS` role. `FORCE ROW LEVEL SECURITY` ensures the policy applies even though that role owns the tables. Migrations run as a separate role that is allowed to bypass RLS (it needs to touch all rows during a backfill), and that role is never used by a running service.
-- Global tables (`users`, `plans`, `regions`, `region_health`, `schema_migrations`) have no RLS. `user_identities` and `refresh_tokens` are keyed by `user_id`, not `org_id`, and are reached only through the auth path which scopes by the authenticated user; they are not under org RLS by design (a user spans orgs).
+- Global tables (`users`, `plans`, `regions`, `region_health`, `goose_db_version`) have no RLS. `user_identities` and `refresh_tokens` are keyed by `user_id`, not `org_id`, and are reached only through the auth path which scopes by the authenticated user; they are not under org RLS by design (a user spans orgs).
 
 ### 5.3 How the repository sets the session variable
 
 Each unit of tenant work runs in a transaction that first sets the org, using `set_config` with the `is_local = true` flag so the setting is scoped to the transaction and cannot leak to the next checkout of a pooled connection.
 
 ```go
-// store.withOrg runs fn inside a transaction that has app.current_org set to the
-// caller's org for the life of that transaction only. Every tenant repository
-// method funnels through this.
-func (s *PgStore) withOrg(ctx context.Context, fn func(pgx.Tx) error) error {
-    orgID := authctx.OrgID(ctx) // panics if missing; tenant work must have an org
-    return pgx.BeginTxFunc(ctx, s.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+// Pool.WithOrg runs fn inside a transaction that has app.current_org set to the
+// passed org for the life of that transaction only. The org is passed explicitly
+// as an argument, not read from the context. Every tenant repository call goes
+// through this.
+func (p *Pool) WithOrg(ctx context.Context, orgID int64, fn func(tx pgx.Tx) error) error {
+    return pgx.BeginTxFunc(ctx, p.pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
         // is_local = true: scoped to THIS transaction, reset on commit/rollback.
         if _, err := tx.Exec(ctx,
             "SELECT set_config('app.current_org', $1, true)",
@@ -643,7 +645,7 @@ func (s *PgStore) withOrg(ctx context.Context, fn func(pgx.Tx) error) error {
 }
 ```
 
-Why `is_local = true` and a transaction per unit of work: pgxpool reuses connections. A `SET` without `LOCAL` would persist on the physical connection and the next request that checks out that connection would inherit the previous org. `set_config(..., true)` ties the value to the transaction, so a commit or rollback clears it and a leaked org is impossible. This is the single most important detail in the whole tenancy implementation, so it is centralized in `withOrg` and never written ad hoc.
+Why `is_local = true` and a transaction per unit of work: pgxpool reuses connections. A `SET` without `LOCAL` would persist on the physical connection and the next request that checks out that connection would inherit the previous org. `set_config(..., true)` ties the value to the transaction, so a commit or rollback clears it and a leaked org is impossible. This is the single most important detail in the whole tenancy implementation, so it is centralized in `WithOrg` and never written ad hoc.
 
 ### 5.4 Cross-tenant isolation test suite (binding, must pass before release)
 
@@ -657,7 +659,7 @@ This suite is the release check RFC-000 6.1 requires. It runs against a real Pos
 | T4 | RLS backstop, read | Open a tenant transaction for org A, set `app.current_org = A`, then run a deliberately org-unfiltered `SELECT * FROM monitors` (simulating a repository bug that forgot the WHERE) | returns only A's rows; B's are invisible |
 | T5 | RLS backstop, write | Same transaction, run `UPDATE monitors SET name='x'` with no WHERE | updates only A's rows; B's are untouched |
 | T6 | RLS backstop, cross-org insert | With `app.current_org = A`, attempt `INSERT ... (org_id) VALUES (B...)` | rejected by the policy `WITH CHECK` |
-| T7 | Missing org fails closed | Run any tenant query without setting `app.current_org` | errors (current_setting raises), returns no rows |
+| T7 | Missing org fails closed | Run any tenant query without setting `app.current_org` | returns no rows (current_setting returns NULL, so `org_id = NULL` matches nothing) |
 | T8 | Pool isolation | Run org A work, then org B work, on a pool of size 1 so they share a physical connection | B's transaction never sees A's `app.current_org`; the `is_local` setting was reset |
 | T9 | Endpoint-level | For every `/api/v1` route that takes a resource id, authenticate as org A and request org B's resource id | 404 (not 403, to avoid confirming existence), never B's data |
 | T10 | Join safety | A query that joins two tenant tables under org A cannot pull a B row through the join | only A rows in the result |
@@ -668,14 +670,39 @@ T4-T8 are the ones that prove RLS catches a repository bug: they bypass the `WHE
 
 ## 6. check_results at scale
 
-`check_results` is the firehose: ~10k inserts/sec sustained, 500k monitors, region-multiplied (RFC-000 6.2). It is the only table whose volume forces partitioning.
+`check_results` is the firehose: ~10k inserts/sec sustained, 500k monitors, region-multiplied (RFC-000 6.2). It is the table whose volume drives the partitioning plan below.
 
-### 6.1 Partitioning: monthly RANGE on checked_at (decision)
-
-Decision: declarative RANGE partitioning of `check_results` by `checked_at`, one partition per calendar month.
+Current state: `check_results` is a plain unpartitioned table. The monthly RANGE partitioning, the per-org early prune, and the rollups in this section are not built yet; they are kept here as the planned design. The shipped DDL is:
 
 ```sql
--- Parent (no rows live here; it routes to monthly children).
+CREATE TABLE check_results (
+  id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  org_id         BIGINT      NOT NULL,
+  monitor_id     BIGINT      NOT NULL,
+  region         TEXT        NOT NULL,                 -- region code that ran the check
+  checked_at     TIMESTAMPTZ NOT NULL,
+  healthy        BOOLEAN     NOT NULL,
+  failure_reason TEXT,                                  -- NULL when healthy
+  status_code    INT,                                   -- NULL on conn error/timeout/blocked
+  latency_ms     INT,                                   -- NULL when no latency
+  error_text     TEXT,                                  -- short, truncated
+  UNIQUE (org_id, monitor_id, region, checked_at)       -- dedup identity
+);
+
+-- The dedup key from RFC-000 5.3 is the UNIQUE tuple (org_id, monitor_id, region, checked_at).
+-- A redelivered job writes the same row -> ON CONFLICT DO NOTHING is a no-op (section 7.4).
+-- The surrogate id is the primary key and is what incidents.first_result_id references.
+
+CREATE INDEX idx_results_hot
+  ON check_results (org_id, monitor_id, checked_at DESC, region);
+```
+
+### 6.1 Planned: partitioning by monthly RANGE on checked_at
+
+This is the planned target, not yet built. Declarative RANGE partitioning of `check_results` by `checked_at`, one partition per calendar month.
+
+```sql
+-- Planned parent (no rows live here; it routes to monthly children).
 CREATE TABLE check_results (
   id             BIGINT GENERATED ALWAYS AS IDENTITY,
   org_id         BIGINT      NOT NULL,
@@ -690,21 +717,12 @@ CREATE TABLE check_results (
   PRIMARY KEY (org_id, monitor_id, region, checked_at)  -- composite, includes the partition key
 ) PARTITION BY RANGE (checked_at);
 
--- The dedup key from RFC-000 5.3 is the PK itself: (org_id, monitor_id, region, checked_at).
--- A redelivered job writes the same row -> ON CONFLICT DO NOTHING is a no-op (section 7.4).
--- (The surrogate id stays for convenience but is not the identity that dedups.)
-
--- Hot-path index: monitor history, newest-first, scoped by org. Region as a trailing column
--- so per-region history is a range scan, not a separate index.
-CREATE INDEX idx_results_hot
-  ON check_results (org_id, monitor_id, checked_at DESC, region);
-
 -- Example monthly child (created ahead of time by the partition manager, section 6.4):
 CREATE TABLE check_results_2026_06 PARTITION OF check_results
   FOR VALUES FROM ('2026-06-01 00:00:00+00') TO ('2026-07-01 00:00:00+00');
 ```
 
-Why monthly grain:
+Why monthly grain (in the planned design):
 
 | Consideration | Monthly | Weekly (rejected) | Daily (rejected) |
 |---------------|---------|-------------------|------------------|
@@ -721,12 +739,14 @@ Per-plan retention (PRD-006, section 4.2 table: 7 / 30 / 90 / 180 days) becomes 
 
 The wrinkle: retention is per plan, but a partition holds rows from all orgs of all plans. We cannot drop a month-partition while any org still needs rows in it. So the rule is:
 
-- A partition is eligible to DROP only once its entire time range is older than the longest retention tier we sell (180 days, Business). At that point no org can still need any row in it, so `DROP TABLE check_results_YYYY_MM` reclaims it instantly with no vacuum churn. This is the cheap, common path.
-- For orgs on shorter tiers (Free 7d, Starter 30d, Team 90d), their rows in a not-yet-droppable partition are pruned by a lightweight per-org delete that the rollup job runs anyway (it reads the raw rows to build rollups, section 6.3, and deletes raw rows past that org's retention in the same pass). Because rollups already persist the aggregate the UI needs, deleting an org's raw rows early loses nothing user-visible.
+- A partition is eligible to DROP only once its entire time range is older than the longest retention tier we sell (180 days, Custom). At that point no org can still need any row in it, so `DROP TABLE check_results_YYYY_MM` reclaims it instantly with no vacuum churn. This is the cheap, common path.
+- For orgs on shorter tiers (Free 7d, Hobby 30d, Professional 90d), their rows in a not-yet-droppable partition are pruned by a lightweight per-org delete that the rollup job runs anyway (it reads the raw rows to build rollups, section 6.3, and deletes raw rows past that org's retention in the same pass). Because rollups already persist the aggregate the UI needs, deleting an org's raw rows early loses nothing user-visible.
 
 So the architecture is: rollups are the durable history the product shows; raw `check_results` is a short-lived staging firehose that is dropped by partition at the 180-day outer bound and pruned per-org earlier by the rollup job. Status pages and history charts read rollups, not raw rows (section 6.3), so shorter-tier pruning never affects what a customer sees within their window.
 
-### 6.3 Hourly rollups
+### 6.3 Planned: hourly rollups
+
+Current state: not built. There is no `check_rollups` table and no rollup job. This section is the planned design.
 
 Rollups are per `(org_id, monitor_id, region, hour)`. They are how uptime and history charts stay fast and correct over the retention window without scanning the firehose.
 
@@ -873,7 +893,7 @@ Every tenant method goes through `withOrg` (section 5.3) so `app.current_org` is
 
 ### 7.4 Partition-aware, idempotent result writes
 
-`InsertResult` writes into the partitioned parent (Postgres routes to the right monthly child by `checked_at`) and is idempotent under Kafka redelivery via the composite key:
+`InsertResult` writes into the plain `check_results` table (no partition routing today, section 6) and is idempotent under bus redelivery via the unique tuple:
 
 ```sql
 INSERT INTO check_results
@@ -901,30 +921,30 @@ The Store holds two pools: a primary pool (writes and read-after-write reads) an
 
 ## 8. Migrations
 
-### 8.1 Tool: golang-migrate over embedded SQL (decision)
+### 8.1 Tool: goose over embedded SQL (decision)
 
-Decision: `golang-migrate/migrate` used as a library, reading forward-only `.sql` files embedded with `//go:embed` from `internal/store/migrations/`, tracking applied versions in `schema_migrations`.
+Decision: `pressly/goose` (`github.com/pressly/goose/v3`) reading numbered `.sql` files from `internal/store/migrations/` (`0000N_*.sql`), each with `-- +goose Up` and `-- +goose Down` sections, tracking applied versions in goose's own `goose_db_version` table. `schema.sql` is the frozen from-empty baseline; a fresh db applies the baseline then every migration, a real db runs the pending migrations forward.
 
-RFC-000 6.3 left the choice between the v1 hand-rolled embedded runner and golang-migrate, with the deciding factor being partition and RLS DDL. That factor decides it for golang-migrate:
+RFC-000 6.3 left the choice between the v1 hand-rolled embedded runner and a library migration tool, with the deciding factor being partition and RLS DDL. That factor decides it for goose:
 
-| Factor | golang-migrate (chosen) | v1 hand-rolled runner (rejected) |
+| Factor | goose (chosen) | v1 hand-rolled runner (rejected) |
 |--------|--------------------------|----------------------------------|
-| Plain ordered SQL files | yes, exactly what we want for the RLS policy blocks and the initial partitioned-table DDL | yes |
-| `dirty` state on a failed migration | tracked in `schema_migrations.dirty`, so a half-applied RLS/partition migration is detectable and the next run refuses to proceed blindly | not handled; the v1 runner assumes each file is atomic-or-nothing, which is fine for SQLite but risky for the multi-statement RLS rollout |
-| Runs once as a k8s Job, not per-service at boot | yes; we invoke `migrate.Up()` from a one-shot binary | the v1 runner ran at service start, which five services would race (RFC-000 6.3 explicitly moves this to a pre-deploy job) |
-| Forward-only | we ship only `*.up.sql`; no down files | yes |
-| Dependency weight | one well-maintained library; we use the library API, not its CLI, so no CLI dependency tree leaks in | zero deps, but we are giving up `dirty` tracking and battle-tested apply logic to save one import |
+| Plain ordered SQL files | yes, exactly what we want for the RLS policy blocks; multi-statement and dollar-quoted blocks wrap in `-- +goose StatementBegin`/`StatementEnd` | yes |
+| Applied-version tracking | goose records applied versions in `goose_db_version` | the v1 runner tracked its own versions |
+| Runs as a one-shot, not per-service at boot | yes; `MigrateUp` runs from a one-shot path (`make migrate` / a pre-deploy job) | the v1 runner ran at service start, which five services would race (RFC-000 6.3 explicitly moves this to a pre-deploy job) |
+| Down sections | each goose file carries a `-- +goose Down` reverse, though our convention is still forward-only in production | yes |
+| Dependency weight | one well-maintained library | zero deps, but we give up battle-tested apply logic to save one import |
 
-The `store.Migrate(ctx)` contract from v1 is preserved in spirit: there is still a single entry point that applies embedded SQL forward-only and records versions. It now lives in the migration job, not the runtime store, and golang-migrate is the engine underneath.
+The `store.Migrate(ctx)` contract from v1 is preserved in spirit: there is still a single entry point (`MigrateUp`) that applies the embedded SQL forward and records versions. goose is the engine underneath.
 
-We ship up-only migrations (no down). A bad migration is fixed by a new forward migration, never a down. This matches RFC-000's minimal stance and avoids the trap of an untested down path against production data.
+Migrations are forward-only in practice. Each file has a `-- +goose Down` section so a migration is reversible in dev, but a bad migration reaching production is fixed by a new forward migration, never a down against production data.
 
 ### 8.2 How it runs in Kubernetes
 
 A `migrate` binary (`cmd/migrate`) runs as a Kubernetes Job before any service rollout, as a Helm pre-install/pre-upgrade hook (RFC-011 owns the Helm wiring). The Job:
 
 1. Connects as the migration role (a role with `BYPASSRLS` and DDL rights, distinct from the service role).
-2. Runs `migrate.Up()`. If `schema_migrations.dirty` is true from a prior failed run, it fails loudly and a human investigates.
+2. Runs `MigrateUp` (goose). goose records each applied version in `goose_db_version`; a failed migration stops the run and a human investigates.
 3. On success, the rollout of the five services proceeds. The services connect as the non-superuser, non-BYPASSRLS service role.
 
 Because migrations run as one Job, the five services never race to migrate (the explicit fix for the v1 boot-time approach, RFC-000 6.3).
@@ -1024,7 +1044,7 @@ This keeps the bulk of read traffic on replicas (the scale win) while making the
 
 ### 11.2 Open questions
 
-1. Audit retention as a partitioned stream. RFC-000 open-question 2 notes login-event audit volume (`auth.login`) may want its own retention separate from people-changes. `audit_events` is a single table here with per-plan `audit_log_retention_days` (Team 30d, Business 365d, Free/Starter none). If login-event volume turns out to dominate, the cheap next step is to range-partition `audit_events` by `created_at` (same mechanism as `check_results`) and drop old partitions, and possibly split a high-volume `auth.login` stream into its own retention. Not done in v1; flagged so RFC-010 (retention/cost) and product can decide. Does not block this RFC.
+1. Audit retention as a partitioned stream. RFC-000 open-question 2 notes login-event audit volume (`auth.login`) may want its own retention separate from people-changes. `audit_events` is a single table here with per-plan `audit_log_retention_days` (Professional 30d, Custom 365d, Free/Hobby none). If login-event volume turns out to dominate, the cheap next step is to range-partition `audit_events` by `created_at` (same mechanism as `check_results`) and drop old partitions, and possibly split a high-volume `auth.login` stream into its own retention. Not done in v1; flagged so RFC-010 (retention/cost) and product can decide. Does not block this RFC.
 
 2. Entitlement override vs derived. The `entitlements` table is stored per-org so a comped/enterprise override does not need a fake plan row. The open question for RFC-009: is the row always present (populated from the plan on every plan change) or absent-means-derive-from-plan. This RFC models it as always-present (a row per org, refreshed on plan change), which makes the read a single-row primary-key lookup and the fail-closed-on-write stance simple. RFC-009 confirms.
 

@@ -71,9 +71,9 @@ Region availability is a plan entitlement and a cost dimension (master 11). The 
 | Plan | Regions per monitor | Premium regions |
 |------|---------------------|-----------------|
 | Free | 1 (default home region only) | No |
-| Starter | up to 2 | No |
-| Team | up to 4 | No |
-| Business | up to 6 | Yes, included |
+| Hobby | 1 (default home region only) | No |
+| Professional | up to 4 | No |
+| Custom | up to 4 | Yes (premium/extra regions are Custom-only) |
 
 Enterprise (Phase 3) adds more and premium regions plus regional data residency (master 11, 15). The exact middle-tier counts stay GTM-tunable in PRD-006; this PRD depends on whatever PRD-006 sets and does not re-decide it.
 
@@ -278,7 +278,7 @@ What "designed-for" means here: the `region` attribution and the control-plane a
 - All selected regions down (our fleets): `R = 0`. The monitor is coverage-degraded under every policy. No incident opens. No notification fires. The false-positive guarantee holds even at total coverage loss.
 - All selected regions report the target unhealthy: every policy (any, quorum, all) is unhealthy; the state machine opens an incident normally once the threshold is crossed (PRD-002).
 - Region retired while selected: the retired region is dropped from the monitor's effective set (section 2). If that leaves the set empty, the platform falls back to the home region and surfaces the change to the owner; the monitor is never left with zero regions.
-- Premium region after downgrade: a monitor that selected a premium region under Business is downgraded to a plan without premium regions. PRD-006 prompts the owner to drop it; until usage is brought under the limit, the scheduler does not dispatch the disallowed region, and the monitor's effective region set shrinks (section 3 enforcement). If shrinkage drops coverage below the policy, coverage-degraded shows.
+- Premium region after downgrade: a monitor that selected a premium region under Custom is downgraded to a plan without premium regions. PRD-006 prompts the owner to drop it; until usage is brought under the limit, the scheduler does not dispatch the disallowed region, and the monitor's effective region set shrinks (section 3 enforcement). If shrinkage drops coverage below the policy, coverage-degraded shows.
 - A healthy region reporting a timeout: this is real signal, counted as an unhealthy result toward the policy, not excluded (section 6 table). Only heartbeat-unhealthy regions are excluded.
 - Quorum with `|R| = 1` after exclusions: a single surviving healthy region decides, but only if it clears the minimum-regions floor for quorum (section 13); below the floor it is coverage-degraded rather than a one-region quorum.
 

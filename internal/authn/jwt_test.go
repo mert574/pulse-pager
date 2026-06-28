@@ -12,7 +12,7 @@ func newTestIssuer(t *testing.T) *JWTIssuer {
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	return NewJWTIssuer("https://api.pulse.app", "pulse-api", sk)
+	return NewJWTIssuer("https://api.pulsepager.com", "pulse-api", sk)
 }
 
 func TestJWTRoundTrip(t *testing.T) {

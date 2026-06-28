@@ -190,7 +190,7 @@ func buildGoogle(t *testing.T, idp *fakeOIDC) Provider {
 		IssuerURL:    idp.server.URL,
 		ClientID:     "fake-client",
 		ClientSecret: "fake-secret",
-		RedirectURL:  "https://api.pulse.app/auth/google/callback",
+		RedirectURL:  "https://api.pulsepager.com/auth/google/callback",
 	})
 	if err != nil {
 		t.Fatalf("build google provider: %v", err)
@@ -413,7 +413,7 @@ func buildGitHub(t *testing.T, g *fakeGitHub) Provider {
 	return NewGitHubProvider(OAuth2Config{
 		ClientID:     "gh-client",
 		ClientSecret: "gh-secret",
-		RedirectURL:  "https://api.pulse.app/auth/github/callback",
+		RedirectURL:  "https://api.pulsepager.com/auth/github/callback",
 		APIBaseURL:   g.server.URL,
 		AuthURL:      g.server.URL + "/login/oauth/authorize",
 		TokenURL:     g.server.URL + "/login/oauth/access_token",

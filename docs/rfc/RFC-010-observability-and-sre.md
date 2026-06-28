@@ -73,7 +73,7 @@ This is the load-bearing constraint for a multi-tenant product. With 50k orgs an
 |------|-------|
 | Never label a metric by `monitor_id` | a per-monitor time series is 500k series per metric; that data belongs in logs and traces (which carry `monitor_id` as an attribute), not in metrics |
 | Never label a metric by `org_id` at full cardinality | 50k series per metric. Per-org breakdown is a logs/traces query or an analytics query against Postgres, not a metric label |
-| Safe to label by | `region` (low tens of values), `result` / `healthy` (a handful), `failure_reason` (the six PRD-002 values), `channel_type` (slack/discord/webhook/smtp), `route_class` (read/write), `method`, `status_code` family (2xx/4xx/5xx as `status`), `plan_tier_bucket` (free/starter/team/business, four values), `change` type, `event_type` (down/recovery) |
+| Safe to label by | `region` (low tens of values), `result` / `healthy` (a handful), `failure_reason` (the six PRD-002 values), `channel_type` (slack/discord/webhook/smtp), `route_class` (read/write), `method`, `status_code` family (2xx/4xx/5xx as `status`), `plan_tier_bucket` (tier1/tier2/tier3/tierCustom, four values), `change` type, `event_type` (down/recovery) |
 | Plan tier is a bucket, not the org | when a per-tier view is needed (for cost-per-check by tier, section 9), the label is the four-value `plan_tier_bucket`, never the org id. This keeps the series count bounded at 4 x other-labels |
 | Status code is bucketed | label by `status` family (`2xx`/`3xx`/`4xx`/`5xx`) for rate and error math; the exact code (e.g. 503) lives in logs and on the trace span, not as a metric label, to avoid unbounded code values inflating series |
 
@@ -318,7 +318,7 @@ Even with sampling, these paths are always instrumented (a span is always create
 | api write requests | the 500ms write SLO and the place a slow or failing write is debugged |
 | api read requests (status, history) | the 300ms read SLO; sampled more aggressively since read volume is high |
 | OAuth callback and JWKS | auth is the front door; a slow or failing login is high-impact and rare enough to keep |
-| Stripe webhook handling | billing correctness; rare, high-value, always kept |
+| Paddle webhook handling | billing correctness; rare, high-value, always kept |
 | The synthetic canary check (section 5.6) | the self-SLA witness; 100% kept |
 
 ---

@@ -1,6 +1,6 @@
 # RFC-014 - Internationalization and Localization (i18n/l10n)
 
-Status: DONE
+Status: DRAFT - designed, not yet built (only the channel-catalog localizable shape ships today)
 Author: Principal Architecture
 Audience: every api/service author who returns a user-facing string, the SPA (RFC-013), the notifier (RFC-007), status-page serving (PRD-004), docs/CI authors
 Parent: `docs/rfc/RFC-000-architecture-overview.md` (the conventions, section 5 eventing, section 9 observability)
@@ -9,7 +9,7 @@ Product source of truth: PRD-003 (notification bodies + the locked webhook envel
 
 House style: no em-dashes. Tables and JSON examples over prose. Every load-bearing choice states the decision, the reasoning, and the rejected alternatives.
 
-This RFC is the same designed-in-then-phased stance Pulse takes for multi-region (RFC-000 section 4): the whole contract is in place from day one, v1 ships English only, and adding a locale later is catalog files plus translation, never an API or code change.
+This RFC is the same designed-in-then-phased stance Pulse takes for multi-region (RFC-000 section 4): the contract is designed so that adding a locale later is catalog files plus translation, never an API or code change. Current state: most of it is not built yet. The FE uses an interim flat `t(key)` map (`web/src/i18n.ts`), there is no `go-i18n` server catalog and no `@lit/localize` bundle, and the error envelope is not yet extended (section 3). The one piece that ships today is the channel-catalog localizable shape (section 12).
 
 ---
 
@@ -52,8 +52,8 @@ Every user-facing string the API returns uses one shape:
 ```json
 {
   "code": "error.validation.interval_below_floor",
-  "params": { "floor_seconds": 300, "plan": "starter" },
-  "message": "Interval must be at least 300s on the Starter plan."
+  "params": { "floor_seconds": 300, "plan": "tier2" },
+  "message": "Interval must be at least 300s on the Hobby plan."
 }
 ```
 
@@ -67,7 +67,7 @@ The rule: `code` is the contract, `message` is the fallback, `params` is the dat
 
 ### 2.2 Why params carry machine tokens, not pre-localized text
 
-`params` values are the raw machine form so the client can localize embedded names itself. `"plan": "starter"` (not `"Starter plan"`) lets the SPA render the plan name in its own locale via a nested lookup (`plan.starter.name`). `"channel_type": "slack"` stays the brand token (never translated). A timestamp param is RFC3339 UTC so the client formats it to the user's locale and timezone (section 8). If we pre-localized params into English text, the client could not re-localize them.
+`params` values are the raw machine form so the client can localize embedded names itself. `"plan": "tier2"` (not `"Hobby plan"`) lets the SPA render the plan name in its own locale via a nested lookup (`plan.tier2.name`). `"channel_type": "slack"` stays the brand token (never translated). A timestamp param is RFC3339 UTC so the client formats it to the user's locale and timezone (section 8). If we pre-localized params into English text, the client could not re-localize them.
 
 ### 2.3 ICU MessageFormat as the interpolation standard
 
@@ -91,7 +91,7 @@ An error envelope entry (top-level message):
 
 ```json
 { "code": "error.entitlement.monitor_limit_reached",
-  "params": { "limit": 10, "plan": "team" },
+  "params": { "limit": 10, "plan": "tier3" },
   "message": "You have reached your plan limit of 10 monitors." }
 ```
 
@@ -99,16 +99,16 @@ A per-field validation message (inside `fields`, section 3):
 
 ```json
 { "code": "error.validation.interval_below_floor",
-  "params": { "floor_seconds": 300, "plan": "starter" },
-  "message": "Interval must be at least 300s on the Starter plan." }
+  "params": { "floor_seconds": 300, "plan": "tier2" },
+  "message": "Interval must be at least 300s on the Hobby plan." }
 ```
 
 The channel-catalog `unavailable_reason` (already a localizable object, section 12):
 
 ```json
 { "code": "channel.unavailable.plan_upgrade",
-  "params": { "channel_type": "pagerduty", "required_plan": "business" },
-  "message": "PagerDuty channels require the Business plan." }
+  "params": { "channel_type": "pagerduty", "required_plan": "tier3" },
+  "message": "PagerDuty channels require the Professional plan." }
 ```
 
 A config-field label and help (channel form rendering, deterministic codes, section 4.2):
@@ -124,7 +124,7 @@ A config-field label and help (channel form rendering, deterministic codes, sect
 
 ## 3. Extend the error envelope (amends RFC-012)
 
-The RFC-012 error envelope `message` and each per-field validation message become localizable. The existing `code` enum on the envelope stays exactly as RFC-012 defines it (`validation_failed`, `entitlement_exceeded`, ...); this change is purely additive to the message-carrying fields. RFC-012 section 2.4 is edited now (section 13 lists it as applied).
+The plan is that the RFC-012 error envelope `message` and each per-field validation message become localizable. The existing `code` enum on the envelope stays exactly as RFC-012 defines it (`validation_failed`, `entitlement_exceeded`, ...); this change is purely additive to the message-carrying fields. Current state: not applied yet. The implemented `Error` schema is still `{code, message, fields}` with `fields` a map of bare strings (`api/openapi/v1.yaml`), no top-level `i18n` object. The shape below is the target, not what ships today (section 13).
 
 ### 3.1 Before and after
 
@@ -154,12 +154,12 @@ After (the top-level `message` carries an i18n `code` + `params`; each `fields` 
     "fields": {
       "interval_seconds": {
         "code": "error.validation.interval_below_floor",
-        "params": { "floor_seconds": 300, "plan": "starter" },
-        "message": "Interval must be at least 300s on the Starter plan."
+        "params": { "floor_seconds": 300, "plan": "tier2" },
+        "message": "Interval must be at least 300s on the Hobby plan."
       },
       "regions": {
         "code": "error.entitlement.region_not_in_plan",
-        "params": { "region": "eu-west", "plan": "starter" },
+        "params": { "region": "eu-west", "plan": "tier2" },
         "message": "Region eu-west is not in your plan."
       }
     }
@@ -374,18 +374,20 @@ RTL (Arabic, Hebrew) is designed-in and phased for both the SPA and the status p
 
 ## 11. Scope and phasing
 
-| Item | v1 (ships now) | Later (adding a locale) |
-|------|----------------|--------------------------|
-| Localizable shape `{code, params?, message}` | yes, every user-facing string | unchanged |
-| Error-envelope extension (section 3) | yes | unchanged |
-| Negotiation precedence (section 5) | yes, resolves to `en` | unchanged; a new locale just starts winning |
-| Code namespace + governance (section 4) | yes | new codes are additive |
-| Server `en` catalogs (`go-i18n`) | yes | add `active.<locale>.*` files |
-| FE `en` bundle (`@lit/localize`) | yes | add an XLIFF translation, ship a bundle |
-| Data-model fields (section 9) | yes, defaulting `en` / `UTC` | values become non-default |
-| Pseudo-locale | active in dev/staging | stays, catches regressions |
-| Real non-English locale | none | catalog files + translation, no code/API change |
-| RTL | direction hook + logical CSS in place | an RTL catalog + translation |
+Current state: the columns below are the v1 target. Most rows are not built yet (see the status note at the top); the table reads as the plan, not as shipped.
+
+| Item | v1 target | Built today? | Later (adding a locale) |
+|------|-----------|--------------|--------------------------|
+| Localizable shape `{code, params?, message}` | every user-facing string | only the channel catalog (section 12) | unchanged |
+| Error-envelope extension (section 3) | yes | no, envelope is still `{code, message, fields}` bare strings | unchanged |
+| Negotiation precedence (section 5) | resolves to `en` | not built | unchanged; a new locale just starts winning |
+| Code namespace + governance (section 4) | yes | only for channel-catalog codes | new codes are additive |
+| Server `en` catalogs (`go-i18n`) | yes | not built (no `go-i18n` dependency) | add `active.<locale>.*` files |
+| FE `en` bundle (`@lit/localize`) | yes | not built; FE uses an interim `t(key)` map (`web/src/i18n.ts`) | add an XLIFF translation, ship a bundle |
+| Data-model fields (section 9) | defaulting `en` / `UTC` | mostly: `users`, `organizations`, `invitations` columns exist; `status_pages.default_locale` not added yet | values become non-default |
+| Pseudo-locale | active in dev/staging | not built | stays, catches regressions |
+| Real non-English locale | none | none | catalog files + translation, no code/API change |
+| RTL | direction hook + logical CSS in place | not built | an RTL catalog + translation |
 
 Adding a locale is: translate the `en` catalog into the new XLIFF (FE) and the new `go-i18n` file (server), mark the locale supported in the negotiation allowlist, ship. No handler, no endpoint, no schema, no spec change. This is P1 + P3 made concrete.
 
@@ -399,11 +401,11 @@ The channel-catalog endpoint (the one that lists channel types, their config fie
 
 ## 13. Touchpoints and required edits to other docs
 
-The RFC-012 edit (the error-envelope extension, section 3) is applied now by this change. The rest are listed precisely for a follow-up reconciliation; they are not edited here to avoid concurrent-edit conflicts.
+The error-envelope extension (section 3) is not applied yet. These edits are listed precisely for a follow-up reconciliation.
 
 | Doc | Edit needed | Status |
 |-----|-------------|--------|
-| RFC-012 (API design) | extend the error envelope: top-level `error.i18n {code,params?}`, each `fields[name]` becomes `{code,params?,message}`; add an "Internationalization" subsection pointing at RFC-014 | APPLIED now (section 3, and the edit below) |
+| RFC-012 (API design) | extend the error envelope: top-level `error.i18n {code,params?}`, each `fields[name]` becomes `{code,params?,message}`; add an "Internationalization" subsection pointing at RFC-014 | not applied yet (the live `Error` schema is `{code, message, fields}` with bare-string fields) |
 | RFC-007 (notifier) / PRD-003 | state that human-readable channel bodies (Slack/Discord/email/SMS) render in the recipient locale via the server catalog; reaffirm the generic-webhook envelope and the org-webhook body stay locale-neutral English (appendix B unchanged) | pending |
 | RFC-013 (frontend) | replace the interim flat `t(key)` map (section 9.2) with `@lit/localize`; add the RTL direction hook + logical-CSS discipline; consume `{code,params,message}` and render client-side | pending |
 | RFC-003 / PRD-001 | user/org locale + timezone preference surfaces (account settings, org settings) and the locale-negotiation precedence read at the api edge | pending |

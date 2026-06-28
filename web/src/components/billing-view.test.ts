@@ -224,7 +224,7 @@ describe("billing-view", () => {
     const { el, calls, restore } = await mount({});
     try {
       await waitUntil(() => el.querySelector("[data-plan]") !== null);
-      // upgrade only on the higher tier (business), not on free/starter/team
+      // upgrade only on the higher tier (tierCustom), not on tier1/tier2/tier3
       expect(el.querySelector('[data-upgrade="tier1"]')).to.be.null;
       expect(el.querySelector('[data-upgrade="tier3"]')).to.be.null;
       const upgrade = el.querySelector<HTMLButtonElement>(

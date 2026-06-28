@@ -594,7 +594,7 @@ export interface paths {
         get?: never;
         /**
          * Set an organization's plan (platform admins only).
-         * @description Operator override of an org's billing tier, set by hand until Stripe lands (RFC-001 4.2). Gated by the PULSE_PLATFORM_ADMINS allowlist; a signed-in non-admin gets a 403.
+         * @description Operator override of an org's billing tier, set by hand alongside Paddle self-serve billing (RFC-001 4.2). Gated by the PULSE_PLATFORM_ADMINS allowlist; a signed-in non-admin gets a 403.
          */
         put: operations["setAdminOrgPlan"];
         post?: never;

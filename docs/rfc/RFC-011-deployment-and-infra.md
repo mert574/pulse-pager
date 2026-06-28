@@ -23,7 +23,7 @@ RFC-000 fixed the deployment decisions at the architecture level and handed RFC-
 | Leader-election runtime | The scheduler runs as a multi-replica Deployment that elects one active leader via a `coordination.k8s.io/Lease` (RFC-000 ADR-0004). This RFC fixes the RBAC, replica count, lease timings, and failover behavior. |
 | Managed-vs-self-run | Vendor and posture per dependency: Postgres, Redis, Kafka (control plane and regional), observability stack. |
 | Migration Job | The `cmd/migrate` Kubernetes Job runs as a Helm pre-upgrade hook before any service rollout, connecting as the BYPASSRLS migration role (RFC-001 section 8). |
-| TLS / wildcard certs | cert-manager + Let's Encrypt for app TLS; a wildcard cert for `*.pulse.app` status-page subdomains; on-demand per-customer certs for custom domains. |
+| TLS / wildcard certs | cert-manager + Let's Encrypt for app TLS; a wildcard cert for `*.pulsepager.com` status-page subdomains; on-demand per-customer certs for custom domains. |
 | Service-to-service trust runtime | Default-deny NetworkPolicy plus explicit allows, TLS to every infra endpoint, worker egress controls for SSRF defense at the network layer. No service mesh in v1. |
 | Secrets / KMS | k8s Secrets backed by a cloud KMS via the external-secrets operator; sourcing and rotation stance for `PULSE_SECRET_KEY`, the JWT signing key, OIDC client secrets, and DB/Kafka/Redis credentials. |
 | CI/CD + GitOps | Build, test (incl. the cross-tenant isolation suite), scan, push, then Argo CD reconciles. Migration Job ordering and rollback. |
@@ -316,19 +316,19 @@ Decision: **cert-manager + Let's Encrypt**, not manual certs or a paid CA. Reaso
 
 | Surface | Host pattern | Cert strategy | ACME challenge |
 |---------|--------------|---------------|----------------|
-| App (dashboard, API) | `app.pulse.app`, `api.pulse.app` | single cert per host | HTTP-01 |
-| Status-page subdomains | `{org-slug}.pulse.app` | one **wildcard** cert `*.pulse.app` (PRD-004, RFC-000 11.1) | DNS-01 (wildcards require DNS-01; cert-manager drives the DNS provider) |
+| App (dashboard, API) | `app.pulsepager.com`, `api.pulsepager.com` | single cert per host | HTTP-01 |
+| Status-page subdomains | `{org-slug}.pulsepager.com` | one **wildcard** cert `*.pulsepager.com` (PRD-004, RFC-000 11.1) | DNS-01 (wildcards require DNS-01; cert-manager drives the DNS provider) |
 | Custom domains | `status.customer.com` (customer CNAMEs to us) | one cert **per customer domain**, issued on demand | HTTP-01 once the CNAME resolves to us |
 
 ### 5.3 Custom-domain / on-demand TLS flow (PRD-004 section 6, phased)
 
 1. Owner/admin adds `status.customer.com` in the status-page editor (RBAC per PRD-004; entitlement `custom_domain_not_in_plan` checked in api per RFC-000 section 12).
-2. Pulse shows the required CNAME target (`status.customer.com` -> `cname.pulse.app`).
+2. Pulse shows the required CNAME target (`status.customer.com` -> `cname.pulsepager.com`).
 3. The customer creates the CNAME at their DNS provider.
 4. api writes a `Certificate` (or annotates an Ingress) for that host; cert-manager runs the HTTP-01 challenge over the now-resolving CNAME and issues the cert.
 5. ingress-nginx serves `status.customer.com` with the per-domain cert, renewed automatically.
 
-This stays additive: the per-org subdomain shape (`{org-slug}.pulse.app`) sets custom domains up naturally (PRD-004 section 2.1), and a slug rename only changes the wildcard-covered host, never a cert.
+This stays additive: the per-org subdomain shape (`{org-slug}.pulsepager.com`) sets custom domains up naturally (PRD-004 section 2.1), and a slug rename only changes the wildcard-covered host, never a cert.
 
 ### 5.4 Status-page serving resilience (PRD-004 section 8, PRD master 12)
 
@@ -476,7 +476,7 @@ Decision: **Argo CD** (pull-based GitOps), not pipeline-push (`kubectl apply` / 
 The `cmd/migrate` binary runs as a Kubernetes Job wired as a **Helm pre-upgrade / pre-install hook**, so Argo (via the Helm chart) runs it before the service rollout:
 
 1. The Job connects as the **migration role** (`BYPASSRLS` + DDL rights, distinct from the service role, RFC-001 section 8). It needs BYPASSRLS to touch all rows during a backfill; the running services never use this role.
-2. It runs `migrate.Up()` (golang-migrate, forward-only). If `schema_migrations.dirty` is true from a prior failed run, it fails loudly and a human investigates (RFC-001 section 8).
+2. It runs goose forward-only migrations. A failed migration stops the rollout for a human to investigate (RFC-001 section 8).
 3. On Job success, the rollout of the five services proceeds; they connect as the non-superuser, non-BYPASSRLS **service role**.
 
 The Job is a Helm `pre-upgrade,pre-install` hook with `hook-delete-policy: before-hook-creation` so a re-run starts clean. Because migrations are forward-only and run as one discrete Job, the five services never race to migrate (the fix for the v1 boot-time approach, RFC-000 section 6.3), and the Job start time is the clean PITR pin-point for "restore to just before the bad migration" (RFC-001 section 9.2).
@@ -524,28 +524,37 @@ Promotion: the same image digest that passed staging is promoted to prod by bump
 
 | Layer | Tool | Owns |
 |-------|------|------|
-| Cloud infra | Terraform | k8s clusters (control + per-region), managed Postgres (primary, replicas, backup/PITR config per RFC-001 section 9), managed Redis, managed Kafka (central + regional) or Strimzi where self-run, DNS zones + records (the `cname.pulse.app` target, the wildcard zone), KMS keys + the cloud secret manager entries, IAM roles for IRSA/Workload Identity. |
+| Cloud infra | Terraform | k8s clusters (control + per-region), managed Postgres (primary, replicas, backup/PITR config per RFC-001 section 9), managed Redis, managed Kafka (central + regional) or Strimzi where self-run, DNS zones + records (the `cname.pulsepager.com` target, the wildcard zone), KMS keys + the cloud secret manager entries, IAM roles for IRSA/Workload Identity. |
 | In-cluster workloads | Helm | per-service charts under an umbrella chart: Deployments, Services, HPAs/ScaledObjects, PDBs, NetworkPolicies, ServiceAccounts + RBAC (incl. the scheduler Lease Role), the migration Job hook, Ingress + cert-manager `Certificate`/`ClusterIssuer`, ExternalSecret resources. |
 | Reconciliation | Argo CD | renders the Helm charts from the GitOps repo against each cluster (section 9.2). |
 
 ### 11.2 Repo layout for `deploy/`
 
+Current state. What is in the tree today is the container build and the k3s observability stack:
+
 ```
 deploy/
   docker/
     Dockerfile                 # one parameterized Go service image (SERVICE arg)
-    nginx/Dockerfile           # SPA + status-page nginx image
-    nginx/default.conf         # /api proxy + status-page cache-first location
+    nginx/                     # SPA + status-page nginx image
+  observability/
+    grafana/  loki/  otel-collector/  prometheus/  tempo/   # Helm values per component
+    install.sh                 # installs the obs stack into k3s
+    namespace.yaml
+    README.md
+```
+
+The local-dev compose lives at the repo root `./docker-compose.yml`, not under `deploy/` (section 13).
+
+Planned (not yet in the tree). The full IaC layout below is the target this RFC designs toward; it is not built yet:
+
+```
+deploy/
   helm/
     umbrella/                  # one release deploys the control plane
-      Chart.yaml
-      values.yaml              # base
-      values-staging.yaml
-      values-prod.yaml
     charts/
       api/  scheduler/  worker/  alerting/  notifier/  nginx/
       migrate-job/             # the pre-upgrade hook Job
-      observability/           # kube-prometheus-stack values + OTel collector (RFC-010)
   terraform/
     modules/
       cluster/  postgres/  redis/  kafka/  dns/  kms/  secrets/  region/
@@ -553,11 +562,9 @@ deploy/
       staging/  prod/
   argocd/
     apps/                      # Argo Application + ApplicationSet (per-region fan-out)
-  compose/
-    docker-compose.yml         # local dev (section 13)
 ```
 
-The per-region cluster is one Terraform `region` module instance and one Argo `ApplicationSet` entry, so adding a region is a small additive change (RFC-000 section 4.2).
+Once that lands, the per-region cluster is one Terraform `region` module instance and one Argo `ApplicationSet` entry, so adding a region is a small additive change (RFC-000 section 4.2).
 
 ---
 
@@ -606,26 +613,23 @@ Shutting a region down (PRD-007 retire flow): catalog lifecycle to `deprecated` 
 
 ## 13. Local dev (docker-compose)
 
-One `deploy/compose/docker-compose.yml` brings the whole platform up on a laptop. Kafka runs in **KRaft mode** (no ZooKeeper). nginx serves the built SPA and proxies `/api`, matching prod's serving shape. The migration runs as a one-shot `migrate` container before the services start (compose `depends_on` + a healthcheck on the `migrate` exit, mirroring the prod pre-rollout Job).
+Current state. The repo-root `./docker-compose.yml` brings up infra only, not the app services. The five Go services and the SPA run on the host (`make build` / `go run ./cmd/...`, `npm run dev` in `web/`) against the compose-provided dependencies. The bus is **Redpanda** (Kafka-compatible, single node), not a Kafka/KRaft image. There is no `migrate`, `nginx`, or app container in compose; migrations run with `make migrate`.
 
 ### 13.1 Service list
 
-| Compose service | Image | Role | Depends on |
-|-----------------|-------|------|-----------|
-| `postgres` | postgres:16 | the single Postgres (no RLS-bypass split needed locally beyond two roles seeded by init SQL) | - |
-| `redis` | redis:7 | cache, locks, rate-limit, dedup | - |
-| `kafka` | a KRaft-mode Kafka image (Bitnami/Confluent KRaft) | single-broker bus, all topics (no MM2 locally; one region = home) | - |
-| `migrate` | local `migrate` build | runs `migrate.Up()` as the migration role, then exits 0 | postgres |
-| `api` | local `api` build | api service | postgres, redis, kafka, migrate |
-| `scheduler` | local `scheduler` build | scheduler (leader election degenerates to a single replica locally) | postgres, redis, kafka, migrate |
-| `worker` | local `worker` build | worker (consumes `check.jobs.home`) | kafka, postgres, redis, migrate |
-| `alerting` | local `alerting` build | alerting + the in-process rollup/partition task | postgres, redis, kafka, migrate |
-| `notifier` | local `notifier` build | notifier | postgres, redis, kafka, migrate |
-| `nginx` | local nginx build | serves the SPA, proxies `/api` to `api`, serves status pages | api |
-| `prometheus` | prom/prometheus | scrapes every service's `/metrics` (RFC-010) | - |
-| `grafana` | grafana/grafana | dashboards over Prometheus (RFC-010) | prometheus |
+| Compose service | Image | Role |
+|-----------------|-------|------|
+| `postgres` | postgres:16 | the single Postgres for dev |
+| `redis` | redis:7 | cache, locks, rate-limit, dedup |
+| `redpanda` | redpandadata/redpanda | single-node Kafka-compatible bus, all topics (no MM2 locally; one region = home) |
+| `otel-collector` | opentelemetry-collector-contrib | receives OTLP traces/metrics/logs (RFC-010) |
+| `prometheus` | prom/prometheus | scrapes every service's `/metrics` (RFC-010) |
+| `alertmanager` | prom/alertmanager | routes Prometheus alerts (RFC-010) |
+| `loki` | grafana/loki | log store (RFC-010) |
+| `tempo` | grafana/tempo | trace store (RFC-010) |
+| `grafana` | grafana/grafana | dashboards over Prometheus/Loki/Tempo (RFC-010) |
 
-This is the full loop on one machine: sign in (OIDC against a stubbed/dev client), create a monitor, the scheduler dispatches, the worker checks, alerting decides, the notifier delivers, the status page serves, and Prometheus/Grafana show the metrics. Topic creation is done by an init step or `KAFKA_AUTO_CREATE_TOPICS` for dev only (prod creates topics explicitly via RFC-002 provisioning).
+This is the full loop on one machine: bring up infra with `make up`, run the services on the host, then sign in, create a monitor, the scheduler dispatches, the worker checks, alerting decides, the notifier delivers, and Grafana shows the metrics/traces/logs. Topic creation is done for dev convenience; prod creates topics explicitly via RFC-002 provisioning.
 
 ---
 
@@ -666,7 +670,7 @@ This is the full loop on one machine: sign in (OIDC against a stubbed/dev client
 | ADR | Decision | One-line reasoning |
 |-----|----------|--------------------|
 | ADR-0011-a | KEDA for Kafka-lag autoscaling, plain HPA for api RPS/CPU | KEDA reads consumer-group lag natively; api's signal is a real Prometheus query, so the adapter + HPA fits there. |
-| ADR-0011-b | cert-manager + Let's Encrypt, wildcard `*.pulse.app` (DNS-01) + on-demand per-custom-domain (HTTP-01) | automatic issue/renew is the only way to serve one cert per customer domain at scale. |
+| ADR-0011-b | cert-manager + Let's Encrypt, wildcard `*.pulsepager.com` (DNS-01) + on-demand per-custom-domain (HTTP-01) | automatic issue/renew is the only way to serve one cert per customer domain at scale. |
 | ADR-0011-c | Argo CD pull-based GitOps, rolling updates (canary deferred) | cluster reconciles from git desired-state; CI never holds cluster-admin; rolling + readiness is enough for v1. |
 | ADR-0011-d | external-secrets operator backed by cloud KMS/secret manager | KMS-encrypted store stays authoritative; nothing secret in git or images; rotation propagates. |
 | ADR-0011-e | distroless static non-root images, one parameterized Dockerfile per `cmd/<service>` | tiny attack surface, reproducible builds, no five drifting Dockerfiles. |
