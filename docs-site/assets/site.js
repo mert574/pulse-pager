@@ -83,7 +83,10 @@
       this.innerHTML =
         folioTrack() +
         '<header class="topbar"><div class="topbar-inner wrap">' +
-          '<a class="brand" href="' + base + '"><span class="sq"></span>Pulse Pager</a>' +
+          '<a class="brand" href="' + base + '">' +
+            '<img class="logo-light" src="' + base + 'assets/logo.svg" alt="" width="22" height="22">' +
+            '<img class="logo-dark" src="' + base + 'assets/logo-dark.svg" alt="" width="22" height="22">' +
+            'Pulse Pager</a>' +
           '<input type="checkbox" id="pp-nav" class="navtoggle" hidden>' +
           '<div class="menu">' +
             '<nav class="topnav">' + navLinks(base, active) + "</nav>" +

@@ -135,6 +135,19 @@ a:hover { opacity: 0.78; }
 }
 .brand:hover { opacity: 1; }
 .brand .sq { width: 14px; height: 14px; background: var(--brand); flex: none; }
+.brand img { width: 22px; height: 22px; flex: none; display: block; }
+/* Show the logo variant that suits the active theme, matching the favicon swap.
+   Light is default; dark is shown by the OS preference (unless light is forced)
+   and by the explicit theme toggle. */
+.brand .logo-dark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not(.theme-light) .brand .logo-light { display: none; }
+  :root:not(.theme-light) .brand .logo-dark { display: block; }
+}
+:root.theme-dark .brand .logo-light { display: none; }
+:root.theme-dark .brand .logo-dark { display: block; }
+:root.theme-light .brand .logo-light { display: block; }
+:root.theme-light .brand .logo-dark { display: none; }
 
 /* Holds the nav links and the actions. A flex row on desktop, a stacked
    dropdown panel on mobile. */
