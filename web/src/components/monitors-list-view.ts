@@ -215,7 +215,7 @@ export class MonitorsListView extends AppElement {
         ${t("monitors.heading")}
       </h1>
       <div class="flex items-center gap-3">
-        <label class="pulse-cmdk w-full sm:w-[260px]">
+        <label class="pulse-cmdk w-full sm:w-[260px] hidden">
           <input
             id="monitor-filter"
             type="text"
