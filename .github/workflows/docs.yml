@@ -16,7 +16,6 @@ on:
     paths:
       - docs-site/**
       - api/openapi/v1.yaml
-      - Makefile
       - .github/workflows/docs.yml
   workflow_dispatch:
 
@@ -31,8 +30,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # site.config is untracked (fork-friendly); fill it from repo vars/secrets so
-      # the legal pages + Paddle checkout render with the real identity.
+      # site.config is untracked (fork-friendly); fill it from repo secrets so the
+      # legal pages + Paddle checkout render with the real identity.
       - name: Write docs-site/site.config
         run: |
           cat > docs-site/site.config <<EOF
@@ -48,7 +47,7 @@ jobs:
           EOF
 
       - name: Build docs (re-copy spec from api/openapi/v1.yaml)
-        run: make docs
+        run: bash docs-site/build.sh
 
       - name: Verify the reference matches the spec
         run: diff -q api/openapi/v1.yaml docs-site/openapi.yaml

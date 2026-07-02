@@ -9,8 +9,6 @@ on:
 env:
   REGISTRY: ghcr.io
 
-# The SPA is no longer shipped as an nginx image — it is built and synced to the
-# Garage bucket by the `web` workflow. Only the Go service images are built here.
 jobs:
   go-services:
     runs-on: ubuntu-latest
