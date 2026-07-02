@@ -1,30 +1,51 @@
 name: docs
 
-# Build the static docs site and deploy it to GitHub Pages. The API reference is
-# rebuilt from api/openapi/v1.yaml on every run (make docs re-copies the spec),
-# so the published reference cannot drift from the live contract.
+# Build the static docs site (apex pulsepager.com) and publish it to the homelab
+# Garage bucket, which the Cilium Gateway serves by Host match. The API reference is
+# rebuilt from api/openapi/v1.yaml on every run (make docs re-copies the spec), so
+# the published reference cannot drift from the live contract.
+#
+# Runs on the self-hosted `homelab` runner (ARC scale set, in-cluster) so it can
+# reach the LAN Garage S3 endpoint. Path-filtered: only rebuild when the docs, the
+# spec, or this workflow change.
 
 on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths:
+      - docs-site/**
+      - api/openapi/v1.yaml
+      - Makefile
+      - .github/workflows/docs.yml
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-# Let a running deploy finish; queue the newest, do not cancel in-flight.
+# Serialize deploys; queue the newest, do not cancel an in-flight sync.
 concurrency:
-  group: pages
+  group: docs-deploy
   cancel-in-progress: false
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  deploy:
+    runs-on: homelab
     steps:
       - uses: actions/checkout@v5
+
+      # site.config is untracked (fork-friendly); fill it from repo vars/secrets so
+      # the legal pages + Paddle checkout render with the real identity.
+      - name: Write docs-site/site.config
+        run: |
+          cat > docs-site/site.config <<EOF
+          PROJECT_NAME="${{ secrets.DOCS_PROJECT_NAME }}"
+          SELLER_NAME="${{ secrets.DOCS_SELLER_NAME }}"
+          CONTACT_EMAIL="${{ secrets.DOCS_CONTACT_EMAIL }}"
+          SITE_URL="${{ secrets.DOCS_SITE_URL }}"
+          JURISDICTION="${{ secrets.DOCS_JURISDICTION }}"
+          EFFECTIVE_DATE="${{ secrets.DOCS_EFFECTIVE_DATE }}"
+          PADDLE_CLIENT_TOKEN="${{ secrets.DOCS_PADDLE_CLIENT_TOKEN }}"
+          PADDLE_ENVIRONMENT="${{ secrets.DOCS_PADDLE_ENVIRONMENT }}"
+          APP_URL="${{ secrets.DOCS_APP_URL }}"
+          EOF
 
       - name: Build docs (re-copy spec from api/openapi/v1.yaml)
         run: make docs
@@ -32,22 +53,34 @@ jobs:
       - name: Verify the reference matches the spec
         run: diff -q api/openapi/v1.yaml docs-site/openapi.yaml
 
-      - uses: actions/configure-pages@v6
-        with:
-          # enable Pages (build via Actions) if it is not already, so a fresh
-          # clone of the repo does not fail this step before Pages is turned on.
-          enablement: true
+      # Publish set: the rendered site minus build inputs (script, templates, config,
+      # repo metadata, legal template sources).
+      - name: Stage publish dir
+        run: |
+          rm -rf _site
+          cp -a docs-site _site
+          ( cd _site && rm -f build.sh README.md .gitignore site.config site.config.example *.template.html && rm -rf legal )
+          find _site -type f | sort
 
-      - uses: actions/upload-pages-artifact@v5
-        with:
-          path: docs-site
+      - name: Install AWS CLI v2
+        run: |
+          if ! command -v aws >/dev/null 2>&1; then
+            sudo apt-get update -y && sudo apt-get install -y unzip curl
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp
+            sudo /tmp/aws/install --update
+          fi
+          aws --version
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v5
+      # Garage needs path-style addressing (dotted bucket name breaks virtual-host).
+      - name: Sync to Garage bucket (pulsepager.com)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.GARAGE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.GARAGE_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.GARAGE_S3_REGION }}
+          AWS_EC2_METADATA_DISABLED: "true"
+        run: |
+          aws configure set default.s3.addressing_style path
+          aws s3 sync _site "s3://pulsepager.com/" \
+            --endpoint-url "${{ secrets.GARAGE_S3_ENDPOINT }}" \
+            --delete

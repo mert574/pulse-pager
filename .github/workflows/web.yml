@@ -1,0 +1,65 @@
+name: web
+
+# Build the Lit SPA (app.pulsepager.com) and publish it to the homelab Garage
+# bucket, which the Cilium Gateway serves by Host match. Runs on the self-hosted
+# `homelab` runner (in-cluster) so it can reach the LAN Garage S3 endpoint.
+# Path-filtered: only rebuild when web/ or this workflow changes.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - web/**
+      - .github/workflows/web.yml
+  workflow_dispatch:
+
+concurrency:
+  group: web-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: homelab
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # VITE_PADDLE_CLIENT_TOKEN is baked into the checkout bundle at build time
+      # (web/src/components/checkout-view.ts). Vite's envDir is the repo root
+      # (web/vite.config.ts), so write .env there; only VITE_-prefixed keys are
+      # exposed to the client bundle.
+      - name: Write build-time env
+        run: echo "VITE_PADDLE_CLIENT_TOKEN=${{ secrets.VITE_PADDLE_CLIENT_TOKEN }}" > .env
+
+      - name: Build SPA
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install AWS CLI v2
+        run: |
+          if ! command -v aws >/dev/null 2>&1; then
+            sudo apt-get update -y && sudo apt-get install -y unzip curl
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp
+            sudo /tmp/aws/install --update
+          fi
+          aws --version
+
+      # Garage needs path-style addressing (dotted bucket name breaks virtual-host).
+      - name: Sync to Garage bucket (app.pulsepager.com)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.GARAGE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.GARAGE_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.GARAGE_S3_REGION }}
+          AWS_EC2_METADATA_DISABLED: "true"
+        run: |
+          aws configure set default.s3.addressing_style path
+          aws s3 sync web/dist "s3://app.pulsepager.com/" \
+            --endpoint-url "${{ secrets.GARAGE_S3_ENDPOINT }}" \
+            --delete
