@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Monitors and checks - Pulse Pager</title>
+  <meta name="description" content="How a Pulse Pager monitor is configured, how often it runs, what counts as a failure, and how a failure becomes an incident.">
+  <link rel="canonical" href="https://pulsepager.com/guides/monitors.html">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Pulse Pager">
+  <meta property="og:title" content="Monitors and checks - Pulse Pager">
+  <meta property="og:description" content="How a Pulse Pager monitor is configured, how often it runs, what counts as a failure, and how a failure becomes an incident.">
+  <meta property="og:url" content="https://pulsepager.com/guides/monitors.html">
+  <meta property="og:image" content="https://pulsepager.com/assets/og.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Pulse Pager">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Monitors and checks - Pulse Pager">
+  <meta name="twitter:description" content="How a Pulse Pager monitor is configured, how often it runs, what counts as a failure, and how a failure becomes an incident.">
+  <meta name="twitter:image" content="https://pulsepager.com/assets/og.png">
+  <link rel="stylesheet" href="../assets/styles.css">
+  <script src="../assets/site.js"></script>
+  <link rel="icon" type="image/svg+xml" href="../assets/logo.svg" media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/svg+xml" href="../assets/logo-dark.svg" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+  <pulse-header active="auth" base="../"
+                eyebrow="Developer guide"
+                heading="Monitors and checks"></pulse-header>
+
+  <div class="cards cols-3">
+    <div class="card">
+      <h3>Two check types</h3>
+      <p>An <code>http</code> monitor calls your endpoint and judges the response. An <code>ssl</code> monitor watches the certificate and warns you before it expires.</p>
+    </div>
+    <div class="card">
+      <h3>Run from several regions</h3>
+      <p>A monitor carries a list of <code>regions</code>. Each one gets its own schedule, its own result, and its own live chip in the app.</p>
+    </div>
+    <div class="card">
+      <h3>Failures become incidents</h3>
+      <p>Consecutive failures past <code>failure_threshold</code> open an incident, notify your channels, and close again on recovery.</p>
+    </div>
+  </div>
+
+  <div class="container wrap">
+   <div class="prose">
+    <p class="lead">
+      A monitor is one endpoint plus the rules for judging it: what to send, what counts as a good
+      answer, how often to ask, and where to ask from. Everything on this page is also available
+      over the REST API, so you can keep monitors in version control instead of clicking.
+    </p>
+
+    <h2>What a monitor holds</h2>
+    <p>
+      The request side is <code>url</code>, <code>method</code>, <code>headers</code> and
+      <code>body</code>. Header values can be marked secret, in which case they are encrypted at
+      rest and never come back in a read.
+    </p>
+    <p>
+      The judgement side is three independent assertions. A check passes only if all of the ones
+      you set pass.
+    </p>
+    <table>
+      <thead>
+        <tr><th>Field</th><th>What it asserts</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>expected_status_codes</code></td><td class="feat">The response status is in this set. Takes single codes and ranges, for example <code>200,201,300-399</code>.</td></tr>
+        <tr><td><code>max_latency_ms</code></td><td class="feat">The response arrived within this many milliseconds. Leave it null to ignore latency.</td></tr>
+        <tr><td><code>body_contains</code></td><td class="feat">The response body contains this substring. Leave it null to ignore the body.</td></tr>
+      </tbody>
+    </table>
+    <p>
+      <code>timeout_seconds</code> is separate from <code>max_latency_ms</code>. The timeout gives up
+      on the request; the latency assertion fails a response that did arrive, just too slowly.
+    </p>
+
+    <h2>How often it runs</h2>
+    <p>
+      <code>interval_seconds</code> is what you ask for. Your plan sets a floor, so the cadence the
+      scheduler actually uses is the slower of the two. The monitor list returns that effective
+      value in <code>interval_seconds</code> and the next due time in <code>next_check_at</code>, so
+      the app can say "checks every N" honestly rather than repeating what you typed.
+    </p>
+    <div class="note">
+      <strong>Check now is rate limited.</strong> The manual check-now button and its API route run
+      one check immediately, outside the schedule. It is limited per monitor, so it cannot be used
+      to get a faster cadence than the plan allows.
+    </div>
+
+    <h2>Several regions</h2>
+    <p>
+      Add a region to <code>regions</code> and the scheduler starts dispatching that region's jobs
+      straight away, with no redeploy. Each region reports its own result and keeps its own live
+      state, so you can see that a monitor is fine from one place and failing from another.
+    </p>
+    <p>
+      <code>down_policy</code> is how those per-region verdicts combine into one. Today each region's
+      result stands on its own; the cross-region reduce is not wired yet.
+    </p>
+
+    <h2>From failure to incident</h2>
+    <ol class="steps">
+      <li>A check fails. One failure is not an incident, it is a data point.</li>
+      <li>Failures in a row reach <code>failure_threshold</code>. The monitor is now down.</li>
+      <li>An incident opens and every channel in <code>notification_channel_ids</code> is notified once.</li>
+      <li>A later check passes. The incident closes, and a recovery notification goes out.</li>
+    </ol>
+    <p>
+      An incident carries the timeline of what happened. You can annotate it while it is open, and
+      an admin can close one by hand as an operator override when the automatic close is not
+      appropriate.
+    </p>
+
+    <h2>Creating one from the API</h2>
+<pre><code>curl -X POST https://api.pulsepager.com/api/v1/orgs/&lt;orgId&gt;/monitors \
+  -H "Authorization: Bearer pulse_sk_your_secret_here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "http",
+    "name": "api health",
+    "url": "https://api.example.com/health",
+    "method": "GET",
+    "expected_status_codes": "200",
+    "max_latency_ms": 800,
+    "interval_seconds": 60,
+    "failure_threshold": 2,
+    "regions": ["eu-central", "us-west"]
+  }'</code></pre>
+    <p>
+      A monitor starts enabled. Set <code>enabled</code> to false to pause it without losing its
+      history or its settings.
+    </p>
+
+    <h2>Certificate monitors</h2>
+    <p>
+      An <code>ssl</code> monitor checks the certificate on the host in <code>url</code> and reports
+      its expiry. The point is lead time: you hear about a certificate weeks before it lapses,
+      rather than when the first customer does.
+    </p>
+
+    <p class="muted">
+      Keys and roles are covered in <a href="./authentication.html">Authentication</a>. Every field
+      and route is in the <a href="../api.html">API reference</a>.
+    </p>
+   </div>
+  </div>
+
+  <pulse-footer base="../"></pulse-footer>
+  <!-- Simple Analytics (cookieless; collect-dnt=true counts Do-Not-Track visitors too) -->
+  <script data-collect-dnt="true" async src="https://scripts.simpleanalyticscdn.com/latest.js"></script>
+  <noscript><img src="https://queue.simpleanalyticscdn.com/noscript.gif?collect-dnt=true" alt="" referrerpolicy="no-referrer-when-downgrade"/></noscript>
+</body>
+</html>

@@ -9,11 +9,33 @@ the browser by Redoc from the OpenAPI spec.
 - `index.html` - overview, the open source vs cloud framing, and getting started.
 - `api.html` - the API reference. Redoc (loaded from a CDN) renders
   `./openapi.yaml` in the browser.
+- `guides/monitors.html` - what a monitor holds, how the plan floors the check
+  interval, and how consecutive failures turn into an incident.
 - `guides/authentication.html` - the API-key auth flow (`pulse_sk_` +
   `Authorization: Bearer`) and a "Webhooks (coming soon)" note.
 - `pricing.html` - the cloud plan tiers (Free / Starter / Team / Business), with a
   self-host-for-free note up top, static.
 - `assets/styles.css` - shared styles and the top nav.
+- `assets/site.js` - the shared chrome, as two custom elements.
+
+## Shared chrome
+
+Every page gets the same folio strip, nav and page title from `<pulse-header>`,
+and the same link grid from `<pulse-footer>`, so none of that markup is repeated
+per page:
+
+```html
+<pulse-header active="pricing" base="./"
+              eyebrow="Pulse Pager Cloud"
+              heading="Cloud pricing"></pulse-header>
+...
+<pulse-footer base="./"></pulse-footer>
+```
+
+`active` highlights a nav item (overview, api, auth, pricing). `base` is the path
+to the site root from that page, so it is `../` under `guides/`. `eyebrow` and
+`heading` fill the masthead and both take inline HTML; leave them off for a page
+that has no title block.
 
 ## How the API reference stays in sync
 

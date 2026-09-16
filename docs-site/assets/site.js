@@ -144,6 +144,7 @@
             "</div>" +
             '<div class="ccol"><h4>Developers</h4>' +
               '<a href="' + base + 'api.html">API reference</a>' +
+              '<a href="' + base + 'guides/monitors.html">Monitors and checks</a>' +
               '<a href="' + base + 'guides/authentication.html">Authentication</a>' +
               '<a href="' + base + 'guides/authentication.html#webhooks">Webhooks</a>' +
             "</div>" +
