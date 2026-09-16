@@ -77,6 +77,16 @@ a:hover { opacity: 0.78; }
 .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--pad); }
 
 /* ----------------------------------------------------------------------------
+   Page chrome. <pulse-header> renders the folio strip, the nav and the masthead
+   as one block, so the rule that closes the chrome is drawn here once rather
+   than by whichever piece a given page happens to end on.
+---------------------------------------------------------------------------- */
+.pagehead {
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+
+/* ----------------------------------------------------------------------------
    Folio: the dark dateline strip at the very top, with a slow brand marquee.
 ---------------------------------------------------------------------------- */
 .folio {
@@ -216,7 +226,8 @@ a:hover { opacity: 0.78; }
 /* ----------------------------------------------------------------------------
    Masthead: the broadsheet page title under the nav.
 ---------------------------------------------------------------------------- */
-.masthead { border-bottom: 1px solid var(--line); }
+/* The closing rule comes from .pagehead now, since the masthead is the last
+   thing inside it. */
 .masthead .wrap {
   display: flex;
   align-items: flex-end;

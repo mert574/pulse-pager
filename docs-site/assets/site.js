@@ -1,12 +1,18 @@
 /* Shared chrome for the docs site as two custom elements, so every page reuses
    the same nav and footer instead of repeating the markup.
 
-     <pulse-header active="overview" base="./"></pulse-header>
+     <pulse-header active="overview" base="./"
+                   eyebrow="Open-source uptime monitoring"
+                   heading="Know before<br>your customers do"></pulse-header>
      <pulse-footer base="./"></pulse-footer>
 
-   active: which nav item to highlight (overview | api | auth | pricing).
-   base:   path prefix to the site root from this page ("./" at the root,
-           "../" for pages one folder deep like guides/). Defaults to "./".
+   active:  which nav item to highlight (overview | api | auth | pricing).
+   base:    path prefix to the site root from this page ("./" at the root,
+            "../" for pages one folder deep like guides/). Defaults to "./".
+   eyebrow: the small mono kicker above the page title.
+   heading: the broadsheet page title. Both take inline HTML, since the landing
+            page breaks its title over two lines. Leave both off for a page with
+            no masthead.
 
    This file is loaded synchronously in <head> so the theme class lands on <html>
    before first paint (no flash), then the elements upgrade as the parser reaches
@@ -64,6 +70,19 @@
     return '<div class="folio"><div class="track">' + run + run + "</div></div>";
   }
 
+  /* The broadsheet page title. Every page had this same eight lines of markup
+     with two strings swapped, so the component owns it now and the pages pass
+     the strings. */
+  function masthead(eyebrow, heading) {
+    if (!eyebrow && !heading) return "";
+    return (
+      '<div class="masthead"><div class="wrap"><div>' +
+        (eyebrow ? '<p class="eyebrow">' + eyebrow + "</p>" : "") +
+        (heading ? '<h1 class="h1">' + heading + "</h1>" : "") +
+      "</div></div></div>"
+    );
+  }
+
   function navLinks(base, active) {
     var items = [
       { key: "overview", label: "Overview", href: base },
@@ -80,24 +99,30 @@
     connectedCallback() {
       var base = this.getAttribute("base") || "./";
       var active = this.getAttribute("active") || "";
+      /* Folio, nav and masthead are one ruled block of page chrome (.pagehead),
+         so the rule under it is drawn once by the wrapper instead of by whichever
+         piece happens to come last. */
       this.innerHTML =
-        folioTrack() +
-        '<header class="topbar"><div class="topbar-inner wrap">' +
-          '<a class="brand" href="' + base + '">' +
-            '<img class="logo-light" src="' + base + 'assets/logo.svg" alt="" width="22" height="22">' +
-            '<img class="logo-dark" src="' + base + 'assets/logo-dark.svg" alt="" width="22" height="22">' +
-            'Pulse Pager</a>' +
-          '<input type="checkbox" id="pp-nav" class="navtoggle" hidden>' +
-          '<div class="menu">' +
-            '<nav class="topnav">' + navLinks(base, active) + "</nav>" +
-            '<div class="topactions">' +
-              '<button class="themebtn" type="button" aria-label="Toggle dark mode" data-theme-toggle>◑</button>' +
-              '<a class="btn ghost" href="' + APP + '">Sign in</a>' +
-              '<a class="btn" href="' + APP + '">Start free</a>' +
+        '<div class="pagehead">' +
+          folioTrack() +
+          '<header class="topbar"><div class="topbar-inner wrap">' +
+            '<a class="brand" href="' + base + '">' +
+              '<img class="logo-light" src="' + base + 'assets/logo.svg" alt="" width="22" height="22">' +
+              '<img class="logo-dark" src="' + base + 'assets/logo-dark.svg" alt="" width="22" height="22">' +
+              'Pulse Pager</a>' +
+            '<div class="menu">' +
+              '<nav class="topnav">' + navLinks(base, active) + "</nav>" +
+              '<div class="topactions">' +
+                '<button class="themebtn" type="button" aria-label="Toggle dark mode" data-theme-toggle>◑</button>' +
+                '<a class="btn ghost" href="' + APP + '">Sign in</a>' +
+                '<a class="btn" href="' + APP + '">Start free</a>' +
+              "</div>" +
             "</div>" +
-          "</div>" +
-          '<label for="pp-nav" class="burger" aria-label="Toggle menu"><span></span><span></span><span></span></label>' +
-        "</div></header>";
+            '<input type="checkbox" id="pp-nav" class="navtoggle" hidden>' +
+            '<label for="pp-nav" class="burger" aria-label="Toggle menu"><span></span><span></span><span></span></label>' +
+          "</div></header>" +
+          masthead(this.getAttribute("eyebrow"), this.getAttribute("heading")) +
+        "</div>";
 
       var btn = this.querySelector("[data-theme-toggle]");
       if (btn) btn.addEventListener("click", toggleTheme);
