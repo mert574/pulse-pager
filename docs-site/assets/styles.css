@@ -77,13 +77,11 @@ a:hover { opacity: 0.78; }
 .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--pad); }
 
 /* ----------------------------------------------------------------------------
-   Page chrome. <pulse-header> renders the folio strip, the nav and the masthead
-   as one block, so the rule that closes the chrome is drawn here once rather
-   than by whichever piece a given page happens to end on.
+   Page chrome. <pulse-header> renders the folio strip, the nav and the masthead.
+   display: contents lets the sticky topbar stay pinned against body when scrolling.
 ---------------------------------------------------------------------------- */
-.pagehead {
-  background: var(--bg);
-  border-bottom: 1px solid var(--line);
+pulse-header, .pagehead {
+  display: contents;
 }
 
 /* ----------------------------------------------------------------------------
@@ -226,8 +224,9 @@ a:hover { opacity: 0.78; }
 /* ----------------------------------------------------------------------------
    Masthead: the broadsheet page title under the nav.
 ---------------------------------------------------------------------------- */
-/* The closing rule comes from .pagehead now, since the masthead is the last
-   thing inside it. */
+.masthead {
+  border-bottom: 1px solid var(--line);
+}
 .masthead .wrap {
   display: flex;
   align-items: flex-end;
