@@ -16,6 +16,7 @@ Go and TypeScript types are generated from it.
 Open source under the MIT License. See [License](#license).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development and review conventions.
+See [ROADMAP.md](ROADMAP.md) for planned work.
 
 ## Current state
 

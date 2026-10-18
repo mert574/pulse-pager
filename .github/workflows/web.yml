@@ -58,6 +58,8 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.GARAGE_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ${{ secrets.GARAGE_S3_REGION }}
           AWS_EC2_METADATA_DISABLED: "true"
+          # Garage does not support the CLI's default optional CRC checksum.
+          AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
         run: |
           aws configure set default.s3.addressing_style path
           aws s3 sync web/dist "s3://app.pulsepager.com/" \

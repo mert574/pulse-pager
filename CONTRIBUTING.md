@@ -25,7 +25,7 @@ customer database or payment account.
   `go vet -tags integration ./...` and the relevant integration tests.
 - In `web/`, run `npm run typecheck`, `npm test`, and `npm run build` for frontend
   behavior changes. Browser tests need a supported browser.
-- Update the relevant RFC, README, and roadmap when behavior or scope changes.
+- Update the relevant RFC, README, and [roadmap](ROADMAP.md) when behavior or scope changes.
 
 ## Rights and data
 
