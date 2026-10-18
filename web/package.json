@@ -2,7 +2,7 @@
   "name": "pulse-web",
   "private": true,
   "version": "0.0.0",
-  "license": "Elastic-2.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",

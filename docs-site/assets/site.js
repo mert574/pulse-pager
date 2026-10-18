@@ -135,7 +135,7 @@
             "</div>" +
           "</div>" +
           '<div class="baseline">' +
-            "<span>© 2026 Pulse Pager · Elastic License 2.0</span>" +
+            "<span>© 2026 Pulse Pager · MIT License</span>" +
             '<span class="copy"><a href="https://pulsepager.com">pulsepager.com</a><span class="end"></span></span>' +
           "</div>" +
         "</footer>";
