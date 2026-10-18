@@ -332,7 +332,7 @@ export class AppRoot extends AppElement {
       <div
         class="flex items-center justify-between gap-5 flex-wrap h-[58px] px-10 border-t border-line font-mono text-[11px] text-ink3 uppercase tracking-[0.08em]"
       >
-        <span>(c) 2026 Pulse Pager / Elastic License 2.0</span>
+        <span>(c) 2026 Pulse Pager / MIT License</span>
         <span class="flex items-center gap-3">
           <a
             href="https://pulsepager.com"

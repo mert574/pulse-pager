@@ -13,7 +13,10 @@ pipeline plus a billing service) on Postgres, Redis, and a Kafka-compatible even
 contract-first: `api/openapi/v1.yaml` is the single source of truth and both the
 Go and TypeScript types are generated from it.
 
-Source-available under the Elastic License 2.0. See [License](#license).
+Open source under the MIT License. See [License](#license).
+
+For the next development priorities and acceptance criteria, see [ROADMAP.md](ROADMAP.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development and review conventions.
 
 ## Current state
 
@@ -52,8 +55,9 @@ Still early or not built yet:
   subscription + trial state synced from a provider's webhooks are built, with a stub
   provider that exercises the whole sync path without an account. Live Paddle checkout
   and the customer portal are not wired yet, so an operator sets plans for now.
-- Deployment (Helm/Terraform/k8s), SLO dashboards, enterprise SSO, and the
-  cron/heartbeat check type are not built yet.
+- SLO dashboards and k3s observability configuration are available under
+  `observability/` and `deploy/observability/`. The full deployment/IaC layout
+  in RFC-011, enterprise SSO, and cron/heartbeat monitoring remain planned work.
 
 ## Prerequisites
 
@@ -196,7 +200,7 @@ internal/
   domain/ checker/ crypto/   dependency-light leaf packages
 web/            Lit SPA; web/src/api/schema.d.ts is generated from v1.yaml
 test/           testcontainers integration suite
-docs-site/      static, source-available docs site (GitHub Pages)
+docs-site/      static docs site (GitHub Pages)
 ```
 
 ## API contract (generated)
@@ -220,8 +224,6 @@ Change the spec and regenerate.
 
 Copyright (c) 2026 Mert Yildiz.
 
-Pulse Pager is source-available under the Elastic License 2.0 (ELv2). The full
-text is in [LICENSE](LICENSE). In short: you can use, copy, modify, and
-self-host it, but you may not offer it to others as a hosted or managed service,
-and you may not bypass the plan/license gating. For a commercial license outside
-these terms, contact the copyright holder.
+Pulse Pager is available under the [MIT License](LICENSE). Dependencies and
+third-party fonts retain their own licenses. The project license does not grant
+rights to third-party services, credentials, trademarks, or user data.
